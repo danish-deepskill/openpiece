@@ -1,0 +1,191 @@
+# Ballpiece — Scalability Architecture
+
+How the foundation absorbs the full vision (`docs/design/`) as **content + small systems**, never rewrites.
+Builds on the ECS-lite + factions + control foundation in `docs/ARCHITECTURE.md`. Patterns are the
+industry-standard ones for content-heavy action-RPGs (see **References**).
+
+---
+
+## 0. Five load-bearing principles
+
+1. **Content is data, code is generic.** Every fruit, weapon, style, haki, potential, item, recipe, ship
+   part, cannon, faction, event, creature, zone, race, mount, ability, effect is a **Definition** in a typed
+   **Registry**. Systems operate over registries; adding content = adding a data entry. *(Data-driven design /
+   ScriptableObject pattern.)*
+2. **Definition vs Instance.** `WeaponDef` (static: base stats, vfx) ≠ `WeaponInstance` (runtime: rolls,
+   durability, upgrades, enchants). Defs are shared & immutable; instances are per-entity. Same for every kind.
+3. **One combat engine (GAS-lite).** Attributes + Abilities + Effects + Tags. The *four combat layers* don't
+   each get bespoke code — they all **grant abilities + passive modifiers + tags** into this single engine.
+4. **Composition over inheritance.** Characters, ships, mounts, creatures, bosses are all entities = bags of
+   components. A ship is a hull + parts; a Zoan form is a swapped component set.
+5. **Decoupled by events & tags.** Discrete signals via the typed `EventBus`; conditions/states/immunities
+   via hierarchical **Gameplay Tags**. No system reaches into another's internals.
+
+---
+
+## 1. Content Registry (the spine for "many contents")
+
+```ts
+type ContentId = string;                       // 'fruit.gomu', 'weapon.cutlass', 'haki.armament'
+interface Def { id: ContentId }
+class Registry<T extends Def> {
+  register(def: T): void;
+  get(id: ContentId): T;            // throws if missing (fail fast)
+  all(): T[];
+  filter(pred): T[];
+}
+```
+- One registry per content family: `Fruits`, `Weapons`, `FightingStyles`, `HakiAbilities`, `CombatPotentials`,
+  `Abilities`, `Effects`, `Items`, `Materials`, `Recipes`, `Blueprints`, `Cannons`, `ShipHulls`, `ShipParts`,
+  `Factions`, `Races`, `Mounts`, `Creatures`, `Zones`, `LandEvents`, `SeaEvents`.
+- Defs live in `defs/<family>/*.ts` (one file per entry or grouped), registered at boot. A designer adds a
+  fruit by dropping a file — zero system edits. (Later: load from JSON/data tables for hot-tuning.)
+- IDs are namespaced strings → stable saves, debuggable, moddable.
+
+---
+
+## 2. Combat engine = GAS-lite (the moat, build first)
+
+Four sub-systems, each generic and data-driven. This is where the four layers converge.
+
+### 2.1 Attributes (`AttributeSet` / `StatBlock`)
+- Base stats: **Health, Endurance, Defense, Willpower, Luck, Spiritual** (+ Haki tiers). Derived:
+  stamina/haki pools, move speed, **power tier (-F…SSS+)**.
+- `StatBlock` = base values + a list of **Modifiers**; `get(stat)` recomputes on demand (or caches+dirties).
+
+### 2.2 Modifiers (stacking, source-tracked) — *validated industry pattern*
+```ts
+type Op = 'flat' | 'addPct' | 'mulPct' | 'override';
+interface Modifier { stat: StatId; op: Op; value: number; source: string; }
+// eval order: base → +flat → ×(1+Σaddpct) → ×Πmulpct → override
+// removeBySource(src)  — drop all mods from an unequipped weapon / expired buff / removed potential
+```
+Sources: gear, devil fruit, haki, fighting style, **Combat Potentials**, race, buffs/debuffs, mounts, zone.
+
+### 2.3 Gameplay Tags (hierarchical conditions)
+`state.logia.intangible`, `haki.armament.active`, `cc.feared`, `fruit.type.zoan`, `weapon.class.heavy`,
+`mode.ship.battle`. Drive immunities, counters (Armament tag bypasses Logia intangibility — *Haki counters
+fruits*), ability requirements, and AI reads. A `TagSet` per entity (add/remove/has, prefix queries).
+
+### 2.4 Abilities & Effects
+- `AbilityDef`: cost (stamina/haki), cooldown, cast/active windows, granted tags, required tags, the
+  **Effects** it applies. Granted by any layer (fruit moveset, weapon, style, cross-class loadout).
+- `EffectDef`: **instant** (damage/heal), **duration** (buff/debuff/DoT), **infinite** (passive). Carries
+  Modifiers and/or Tags; stackable; source-tracked; `onApply/onTick/onExpire`. (Mirrors hivyss effect
+  lifecycle + the 7-phase damage pipeline — reusable here.)
+- Resolution: an `AbilitySystem` (activation, cost, cooldown, cast) + `EffectSystem` (tick/expire) feeding a
+  damage pipeline. Knockback/combo from the current `CombatSystem` become abilities/effects.
+
+### 2.5 The four layers → engine (no bespoke code)
+| Layer | Contributes |
+|-------|-------------|
+| Devil Fruit (`FruitDef`) | a moveset (Abilities) + passive Modifiers + tags (`fruit.type.*`, logia intangible) |
+| Haki (`HakiDef`) | toggle/active Abilities + Modifiers + tags (`haki.armament.active` → bypass/counter) |
+| Weapon class (`WeaponDef`) | base attack Ability + class Modifiers + `weapon.class.*` tag |
+| Fighting style (`StyleDef`) | mobility/combo Abilities (Flash Dash, Geppo) + Modifiers |
+| Combat Potential (`PotentialDef`) | a bundle of Modifiers (the "poster") |
+
+Equipping = registering that def's modifiers (by source) + granting its abilities. Unequipping =
+`removeBySource`. **That's the whole extensibility story for combat.**
+
+---
+
+## 3. Component additions (extend current ECS)
+
+Built now is `transform/mover/health/faction/attacker/ai/render/avatar/control/crew/npc/loot/item`.
+Add as features land (all optional, composable):
+
+`attributes` (StatBlock) · `tags` (TagSet) · `abilities` (granted + loadout slots + cooldowns) ·
+`effects` (active EffectInstances) · `equipment` (weapon/fruit/haki/style/potentials refs) ·
+`inventory` (items/materials) · `progression` (talent/dex tracks + stat/haki/talent points) ·
+`reputation` (per-faction score) · `race` (def ref) · `rideable`/`riding` (mounts/ships) ·
+`shipHull`/`parts` (ships) · `harvestable` (gather nodes) · `bounty` · `powerTier`.
+
+The hero's current `avatar` (stam/combo/cd) folds into `attributes` + `abilities` as combat matures.
+
+---
+
+## 4. Domain → pattern map
+
+| Domain | Pattern | Notes |
+|--------|---------|-------|
+| Devil Fruits / Haki / Weapons / Styles / Potentials | **Registry defs → GAS-lite** | §2 — abilities + modifiers + tags |
+| Stats / power tier | **Attributes + Modifiers** | §2.1–2.2; tier derived from attributes |
+| Races | **Modifier bundle + tags** (def) | like Potentials, plus race-gated abilities |
+| Class system | **WeaponClassDef + ability loadout** | classless-with-loadout, cross-class slots |
+| Progression / talents / dexes | **Independent XP tracks** (`progression`) | non-linear; caps in data |
+| Items / materials / recipes / blueprints | **Registry defs + `inventory`** | Def vs Instance for upgrades/enchants |
+| Crafting / blacksmithing / market | **Generic systems over recipe defs** | consume materials, emit items |
+| Open world / islands | **Region graph + scene streaming** | one active region; zones are data |
+| Ocean zones / hazards | **`ZoneDef` + HazardSystem** | climate, hazard set, tier gate, spawn tables |
+| Ships / parts / cannons | **Composite entity + part components** | naval combat reuses GAS-lite engine |
+| Ship modes | **FSM** (exploration ↔ battle) | swaps active ability/control set |
+| Land & sea events | **Event Director + `EventDef`** | proximity triggers, Adventure-Dex tiering |
+| Factions | **Data-driven relations matrix** (built) | `docs/ARCHITECTURE.md §11` |
+| Reputation | **Per-faction score → relation modifier** | persists; gates stance/missions |
+| AI (grunts → bosses → squads) | **Brain Strategy: FSM → BT/Utility/HTN** | one interface, swap brains |
+| Wildlife / creatures | **CreatureDef + spawn tables by zone/depth** | hunted for materials |
+| Mounts / vehicles | **`rideable`/`riding` + speed modifier** | ships are the sea analog |
+| Save / progression | **Serializable component snapshot** | §6 |
+
+---
+
+## 5. World streaming & the Event Director
+
+- **World = a graph** of islands + sea regions (`ZoneDef` nodes). Only the **active region** is simulated
+  (its own Phaser scene or a chunk swap). Travel = transition between region scenes; ships carry state across.
+- **Event Director** (L4D-AI-Director style): each tick over the active region, it weighs `EventDef`s by
+  Adventure-Dex tier, active factions, region, and player power, then spawns encounters by proximity and
+  resolves rewards + reputation deltas. Events never hardcode placement.
+
+## 6. Persistence
+
+Progression, equipment, inventory, reputation, dexes, bounty, ship loadouts, and world flags are
+**serializable component snapshots** keyed by stable `ContentId`s. A `SaveSystem` writes/reads a plain JSON
+blob (localStorage now, server later). Defs are never saved — only ids + instance state.
+
+## 7. AI scaling
+
+The `Brain` interface stays; complexity grows by swapping implementations:
+`FsmBrain` (grunts) → `UtilityBrain` (smart enemies) → `BehaviorTreeBrain` (bosses, multi-phase) →
+squad/`SquadBrain` coordinating faction crews (war events). Mesh-form bosses = entities that merge component
+sets at runtime. Spatial queries already sit behind `SpatialQuery` (swap for a grid at scale).
+
+## 8. Folder additions (when built)
+```
+src/
+  combat/    Stat.ts  Modifier.ts  Tags.ts  Ability.ts  Effect.ts  pipeline.ts
+  core/      Registry.ts
+  defs/      fruits/  weapons/  styles/  haki/  potentials/  items/  recipes/
+             ships/  cannons/  zones/  events/  creatures/  races/  mounts/
+  world/     RegionGraph.ts  ZoneDef.ts  HazardSystem.ts
+  systems/   AbilitySystem.ts  EffectSystem.ts  EventDirector.ts  CraftingSystem.ts
+             ProgressionSystem.ts  SaveSystem.ts
+  ship/      ShipMode.ts  NavalCombat.ts
+```
+
+## 9. Build order for the foundation (combat first, per direction)
+1. **Registry** (generic) + **Stat/Modifier** + **Tags** — pure logic, unit-tested. ← *start here*
+2. **Ability + Effect** contracts + `AbilitySystem`/`EffectSystem` skeleton; port the current punch/dodge into
+   it as the first abilities/effects.
+3. **Equipment**: wire one `WeaponDef` + one `FruitDef` + one `StyleDef` + one `PotentialDef` through
+   equip → modifiers/abilities/tags. Prove the four-layer stack end-to-end with a single example each.
+4. **Power tier** derivation from attributes.
+5. Then breadth: more content defs, then world/zones, ships, events, economy — each just data + a small system.
+
+## 10. Golden rules (avoid the rewrite traps)
+- No `if (fruitName === 'gomu')` — behavior comes from the def's abilities/effects, not branches.
+- No stat math scattered in systems — only the Attribute/Modifier system computes stats.
+- No hardcoded content lists — iterate registries.
+- No privileged player code — every character uses the same stack (the Moat; `docs/ARCHITECTURE.md §11.2`).
+- Log any silent cap/truncation (spawn limits, loot caps) — never fail silently.
+
+## References (industry-standard patterns this mirrors)
+- **Unreal Gameplay Ability System** — Abilities + Attributes + Effects + Tags; data-table-driven, scalable
+  RPG combat. https://dev.epicgames.com/documentation/en-us/unreal-engine/gameplay-ability-system-for-unreal-engine ·
+  https://github.com/tranek/GASDocumentation
+- **Data-driven design / ScriptableObject pattern** — Definition vs Instance, lookup registries, designer-editable
+  content. https://gamineai.com/blog/scriptableobjects-and-data-driven-design-in-unity
+- **Stat modifier systems** — flat→additive→multiplicative ordering, source tracking / removeBySource.
+  https://github.com/meredoth/Stat-System ·
+  https://refreshertowelgames.wordpress.com/2024/02/17/how-to-comfortably-deal-with-modifiable-stats/

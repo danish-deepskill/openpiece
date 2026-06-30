@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Grand Voyage — Pirate MVP</title>
+<style>
+  :root{
+    --sea:#0b1f33; --sea2:#16456b; --sand:#e2c489; --parch:#f3e7c9;
+    --ink:#3a2b18; --accent:#d4483b; --gold:#f0b429; --foliage:#4a7c3f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#06121f;overflow:hidden;
+    font-family:"Trebuchet MS",-apple-system,system-ui,sans-serif;color:#fff;
+    -webkit-user-select:none;user-select:none;touch-action:none;}
+  #game{display:block;width:100vw;height:100vh;cursor:crosshair;}
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 30%,#123 0%,#06121f 70%);z-index:10;padding:18px;}
+  .panel{max-width:560px;width:100%;background:
+      linear-gradient(180deg,#f7eed4,#ecdcb4);
+    color:var(--ink);border-radius:6px;padding:26px 30px 30px;
+    box-shadow:0 24px 60px rgba(0,0,0,.6),inset 0 0 0 2px rgba(120,80,30,.25);
+    position:relative;}
+  .panel:before{content:"";position:absolute;inset:8px;border:1px solid rgba(120,80,30,.35);
+    border-radius:3px;pointer-events:none;}
+  .panel h1{font-family:Georgia,"Times New Roman",serif;margin:0 0 2px;
+    font-size:30px;letter-spacing:1.5px;color:#5a3c16;text-transform:uppercase;}
+  .panel .sub{font-style:italic;color:#8a6a38;margin:0 0 16px;font-size:14px;letter-spacing:.5px;}
+  .panel h2{font-family:Georgia,serif;font-size:14px;letter-spacing:2px;text-transform:uppercase;
+    color:#7a4f1f;margin:18px 0 8px;border-bottom:1px solid rgba(120,80,30,.3);padding-bottom:4px;}
+  .keys{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13.5px;line-height:1.35;}
+  kbd{background:#5a3c16;color:#f7eed4;border-radius:4px;padding:1px 7px;font-family:inherit;
+    font-size:12px;font-weight:bold;white-space:nowrap;box-shadow:0 2px 0 #3a2810;}
+  .start-btn{margin-top:22px;width:100%;border:none;cursor:pointer;
+    background:linear-gradient(180deg,#d4483b,#a8362c);color:#fff;font-weight:bold;
+    font-family:Georgia,serif;letter-spacing:2px;text-transform:uppercase;font-size:16px;
+    padding:13px;border-radius:5px;box-shadow:0 4px 0 #7a261e;transition:transform .05s;}
+  .start-btn:active{transform:translateY(2px);box-shadow:0 2px 0 #7a261e;}
+  .hint{margin-top:10px;font-size:12px;color:#8a6a38;text-align:center;font-style:italic;}
+  .hidden{display:none!important;}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="startOverlay" class="overlay">
+  <div class="panel">
+    <h1>Grand Voyage</h1>
+    <p class="sub">A fan-made pirate prototype · sail, fight, and build a crew</p>
+
+    <h2>Movement &amp; Aim</h2>
+    <div class="keys">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Move</span>
+      <span><kbd>Mouse</kbd></span><span>Aim (your character faces the cursor)</span>
+      <span><kbd>Shift</kbd></span><span>Dodge roll — brief invulnerability, costs stamina</span>
+      <span><kbd>E</kbd></span><span>Interact: talk, hire, eat the fruit, board / leave boat</span>
+    </div>
+
+    <h2>Combat</h2>
+    <div class="keys">
+      <span><kbd>L-Click</kbd>/<kbd>J</kbd></span><span>Attack — short punch, or <i>Gomu Pistol</i> after the fruit</span>
+      <span><kbd>K</kbd></span><span>Gomu Gatling — rapid cone barrage (fruit only)</span>
+      <span><kbd>R-Click</kbd>/<kbd>L</kbd></span><span>Gomu Rocket — launch dash through enemies (fruit only)</span>
+    </div>
+
+    <h2>Crew Command</h2>
+    <div class="keys">
+      <span><kbd>Q</kbd></span><span>Order crew to attack (toward your cursor / nearest foe)</span>
+      <span><kbd>F</kbd></span><span>Toggle crew stance: Follow ↔ Hold position</span>
+      <span><kbd>H</kbd></span><span>Show / hide this help</span>
+    </div>
+
+    <button class="start-btn" id="startBtn">Set Sail</button>
+    <p class="hint">Tip: find the tavern to recruit pirates, eat the fruit by the big tree, then take the boat east.</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   Grand Voyage — a single-file 2D top-down pirate MVP.
+   Original code; "prototype" geometric art only.
+   ============================================================ */
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// ---------- world constants ----------
+const TILE = 32, MAPW = 86, MAPH = 54;
+const WORLD_W = MAPW*TILE, WORLD_H = MAPH*TILE;
+const T_WATER=0, T_GRASS=1, T_SAND=2, T_DOCK=3;
+
+// ---------- helpers ----------
+const rand=(a,b)=>a+Math.random()*(b-a);
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const dist=(ax,ay,bx,by)=>Math.hypot(ax-bx,ay-by);
+const now=()=>performance.now()/1000;
+function norm(x,y){const m=Math.hypot(x,y)||1;return [x/m,y/m];}
+
+// ---------- input ----------
+const keys={}, mouse={x:0,y:0,wx:0,wy:0,down:false,rdown:false};
+const pressed={}; // edge-triggered this frame
+addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if(!keys[k]) pressed[k]=true;
+  keys[k]=true;
+  if(['w','a','s','d',' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) e.preventDefault();
+  if(k==='h'){ toggleHelp(); }
+});
+addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+canvas.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;});
+canvas.addEventListener('mousedown',e=>{if(e.button===0)mouse.down=true;if(e.button===2)mouse.rdown=true;});
+canvas.addEventListener('mouseup',e=>{if(e.button===0)mouse.down=false;if(e.button===2)mouse.rdown=false;});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+// ---------- map generation ----------
+let tiles=[];
+function genMap(){
+  tiles=[];
+  const homeCx=17, homeCy=27, homeR=13;
+  const enemyCx=68, enemyCy=27, enemyR=13;
+  for(let y=0;y<MAPH;y++){
+    const row=[];
+    for(let x=0;x<MAPW;x++){
+      let t=T_WATER;
+      const dh=Math.hypot((x-homeCx),(y-homeCy)*1.05);
+      const de=Math.hypot((x-enemyCx),(y-enemyCy)*1.05);
+      if(dh<homeR){ t = dh<homeR-2 ? T_GRASS : T_SAND; }
+      if(de<enemyR){ t = de<enemyR-2 ? T_GRASS : T_SAND; }
+      row.push(t);
+    }
+    tiles.push(row);
+  }
+  // docks: home reaches east, enemy reaches west
+  for(let x=homeCx+10;x<=homeCx+16;x++) if(x<MAPW) tiles[homeCy][x]=T_DOCK, tiles[homeCy+1]&&(tiles[homeCy+1][x]=T_DOCK);
+  for(let x=enemyCx-16;x<=enemyCx-10;x++) if(x>=0) tiles[enemyCy][x]=T_DOCK, tiles[enemyCy+1]&&(tiles[enemyCy+1][x]=T_DOCK);
+  return {homeCx,homeCy,enemyCx,enemyCy};
+}
+function tileType(px,py){
+  const tx=Math.floor(px/TILE), ty=Math.floor(py/TILE);
+  if(tx<0||ty<0||tx>=MAPW||ty>=MAPH) return T_WATER;
+  return tiles[ty][tx];
+}
+
+// ---------- buildings (solid AABBs in pixels) ----------
+let buildings=[]; // {x,y,w,h, roof, label}
+function makeBuilding(tx,ty,tw,th,roof,label){
+  buildings.push({x:tx*TILE,y:ty*TILE,w:tw*TILE,h:th*TILE,roof,label:label||null});
+}
+
+// ---------- collision ----------
+function tileWalkable(t,mode){
+  if(mode==='boat') return t===T_WATER||t===T_DOCK;
+  return t!==T_WATER; // foot: grass/sand/dock ok
+}
+function hitsBuilding(x,y,r){
+  if(player.inBoat) return false;
+  for(const b of buildings){
+    const cx=clamp(x,b.x,b.x+b.w), cy=clamp(y,b.y,b.y+b.h);
+    if((x-cx)**2+(y-cy)**2 < r*r) return true;
+  }
+  return false;
+}
+function canBe(x,y,r,mode){
+  const pts=[[x,y],[x+r,y],[x-r,y],[x,y+r],[x,y-r]];
+  for(const [sx,sy] of pts){
+    if(sx<r||sy<r||sx>WORLD_W-r||sy>WORLD_H-r) return false;
+    if(!tileWalkable(tileType(sx,sy),mode)) return false;
+  }
+  if(hitsBuilding(x,y,r)) return false;
+  return true;
+}
+function moveEntity(e,dx,dy,mode){
+  if(canBe(e.x+dx,e.y,e.r,mode)) e.x+=dx;
+  if(canBe(e.x,e.y+dy,e.r,mode)) e.y+=dy;
+}
+
+// ---------- entities ----------
+let player, crew=[], npcs=[], enemies=[], items=[], particles=[], dmgTexts=[], swings=[], corpses=[];
+let boat={x:0,y:0,r:20};
+let camera={x:0,y:0,shake:0};
+let gold=0, objective='Eat the Gomu Gomu no Mi (look for the great tree)';
+let dialogue=null; // {lines,idx,who}
+let notif=null, notifT=0;
+let gameState='start'; // start | play | dead | win
+let started=false;
+
+function notify(msg){ notif=msg; notifT=3.2; }
+
+function spawnParticles(x,y,color,n,spd){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, s=rand(spd*0.3,spd);
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rand(.25,.55),max:.55,color,r:rand(2,4)});
+  }
+}
+function dmgText(x,y,val,color){ dmgTexts.push({x,y,val:Math.round(val),life:.8,color:color||'#fff',vy:-34}); }
+
+function applyDamage(ent,dmg,kx,ky,isPlayer){
+  if(ent.iframes&&ent.iframes>0) return false;
+  ent.hp-=dmg;
+  ent.hitFlash=0.12;
+  ent.x+=kx; ent.y+=ky;
+  dmgText(ent.x,ent.y-ent.r-6,dmg,isPlayer?'#ffd4d4':'#fff');
+  spawnParticles(ent.x,ent.y,'#c0303a',6,160);
+  if(ent.hp<=0) ent.dead=true;
+  return true;
+}
+
+// ---------- setup ----------
+function setup(){
+  buildings=[]; crew=[]; npcs=[]; enemies=[]; items=[]; particles=[]; dmgTexts=[]; swings=[]; corpses=[];
+  gold=0; objective='Eat the Gomu Gomu no Mi (look for the great tree)';
+  const m=genMap();
+
+  // home village buildings
+  makeBuilding(m.homeCx-7,m.homeCy-6,4,3,'#9a4b2e','House');
+  makeBuilding(m.homeCx-2,m.homeCy-8,4,3,'#9a4b2e','House');
+  makeBuilding(m.homeCx-9,m.homeCy+1,3,3,'#9a4b2e','House');
+  makeBuilding(m.homeCx+1,m.homeCy+4,5,3,'#7a4f9a','Tavern'); // tavern (purple roof)
+
+  // player
+  player={
+    x:(m.homeCx)*TILE, y:(m.homeCy)*TILE, r:12, hp:100, maxhp:100,
+    stam:100, maxstam:100, angle:0, inBoat:false, hasFruit:false,
+    iframes:0, dodgeT:0, dvx:0, dvy:0, hitFlash:0,
+    cd:{atk:0,gatling:0,rocket:0,dodge:0}, gatT:0, combo:0, comboT:0, facing:1
+  };
+
+  // boat at home dock
+  boat.x=(m.homeCx+14)*TILE; boat.y=(m.homeCy)*TILE;
+
+  // devil fruit near a big tree on home grass
+  const ftx=(m.homeCx+4)*TILE, fty=(m.homeCy-3)*TILE;
+  items.push({type:'fruit',x:ftx,y:fty,r:11,bob:0,treeX:ftx,treeY:fty-24});
+
+  // friendly villagers (idle / wander)
+  const vspots=[[m.homeCx-3,m.homeCy-2],[m.homeCx+2,m.homeCy-1],[m.homeCx-5,m.homeCy+3],[m.homeCx,m.homeCy+2]];
+  vspots.forEach((s,i)=>{
+    npcs.push(npc(s[0]*TILE,s[1]*TILE,'#3f7f4a',false,[
+      "Mornin'! The sea's calm today.",
+      "Heard there's a strange fruit by the old tree...",
+      "Bandits took over the eastern isle. Stay sharp."
+    ][i%3]||"..."));
+  });
+
+  // recruitable pirates near tavern
+  const rspots=[[m.homeCx+2,m.homeCy+3],[m.homeCx+4,m.homeCy+3],[m.homeCx+5,m.homeCy+5]];
+  const rnames=['Roric','Bell','Tason'];
+  rspots.forEach((s,i)=>{
+    const r=npc(s[0]*TILE,s[1]*TILE,'#2f6fae',true,
+      `I'm ${rnames[i]}. Buy me a drink and I'll sail with you.\n[E] Hire (free for the demo)`);
+    r.name=rnames[i]; r.hireDmg=18+i*4; r.hireHp=80+i*10;
+    npcs.push(r);
+  });
+
+  // enemies on the enemy island
+  let id=0;
+  for(let i=0;i<7;i++){
+    const a=Math.random()*Math.PI*2, rr=rand(2,9)*TILE;
+    enemies.push(enemy(m.enemyCx*TILE+Math.cos(a)*rr, m.enemyCy*TILE+Math.sin(a)*rr, false));
+  }
+  // captain (boss)
+  enemies.push(enemy(m.enemyCx*TILE, m.enemyCy*TILE, true));
+
+  camera.x=player.x-canvas.width/2; camera.y=player.y-canvas.height/2;
+}
+
+function npc(x,y,color,recruit,text){
+  return {x,y,r:11,color,recruit,hired:false,text,
+    wanderT:rand(0,2),wdx:0,wdy:0,home:{x,y}};
+}
+function enemy(x,y,boss){
+  return {x,y,r:boss?16:11,hp:boss?260:55,maxhp:boss?260:55,
+    dmg:boss?22:10,boss,state:'idle',angle:0,atkCd:0,wanderT:rand(0,2),
+    wdx:0,wdy:0,hitFlash:0,iframes:0,gold:boss?80:12,spawn:{x,y}};
+}
+
+// ---------- combat actions ----------
+function playerAttack(){
+  const range = player.hasFruit?300:52;
+  const arc   = player.hasFruit?0.22:0.9; // pistol is narrow, melee cleaves
+  const dmg   = (player.hasFruit?16:9) + Math.min(player.combo,5);
+  const a=player.angle;
+  // visual
+  swings.push({type:player.hasFruit?'pistol':'melee',x:player.x,y:player.y,angle:a,len:range,life:player.hasFruit?0.16:0.14,max:player.hasFruit?0.16:0.14});
+  // hit detection
+  let hitAny=false;
+  const sorted=[...enemies].filter(e=>!e.dead).sort((p,q)=>dist(player.x,player.y,p.x,p.y)-dist(player.x,player.y,q.x,q.y));
+  for(const e of sorted){
+    const d=dist(player.x,player.y,e.x,e.y);
+    if(d>range+e.r) continue;
+    const ang=Math.atan2(e.y-player.y,e.x-player.x);
+    let diff=Math.abs(((ang-a+Math.PI*3)%(Math.PI*2))-Math.PI);
+    if(diff<arc){
+      const [nx,ny]=norm(e.x-player.x,e.y-player.y);
+      const kb=player.hasFruit?26:10;
+      applyDamage(e,dmg,nx*kb,ny*kb);
+      spawnParticles((player.x+e.x)/2,(player.y+e.y)/2,'#ffe08a',5,200);
+      camera.shake=Math.max(camera.shake,player.hasFruit?7:3);
+      hitAny=true;
+      player.combo++; player.comboT=2;
+      if(player.hasFruit) break; // pistol = single target
+    }
+  }
+  player.cd.atk=player.hasFruit?0.34:0.26;
+}
+function gatling(){
+  player.gatT=0.42; player.cd.gatling=1.6;
+}
+function gatlingTick(dt){
+  // multiple quick jabs in a forward cone
+  if(player.gatT<=0) return;
+  player.gatT-=dt;
+  if(Math.random()<dt*30){ // ~ many hits over duration
+    const spread=rand(-0.35,0.35);
+    const a=player.angle+spread, range=210;
+    swings.push({type:'pistol',x:player.x,y:player.y,angle:a,len:range,life:0.1,max:0.1,thin:true});
+    for(const e of enemies){
+      if(e.dead) continue;
+      const d=dist(player.x,player.y,e.x,e.y);
+      if(d>range+e.r) continue;
+      const ang=Math.atan2(e.y-player.y,e.x-player.x);
+      let diff=Math.abs(((ang-a+Math.PI*3)%(Math.PI*2))-Math.PI);
+      if(diff<0.18){
+        const [nx,ny]=norm(e.x-player.x,e.y-player.y);
+        applyDamage(e,5,nx*6,ny*6);
+        camera.shake=Math.max(camera.shake,4);
+      }
+    }
+  }
+}
+function rocket(){
+  const [nx,ny]=norm(Math.cos(player.angle),Math.sin(player.angle));
+  player.dvx=nx*820; player.dvy=ny*820;
+  player.dodgeT=0.28; player.iframes=0.30; player.cd.rocket=2.0; player.rocketDash=true;
+  spawnParticles(player.x,player.y,'#cfe9ff',12,260);
+  camera.shake=Math.max(camera.shake,6);
+}
+function dodge(){
+  if(player.stam<25) return;
+  let dx=(keys['d']||keys['arrowright']?1:0)-(keys['a']||keys['arrowleft']?1:0);
+  let dy=(keys['s']||keys['arrowdown']?1:0)-(keys['w']||keys['arrowup']?1:0);
+  if(dx===0&&dy===0){ dx=Math.cos(player.angle); dy=Math.sin(player.angle); }
+  const [nx,ny]=norm(dx,dy);
+  player.dvx=nx*620; player.dvy=ny*620;
+  player.dodgeT=0.22; player.iframes=0.30; player.cd.dodge=0.5; player.stam-=25;
+  spawnParticles(player.x,player.y,'#fff',8,160);
+}
+
+// ---------- update ----------
+function updatePlayer(dt){
+  const p=player;
+  // timers
+  for(const k in p.cd) p.cd[k]=Math.max(0,p.cd[k]-dt);
+  p.iframes=Math.max(0,p.iframes-dt);
+  p.dodgeT=Math.max(0,p.dodgeT-dt);
+  p.hitFlash=Math.max(0,p.hitFlash-dt);
+  p.comboT-=dt; if(p.comboT<=0) p.combo=0;
+  p.stam=Math.min(p.maxstam,p.stam+18*dt);
+
+  // aim toward mouse
+  p.angle=Math.atan2(mouse.wy-p.y, mouse.wx-p.x);
+  p.facing = Math.cos(p.angle)>=0?1:-1;
+
+  // movement
+  let vx=0,vy=0;
+  if(p.dodgeT>0){
+    vx=p.dvx; vy=p.dvy;
+    p.dvx*=0.86; p.dvy*=0.86;
+    if(p.rocketDash){
+      for(const e of enemies){ if(e.dead) continue;
+        if(dist(p.x,p.y,e.x,e.y)<e.r+p.r+6){
+          const [nx,ny]=norm(e.x-p.x,e.y-p.y);
+          applyDamage(e,22,nx*30,ny*30);
+          camera.shake=Math.max(camera.shake,6);
+        }
+      }
+    }
+  } else {
+    p.rocketDash=false;
+    let dx=(keys['d']||keys['arrowright']?1:0)-(keys['a']||keys['arrowleft']?1:0);
+    let dy=(keys['s']||keys['arrowdown']?1:0)-(keys['w']||keys['arrowup']?1:0);
+    if(dx||dy){const [nx,ny]=norm(dx,dy); const sp=p.inBoat?225:165; vx=nx*sp; vy=ny*sp;}
+  }
+  moveEntity(p,vx*dt,vy*dt, p.inBoat?'boat':'foot');
+  if(p.inBoat){ boat.x=p.x; boat.y=p.y; }
+
+  // attacks
+  if((mouse.down||keys['j'])&&p.cd.atk<=0&&p.dodgeT<=0) playerAttack();
+  if(keys['k']&&p.hasFruit&&p.cd.gatling<=0&&p.gatT<=0) gatling();
+  gatlingTick(dt);
+  if((mouse.rdown||keys['l'])&&p.hasFruit&&p.cd.rocket<=0&&p.dodgeT<=0) rocket();
+  if((keys['shift'])&&p.cd.dodge<=0&&p.dodgeT<=0) dodge();
+
+  // crew commands (edge)
+  if(pressed['q']){ crew.forEach(c=>{c.cmdAttack=true; c.cmdT=6;}); notify('Crew: ATTACK!'); }
+  if(pressed['f']){
+    const newStance = crew.length&&crew[0].stance==='follow'?'hold':'follow';
+    crew.forEach(c=>c.stance=newStance);
+    if(crew.length) notify('Crew stance: '+newStance.toUpperCase());
+  }
+
+  // (E interactions handled centrally in handleEdgeKeys)
+
+  // death
+  if(p.hp<=0){ gameState='dead'; }
+}
+
+function tryInteract(){
+  // board / leave boat
+  const p=player;
+  if(!p.inBoat && dist(p.x,p.y,boat.x,boat.y)<46){
+    p.inBoat=true; p.x=boat.x; p.y=boat.y; notify('Boarded the boat — sail east!'); return;
+  }
+  if(p.inBoat){
+    // try to step onto nearest land
+    for(let a=0;a<8;a++){
+      const ang=a/8*Math.PI*2, tx=p.x+Math.cos(ang)*34, ty=p.y+Math.sin(ang)*34;
+      if(canBe(tx,ty,p.r,'foot')){ p.inBoat=false; p.x=tx; p.y=ty; notify('Stepped ashore.'); return; }
+    }
+    notify('Get closer to land to disembark.'); return;
+  }
+  // fruit
+  for(const it of items){
+    if(it.type==='fruit'&&!it.taken&&dist(p.x,p.y,it.x,it.y)<40){
+      it.taken=true; p.hasFruit=true;
+      objective='Recruit pirates at the tavern, then sail east';
+      notify('You ate the Gomu Gomu no Mi! Your body is now rubber.');
+      spawnParticles(it.x,it.y,'#f0b429',20,200);
+      return;
+    }
+  }
+  // npc
+  let near=null,nd=1e9;
+  for(const n of npcs){ const d=dist(p.x,p.y,n.x,n.y); if(d<46&&d<nd){nd=d;near=n;} }
+  if(near){
+    if(near.recruit&&!near.hired){
+      // hire: convert the villager into a crew member, then remove the NPC so it isn't duplicated
+      const slot=crew.length;
+      crew.push({x:near.x,y:near.y,r:11,hp:near.hireHp,maxhp:near.hireHp,dmg:near.hireDmg,
+        name:near.name,angle:0,atkCd:0,stance:'follow',slot,cmdAttack:false,cmdT:0,hitFlash:0,
+        color:near.color});
+      npcs=npcs.filter(n=>n!==near);
+      objective = p.hasFruit ? 'Sail east and defeat the enemy captain' : 'Eat the fruit, then sail east';
+      notify(`${near.name} joined your crew! (${crew.length} aboard)`);
+    } else {
+      dialogue={who:near, lines:(near.text||'...').split('\n'), idx:0};
+    }
+  }
+}
+
+function updateNpc(n,dt){
+  n.wanderT-=dt;
+  if(n.wanderT<=0){
+    n.wanderT=rand(1.5,3.5);
+    if(Math.random()<0.6){ const a=Math.random()*Math.PI*2; n.wdx=Math.cos(a)*40; n.wdy=Math.sin(a)*40; }
+    else { n.wdx=0; n.wdy=0; }
+  }
+  // tether near home
+  if(dist(n.x,n.y,n.home.x,n.home.y)>70){ const [hx,hy]=norm(n.home.x-n.x,n.home.y-n.y); n.wdx=hx*40; n.wdy=hy*40; }
+  moveEntity(n,n.wdx*dt,n.wdy*dt,'foot');
+}
+
+function nearestThreat(x,y,range){
+  let best=null,bd=range;
+  if(!player.inBoat){ const d=dist(x,y,player.x,player.y); if(d<bd){bd=d;best={t:'player',e:player};} }
+  for(const c of crew){ const d=dist(x,y,c.x,c.y); if(d<bd){bd=d;best={t:'crew',e:c};} }
+  return best;
+}
+function nearestEnemy(x,y,range){
+  let best=null,bd=range;
+  for(const e of enemies){ if(e.dead)continue; const d=dist(x,y,e.x,e.y); if(d<bd){bd=d;best=e;} }
+  return best;
+}
+
+function separation(e,group){
+  let sx=0,sy=0;
+  for(const o of group){ if(o===e)continue; const d=dist(e.x,e.y,o.x,o.y); if(d>0&&d<e.r+o.r+6){ sx+=(e.x-o.x)/d; sy+=(e.y-o.y)/d; } }
+  return [sx,sy];
+}
+
+function updateCrew(c,dt){
+  c.atkCd=Math.max(0,c.atkCd-dt);
+  c.hitFlash=Math.max(0,c.hitFlash-dt);
+  if(c.cmdT>0){ c.cmdT-=dt; if(c.cmdT<=0) c.cmdAttack=false; }
+  const sight=(c.cmdAttack?420:240);
+  const tgt=nearestEnemy(c.x,c.y,sight);
+  let mvx=0,mvy=0,sp=150;
+  if(tgt){
+    c.angle=Math.atan2(tgt.y-c.y,tgt.x-c.x);
+    const d=dist(c.x,c.y,tgt.x,tgt.y);
+    if(d>c.r+tgt.r+4){ const [nx,ny]=norm(tgt.x-c.x,tgt.y-c.y); mvx=nx; mvy=ny; sp=160; }
+    else if(c.atkCd<=0){
+      const [nx,ny]=norm(tgt.x-c.x,tgt.y-c.y);
+      applyDamage(tgt,c.dmg,nx*10,ny*10);
+      swings.push({type:'melee',x:c.x,y:c.y,angle:c.angle,len:46,life:.12,max:.12});
+      c.atkCd=0.7;
+    }
+  } else if(c.stance==='hold'){
+    mvx=0;mvy=0;
+  } else {
+    // follow formation behind player
+    const ang=player.angle+Math.PI + (c.slot-(crew.length-1)/2)*0.5;
+    const fx=player.x+Math.cos(ang)*54, fy=player.y+Math.sin(ang)*54;
+    const d=dist(c.x,c.y,fx,fy);
+    if(d>10){ const [nx,ny]=norm(fx-c.x,fy-c.y); mvx=nx; mvy=ny; sp=d>120?200:150; }
+  }
+  const [sxx,syy]=separation(c,crew);
+  mvx+=sxx*0.6; mvy+=syy*0.6;
+  if(mvx||mvy){ const [nx,ny]=norm(mvx,mvy); moveEntity(c,nx*sp*dt,ny*sp*dt,'foot'); }
+  if(c.hp<=0){ c.dead=true; corpses.push({x:c.x,y:c.y,r:c.r,color:c.color,life:5}); notify(`${c.name} fell in battle...`); }
+}
+
+function updateEnemy(e,dt){
+  e.atkCd=Math.max(0,e.atkCd-dt);
+  e.hitFlash=Math.max(0,e.hitFlash-dt);
+  const threat=nearestThreat(e.x,e.y, e.boss?420:300);
+  if(threat){
+    e.state='chase';
+    const tx=threat.e.x, ty=threat.e.y;
+    e.angle=Math.atan2(ty-e.y,tx-e.x);
+    const d=dist(e.x,e.y,tx,ty);
+    const reach=e.r+threat.e.r+4;
+    if(d>reach){
+      const [nx,ny]=norm(tx-e.x,ty-e.y);
+      const sp=e.boss?120:95;
+      const [sxx,syy]=separation(e,enemies);
+      const fx=nx+sxx*0.5, fy=ny+syy*0.5; const [fnx,fny]=norm(fx,fy);
+      moveEntity(e,fnx*sp*dt,fny*sp*dt,'foot');
+    } else if(e.atkCd<=0){
+      const [nx,ny]=norm(tx-e.x,ty-e.y);
+      if(threat.t==='player'){ applyDamage(player,e.dmg,nx*14,ny*14,true); player.iframes=0.25; }
+      else applyDamage(threat.e,e.dmg,nx*12,ny*12);
+      swings.push({type:'melee',x:e.x,y:e.y,angle:e.angle,len:e.r+22,life:.12,max:.12,enemy:true});
+      e.atkCd=e.boss?1.0:1.3;
+      camera.shake=Math.max(camera.shake,3);
+    }
+  } else {
+    e.state='idle';
+    e.wanderT-=dt;
+    if(e.wanderT<=0){ e.wanderT=rand(1.5,3); if(Math.random()<0.5){const a=Math.random()*Math.PI*2;e.wdx=Math.cos(a)*30;e.wdy=Math.sin(a)*30;}else{e.wdx=0;e.wdy=0;} }
+    if(dist(e.x,e.y,e.spawn.x,e.spawn.y)>120){const [hx,hy]=norm(e.spawn.x-e.x,e.spawn.y-e.y);e.wdx=hx*30;e.wdy=hy*30;}
+    moveEntity(e,e.wdx*dt,e.wdy*dt,'foot');
+  }
+  if(e.dead){
+    gold+=e.gold; dmgText(e.x,e.y,e.gold,'#f0b429');
+    spawnParticles(e.x,e.y,'#c0303a',14,200);
+    corpses.push({x:e.x,y:e.y,r:e.r,color:e.boss?'#7a1f1f':'#5a3a2a',life:6});
+  }
+}
+
+function update(dt){
+  if(gameState!=='play') return;
+  updatePlayer(dt);
+  npcs.forEach(n=>updateNpc(n,dt));
+  crew.forEach(c=>updateCrew(c,dt));
+  crew=crew.filter(c=>!c.dead);
+  enemies.forEach(e=>updateEnemy(e,dt));
+  enemies=enemies.filter(e=>!e.dead);
+
+  // effects
+  particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=0.9;p.vy*=0.9;p.life-=dt;});
+  particles=particles.filter(p=>p.life>0);
+  dmgTexts.forEach(d=>{d.y+=d.vy*dt;d.vy*=0.92;d.life-=dt;});
+  dmgTexts=dmgTexts.filter(d=>d.life>0);
+  swings.forEach(s=>s.life-=dt); swings=swings.filter(s=>s.life>0);
+  corpses.forEach(c=>c.life-=dt); corpses=corpses.filter(c=>c.life>0);
+
+  if(notifT>0) notifT-=dt;
+
+  // camera
+  let tx=clamp(player.x-canvas.width/2,0,WORLD_W-canvas.width);
+  let ty=clamp(player.y-canvas.height/2,0,WORLD_H-canvas.height);
+  camera.x=lerp(camera.x,tx,0.12); camera.y=lerp(camera.y,ty,0.12);
+  if(camera.shake>0){ camera.shake=Math.max(0,camera.shake-dt*30); }
+
+  // win condition
+  if(enemies.length===0){ gameState='win'; }
+}
+
+// ---------- rendering ----------
+function tileColor(t,x,y){
+  if(t===T_WATER){ return '#16456b'; }
+  if(t===T_SAND){ return '#d9bd82'; }
+  if(t===T_DOCK){ return '#a9824e'; }
+  // grass with slight checker
+  return ((x+y)&1)?'#4f8a45':'#4a8240';
+}
+function drawWorld(){
+  const sx=Math.max(0,Math.floor(camera.x/TILE)), sy=Math.max(0,Math.floor(camera.y/TILE));
+  const ex=Math.min(MAPW,Math.ceil((camera.x+canvas.width)/TILE));
+  const ey=Math.min(MAPH,Math.ceil((camera.y+canvas.height)/TILE));
+  for(let y=sy;y<ey;y++){
+    for(let x=sx;x<ex;x++){
+      const t=tiles[y][x];
+      ctx.fillStyle=tileColor(t,x,y);
+      ctx.fillRect(x*TILE-camera.x,y*TILE-camera.y,TILE+1,TILE+1);
+      if(t===T_WATER){ // subtle wave shimmer
+        ctx.fillStyle='rgba(255,255,255,0.04)';
+        const ph=Math.sin((x*0.6+y*0.4)+now()*1.4)*0.5+0.5;
+        ctx.fillRect(x*TILE-camera.x, y*TILE-camera.y + ph*6, TILE+1, 3);
+      }
+    }
+  }
+}
+function drawShadow(x,y,r){
+  ctx.fillStyle='rgba(0,0,0,0.22)';
+  ctx.beginPath(); ctx.ellipse(x-camera.x,y-camera.y+r*0.7,r*0.9,r*0.45,0,0,7); ctx.fill();
+}
+function drawBuildings(){
+  for(const b of buildings){
+    const x=b.x-camera.x, y=b.y-camera.y;
+    if(x+b.w<0||y+b.h<0||x>canvas.width||y>canvas.height) continue;
+    ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fillRect(x+5,y+b.h-2,b.w,8);
+    ctx.fillStyle='#caa978'; ctx.fillRect(x,y+b.h*0.45,b.w,b.h*0.55); // walls
+    ctx.fillStyle='#7a5a36'; ctx.fillRect(x+b.w*0.4,y+b.h*0.65,b.w*0.2,b.h*0.35); // door
+    // roof
+    ctx.fillStyle=b.roof; ctx.beginPath();
+    ctx.moveTo(x-4,y+b.h*0.5); ctx.lineTo(x+b.w/2,y-4); ctx.lineTo(x+b.w+4,y+b.h*0.5); ctx.closePath(); ctx.fill();
+    if(b.label){ ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='11px Trebuchet MS'; ctx.textAlign='center';
+      ctx.fillText(b.label,x+b.w/2,y-8); }
+  }
+}
+function drawHpBar(x,y,r,hp,maxhp,col){
+  const w=r*2.2,h=4,bx=x-camera.x-w/2,by=y-camera.y-r-10;
+  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(bx-1,by-1,w+2,h+2);
+  ctx.fillStyle=col||'#d4483b'; ctx.fillRect(bx,by,w*clamp(hp/maxhp,0,1),h);
+}
+function drawChar(e,baseColor,opts){
+  opts=opts||{};
+  const x=e.x-camera.x, y=e.y-camera.y;
+  drawShadow(e.x,e.y,e.r);
+  ctx.save();
+  if(e.hitFlash>0){ ctx.globalAlpha=1; baseColor='#ffffff'; }
+  if(opts.iframes&&e.iframes>0&&Math.floor(now()*20)%2===0) ctx.globalAlpha=0.45;
+  // body
+  ctx.fillStyle=baseColor;
+  ctx.beginPath(); ctx.arc(x,y,e.r,0,7); ctx.fill();
+  // outline
+  ctx.lineWidth=2; ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.stroke();
+  // facing indicator (hat / nose)
+  const a=e.angle||0;
+  ctx.fillStyle=opts.hat||'rgba(255,255,255,0.85)';
+  ctx.beginPath(); ctx.arc(x+Math.cos(a)*e.r*0.6,y+Math.sin(a)*e.r*0.6,e.r*0.35,0,7); ctx.fill();
+  ctx.restore();
+}
+function drawSwings(){
+  for(const s of swings){
+    const k=s.life/s.max;
+    const x=s.x-camera.x, y=s.y-camera.y;
+    if(s.type==='pistol'){
+      ctx.strokeStyle=s.enemy?'rgba(220,80,80,'+k+')':'rgba(255,224,138,'+(0.9*k)+')';
+      ctx.lineWidth=s.thin?5:9;
+      ctx.beginPath(); ctx.moveTo(x,y);
+      const ex=x+Math.cos(s.angle)*s.len*(1.05-k*0.1), ey=y+Math.sin(s.angle)*s.len*(1.05-k*0.1);
+      ctx.lineTo(ex,ey); ctx.stroke();
+      ctx.fillStyle=s.enemy?'rgba(220,80,80,'+k+')':'rgba(255,224,138,'+k+')';
+      ctx.beginPath(); ctx.arc(ex,ey,12,0,7); ctx.fill();
+    } else {
+      // melee arc
+      ctx.strokeStyle=s.enemy?'rgba(230,90,70,'+(0.8*k)+')':'rgba(255,255,255,'+(0.7*k)+')';
+      ctx.lineWidth=6; ctx.beginPath();
+      ctx.arc(x,y,s.len,s.angle-0.8,s.angle+0.8); ctx.stroke();
+    }
+  }
+}
+function drawItems(){
+  for(const it of items){
+    if(it.type==='fruit'&&!it.taken){
+      const x=it.x-camera.x, y=it.y-camera.y;
+      // tree
+      ctx.fillStyle='#5a3a1f'; ctx.fillRect(it.treeX-camera.x-6,it.treeY-camera.y,12,40);
+      ctx.fillStyle='#356b2f'; ctx.beginPath(); ctx.arc(it.treeX-camera.x,it.treeY-camera.y-6,30,0,7); ctx.fill();
+      // fruit (bobbing)
+      const bob=Math.sin(now()*2)*3;
+      drawShadow(it.x,it.y,it.r);
+      ctx.fillStyle='#7a3da8'; ctx.beginPath(); ctx.arc(x,y+bob,it.r,0,7); ctx.fill();
+      ctx.strokeStyle='#4a2468'; ctx.lineWidth=2;
+      for(let i=0;i<4;i++){ctx.beginPath();ctx.moveTo(x,y+bob-it.r);ctx.quadraticCurveTo(x+(i-1.5)*8,y+bob,x,y+bob+it.r);ctx.stroke();}
+      // prompt
+      if(dist(player.x,player.y,it.x,it.y)<60){ promptAt(it.x,it.y-it.r-22,'[E] Eat the fruit'); }
+    }
+  }
+}
+function drawBoat(){
+  const x=boat.x-camera.x, y=boat.y-camera.y;
+  drawShadow(boat.x,boat.y,boat.r);
+  ctx.fillStyle='#8a5a2c'; ctx.beginPath();
+  ctx.ellipse(x,y,boat.r,boat.r*0.6,0,0,7); ctx.fill();
+  ctx.strokeStyle='#5a3a1c'; ctx.lineWidth=3; ctx.stroke();
+  if(!player.inBoat){
+    ctx.fillStyle='#caa978'; ctx.fillRect(x-2,y-boat.r,4,boat.r); // mast
+    ctx.fillStyle='#f3e7c9'; ctx.beginPath(); ctx.moveTo(x+2,y-boat.r); ctx.lineTo(x+16,y-boat.r*0.3); ctx.lineTo(x+2,y-boat.r*0.3); ctx.fill();
+    if(dist(player.x,player.y,boat.x,boat.y)<60) promptAt(boat.x,boat.y-30,'[E] Board boat');
+  }
+}
+let promptQueue=[];
+function promptAt(wx,wy,text){ promptQueue.push({wx,wy,text}); }
+function drawPrompts(){
+  ctx.textAlign='center';
+  for(const p of promptQueue){
+    const x=p.wx-camera.x,y=p.wy-camera.y;
+    ctx.font='bold 13px Trebuchet MS';
+    const w=ctx.measureText(p.text).width+16;
+    ctx.fillStyle='rgba(20,10,5,0.8)'; roundRect(x-w/2,y-16,w,20,5); ctx.fill();
+    ctx.fillStyle='#f0b429'; ctx.fillText(p.text,x,y-2);
+  }
+  promptQueue=[];
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+function render(){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // shake
+  if(camera.shake>0){ ctx.translate((Math.random()-0.5)*camera.shake,(Math.random()-0.5)*camera.shake); }
+
+  drawWorld();
+  // corpses (under)
+  for(const c of corpses){ ctx.globalAlpha=clamp(c.life,0,1); ctx.fillStyle=c.color;
+    ctx.beginPath(); ctx.arc(c.x-camera.x,c.y-camera.y,c.r,0,7); ctx.fill(); ctx.globalAlpha=1; }
+  drawBuildings();
+  drawItems();
+  if(!player.inBoat) drawBoat();
+
+  // gather drawables sorted by y
+  const drawList=[];
+  npcs.forEach(n=>drawList.push({y:n.y,fn:()=>{
+    drawChar(n,n.color,{hat:n.recruit?'#1f3f6e':'#2e5a35'});
+    if(dist(player.x,player.y,n.x,n.y)<46){
+      promptAt(n.x,n.y-n.r-14, n.recruit?'[E] Hire '+(n.name||''):'[E] Talk');
+    }
+  }}));
+  crew.forEach(c=>drawList.push({y:c.y,fn:()=>{ drawChar(c,c.color,{hat:'#102a4a'});
+    // tiny stance dot
+    ctx.fillStyle=c.cmdAttack?'#d4483b':(c.stance==='hold'?'#f0b429':'#7fd17f');
+    ctx.beginPath(); ctx.arc(c.x-camera.x,c.y-camera.y-c.r-6,3,0,7); ctx.fill();
+    drawHpBar(c.x,c.y,c.r,c.hp,c.maxhp,'#7fd17f');
+  }}));
+  enemies.forEach(e=>drawList.push({y:e.y,fn:()=>{
+    drawChar(e,e.boss?'#7a1f1f':'#b5483a',{hat:'#2a0d0d'});
+    drawHpBar(e.x,e.y,e.r,e.hp,e.maxhp,'#d4483b');
+    if(e.boss){ ctx.fillStyle='#f0b429'; ctx.font='10px Trebuchet MS'; ctx.textAlign='center';
+      ctx.fillText('CAPTAIN',e.x-camera.x,e.y-camera.y-e.r-16); }
+  }}));
+  if(!player.inBoat) drawList.push({y:player.y,fn:()=>drawChar(player,player.hasFruit?'#d4483b':'#c94f3d',{hat:'#f0c040',iframes:true})});
+  else drawList.push({y:player.y,fn:()=>{ drawBoat(); drawChar(player,'#d4483b',{hat:'#f0c040'}); }});
+
+  drawList.sort((a,b)=>a.y-b.y).forEach(d=>d.fn());
+
+  drawSwings();
+  // particles
+  for(const p of particles){ ctx.globalAlpha=clamp(p.life/p.max,0,1); ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x-camera.x,p.y-camera.y,p.r,0,7); ctx.fill(); }
+  ctx.globalAlpha=1;
+  // damage texts
+  ctx.textAlign='center'; ctx.font='bold 14px Trebuchet MS';
+  for(const d of dmgTexts){ ctx.globalAlpha=clamp(d.life/0.8,0,1);
+    ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillText(d.val,d.x-camera.x+1,d.y-camera.y+1);
+    ctx.fillStyle=d.color; ctx.fillText(d.val,d.x-camera.x,d.y-camera.y); }
+  ctx.globalAlpha=1;
+
+  drawPrompts();
+  ctx.setTransform(1,0,0,1,0,0);
+  drawHUD();
+  if(dialogue) drawDialogue();
+  if(gameState==='dead') drawCenterCard('Washed Ashore','You were defeated. Press [E] to recover at home.','#d4483b');
+  if(gameState==='win') drawCenterCard('Victory!','The enemy isle is yours, Captain. Press [E] to keep sailing.','#f0b429');
+}
+
+// ---------- HUD ----------
+function bar(x,y,w,h,val,max,col,bg){
+  ctx.fillStyle=bg||'rgba(0,0,0,0.55)'; roundRect(x-2,y-2,w+4,h+4,4); ctx.fill();
+  ctx.fillStyle=col; roundRect(x,y,w*clamp(val/max,0,1),h,3); ctx.fill();
+}
+function drawHUD(){
+  // health & stamina
+  ctx.textAlign='left';
+  bar(18,18,210,16,player.hp,player.maxhp,'#d4483b');
+  ctx.fillStyle='#fff'; ctx.font='bold 11px Trebuchet MS';
+  ctx.fillText('HP '+Math.max(0,Math.ceil(player.hp)),24,30);
+  bar(18,40,160,9,player.stam,player.maxstam,'#5ea0d8');
+
+  // ability bar (only with fruit)
+  const abil=[
+    {k:'Punch', cd:player.cd.atk, max:0.34, on:true},
+    {k:'Gatling', cd:player.cd.gatling, max:1.6, on:player.hasFruit},
+    {k:'Rocket', cd:player.cd.rocket, max:2.0, on:player.hasFruit},
+    {k:'Dodge', cd:player.cd.dodge, max:0.5, on:true},
+  ];
+  let ax=18, ay=60;
+  abil.forEach(a=>{
+    ctx.fillStyle=a.on?'rgba(20,12,6,0.8)':'rgba(20,12,6,0.35)';
+    roundRect(ax,ay,58,34,5); ctx.fill();
+    ctx.strokeStyle=a.on?'rgba(240,180,41,0.6)':'rgba(255,255,255,0.1)'; ctx.lineWidth=1.5; ctx.stroke();
+    if(a.cd>0&&a.on){ ctx.fillStyle='rgba(0,0,0,0.55)'; const f=a.cd/a.max; roundRect(ax,ay+34*(1-f),58,34*f,5); ctx.fill(); }
+    ctx.fillStyle=a.on?'#f3e7c9':'rgba(255,255,255,0.3)'; ctx.font='bold 11px Trebuchet MS'; ctx.textAlign='center';
+    ctx.fillText(a.k,ax+29,ay+21);
+    ax+=64;
+  });
+  ctx.textAlign='left';
+
+  // top-right info
+  ctx.textAlign='right';
+  ctx.font='bold 14px Trebuchet MS'; ctx.fillStyle='#f0b429';
+  ctx.fillText('⛃ '+gold+' gold',canvas.width-18,28);
+  ctx.fillStyle='#fff'; ctx.font='12px Trebuchet MS';
+  ctx.fillText('Crew: '+crew.length+(crew.length?'  ['+(crew[0].stance)+']':''),canvas.width-18,48);
+  ctx.fillText('Enemies left: '+enemies.length,canvas.width-18,66);
+
+  // combo
+  if(player.combo>1){ ctx.textAlign='center'; ctx.font='bold 20px Georgia';
+    ctx.fillStyle='rgba(240,180,41,'+clamp(player.comboT,0,1)+')';
+    ctx.fillText(player.combo+'x combo',canvas.width/2,52); }
+
+  // objective
+  ctx.textAlign='center'; ctx.font='italic 13px Georgia';
+  ctx.fillStyle='rgba(255,255,255,0.85)';
+  ctx.fillText('◆ '+objective, canvas.width/2, canvas.height-18);
+
+  // notification
+  if(notifT>0){ ctx.globalAlpha=clamp(notifT,0,1); ctx.textAlign='center';
+    ctx.font='bold 16px Georgia'; ctx.fillStyle='#f0b429';
+    ctx.fillText(notif,canvas.width/2,84); ctx.globalAlpha=1; }
+
+  drawMinimap();
+}
+function drawMinimap(){
+  const mw=150,mh=94, mx=canvas.width-mw-18, my=canvas.height-mh-18;
+  ctx.fillStyle='rgba(8,18,28,0.75)'; roundRect(mx,my,mw,mh,6); ctx.fill();
+  ctx.strokeStyle='rgba(240,180,41,0.4)'; ctx.lineWidth=1.5; ctx.stroke();
+  const sx=mw/WORLD_W, sy=mh/WORLD_H;
+  // land blobs (sample coarse)
+  for(let y=0;y<MAPH;y+=2)for(let x=0;x<MAPW;x+=2){
+    const t=tiles[y][x]; if(t===T_WATER) continue;
+    ctx.fillStyle=t===T_DOCK?'#a9824e':(t===T_SAND?'#d9bd82':'#3f7340');
+    ctx.fillRect(mx+x*TILE*sx,my+y*TILE*sy,2,2);
+  }
+  const dot=(wx,wy,c,r)=>{ctx.fillStyle=c;ctx.beginPath();ctx.arc(mx+wx*sx,my+wy*sy,r||2,0,7);ctx.fill();};
+  enemies.forEach(e=>dot(e.x,e.y,e.boss?'#ff5a5a':'#d4483b',e.boss?3:2));
+  crew.forEach(c=>dot(c.x,c.y,'#7fd17f'));
+  dot(player.x,player.y,'#fff',3);
+}
+function drawDialogue(){
+  const w=Math.min(560,canvas.width-40), h=110, x=(canvas.width-w)/2, y=canvas.height-h-50;
+  ctx.fillStyle='rgba(243,231,201,0.96)'; roundRect(x,y,w,h,8); ctx.fill();
+  ctx.strokeStyle='#7a4f1f'; ctx.lineWidth=2; ctx.stroke();
+  ctx.fillStyle='#5a3c16'; ctx.textAlign='left'; ctx.font='bold 14px Georgia';
+  ctx.fillText(dialogue.who.name?dialogue.who.name:'Villager', x+20,y+26);
+  ctx.font='15px Trebuchet MS'; ctx.fillStyle='#3a2b18';
+  wrapText(dialogue.lines[dialogue.idx]||'', x+20, y+52, w-40, 20);
+  ctx.fillStyle='#8a6a38'; ctx.font='italic 12px Georgia'; ctx.textAlign='right';
+  ctx.fillText('[E] continue', x+w-16, y+h-12);
+}
+function wrapText(text,x,y,maxw,lh){
+  const words=text.split(' '); let line='',yy=y;
+  for(const w of words){ const test=line+w+' ';
+    if(ctx.measureText(test).width>maxw){ ctx.fillText(line,x,yy); line=w+' '; yy+=lh; }
+    else line=test; }
+  ctx.fillText(line,x,yy);
+}
+function drawCenterCard(title,msg,col){
+  ctx.fillStyle='rgba(6,12,18,0.7)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.textAlign='center';
+  ctx.fillStyle=col; ctx.font='bold 42px Georgia'; ctx.fillText(title,canvas.width/2,canvas.height/2-10);
+  ctx.fillStyle='#f3e7c9'; ctx.font='16px Trebuchet MS'; ctx.fillText(msg,canvas.width/2,canvas.height/2+28);
+}
+
+// central edge-triggered E handling (interact / advance dialogue / respawn)
+function handleEdgeKeys(){
+  if(!pressed['e']) return;
+  if(dialogue){ dialogue.idx++; if(dialogue.idx>=dialogue.lines.length) dialogue=null; }
+  else if(gameState==='dead'){ respawn(); }
+  else if(gameState==='win'){ gameState='play'; }
+  else if(gameState==='play'){ tryInteract(); }
+}
+function respawn(){
+  player.hp=player.maxhp; player.stam=player.maxstam;
+  const hx=17*TILE, hy=27*TILE; player.x=hx; player.y=hy; player.inBoat=false;
+  boat.x=(17+14)*TILE; boat.y=27*TILE;
+  gameState='play'; notify('You wash ashore at home, alive.');
+}
+
+// ---------- help overlay ----------
+const startOverlay=document.getElementById('startOverlay');
+function toggleHelp(){
+  if(!started) return;
+  if(startOverlay.classList.contains('hidden')){ startOverlay.classList.remove('hidden'); gameState='paused'; }
+  else { startOverlay.classList.add('hidden'); gameState='play'; }
+}
+document.getElementById('startBtn').addEventListener('click',()=>{
+  startOverlay.classList.add('hidden'); started=true; gameState='play';
+});
+
+// ---------- loop ----------
+function resize(){ canvas.width=innerWidth; canvas.height=innerHeight; }
+addEventListener('resize',resize); resize();
+genMap(); setup();
+
+let last=now();
+function loop(){
+  const t=now(); let dt=t-last; last=t; dt=Math.min(dt,1/30);
+  // update world mouse position
+  mouse.wx=mouse.x+camera.x; mouse.wy=mouse.y+camera.y;
+  handleEdgeKeys();
+  if(gameState==='play') update(dt);
+  render();
+  for(const k in pressed) pressed[k]=false;
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# tooling / local artifacts
+.playwright-mcp/
+*.local
+*.log
+.DS_Store
+Thumbs.db

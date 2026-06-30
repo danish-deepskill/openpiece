@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Ballpiece — Grand Voyage</title>
+  <style>
+    :root { --ink:#3a2b18; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; height:100%; background:#06121f; overflow:hidden;
+      font-family:"Trebuchet MS",-apple-system,system-ui,sans-serif; color:#fff;
+      -webkit-user-select:none; user-select:none; }
+    #game-canvas { width:100vw; height:100vh; }
+    #game-canvas canvas { display:block; margin:0 auto; }
+
+    .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+      background:radial-gradient(circle at 50% 30%,#123 0%,#06121f 70%); z-index:10; padding:18px; }
+    .overlay.hidden { display:none !important; }
+    .panel { max-width:560px; width:100%; background:linear-gradient(180deg,#f7eed4,#ecdcb4);
+      color:var(--ink); border-radius:6px; padding:26px 30px 30px;
+      box-shadow:0 24px 60px rgba(0,0,0,.6), inset 0 0 0 2px rgba(120,80,30,.25); position:relative; }
+    .panel:before { content:""; position:absolute; inset:8px; border:1px solid rgba(120,80,30,.35);
+      border-radius:3px; pointer-events:none; }
+    .panel h1 { font-family:Georgia,serif; margin:0 0 2px; font-size:30px; letter-spacing:1.5px;
+      color:#5a3c16; text-transform:uppercase; }
+    .panel .sub { font-style:italic; color:#8a6a38; margin:0 0 16px; font-size:14px; }
+    .panel h2 { font-family:Georgia,serif; font-size:14px; letter-spacing:2px; text-transform:uppercase;
+      color:#7a4f1f; margin:18px 0 8px; border-bottom:1px solid rgba(120,80,30,.3); padding-bottom:4px; }
+    .keys { display:grid; grid-template-columns:auto 1fr; gap:5px 14px; font-size:13.5px; line-height:1.35; }
+    kbd { background:#5a3c16; color:#f7eed4; border-radius:4px; padding:1px 7px; font-size:12px;
+      font-weight:bold; white-space:nowrap; box-shadow:0 2px 0 #3a2810; }
+    .start-btn { margin-top:22px; width:100%; border:none; cursor:pointer;
+      background:linear-gradient(180deg,#d4483b,#a8362c); color:#fff; font-weight:bold; font-family:Georgia,serif;
+      letter-spacing:2px; text-transform:uppercase; font-size:16px; padding:13px; border-radius:5px;
+      box-shadow:0 4px 0 #7a261e; transition:transform .05s; }
+    .start-btn:active { transform:translateY(2px); box-shadow:0 2px 0 #7a261e; }
+    .hint { margin-top:10px; font-size:12px; color:#8a6a38; text-align:center; font-style:italic; }
+  </style>
+</head>
+<body>
+  <div id="game-canvas"></div>
+
+  <div id="startOverlay" class="overlay">
+    <div class="panel">
+      <h1>Grand Voyage</h1>
+      <p class="sub">A fan-made pirate prototype · sail, fight, and build a crew</p>
+
+      <h2>Movement &amp; Aim</h2>
+      <div class="keys">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Move</span>
+        <span><kbd>Mouse</kbd></span><span>Aim (your character faces the cursor)</span>
+        <span><kbd>T</kbd></span><span>Toggle auto-aim — lock attacks onto the nearest enemy</span>
+        <span><kbd>Shift</kbd></span><span>Dodge roll — brief invulnerability, costs stamina</span>
+        <span><kbd>E</kbd></span><span>Interact: talk, hire, eat the fruit, board / leave boat</span>
+      </div>
+
+      <h2>Combat</h2>
+      <div class="keys">
+        <span><kbd>L-Click</kbd>/<kbd>J</kbd></span><span>Attack — punch, or Gomu Pistol after the fruit</span>
+        <span><kbd>K</kbd></span><span>Gomu Gatling — rapid cone barrage (fruit only)</span>
+        <span><kbd>R-Click</kbd>/<kbd>L</kbd></span><span>Gomu Rocket — launch dash through enemies (fruit only)</span>
+      </div>
+
+      <h2>Crew Command</h2>
+      <div class="keys">
+        <span><kbd>Q</kbd></span><span>Order crew to attack (toward your cursor / nearest foe)</span>
+        <span><kbd>F</kbd></span><span>Toggle crew stance: Follow ↔ Hold position</span>
+        <span><kbd>H</kbd></span><span>Show / hide this help</span>
+      </div>
+
+      <button class="start-btn" id="startBtn">Set Sail</button>
+      <p class="hint">Tip: find the tavern to recruit pirates, eat the fruit by the big tree, then take the boat east.</p>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
