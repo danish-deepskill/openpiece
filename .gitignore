@@ -10,3 +10,6 @@ dist/
 *.log
 .DS_Store
 Thumbs.db
+
+docs/references/moomoo-clone
+.claude/handoff.md
