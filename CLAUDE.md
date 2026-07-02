@@ -40,12 +40,11 @@ knobs + playtest list → gates).
   **GAS-lite combat** (Attributes + Abilities + Effects + Tags), modifier stacking, world/zones, event
   director, persistence. Read before designing a new system.
 - `docs/design/` — the target vision (`VISION.md` first). Ahead of the code on purpose.
-- `docs/references/rimworld_patterns.md` — RimWorld 1.6 pattern distillation (def pipeline, stat explanation,
-  effect comps, job-based AI, ticker staggering, event director) mapped to ballpiece files, each with
-  adopt/skip verdicts. For "how does RimWorld do X" on ANY subsystem, read the big-picture atlas
-  `C:\Files\Phaser\References\rimworld\rimworld-simple\` (start: `README.md` + `19-patterns-catalog.md`);
-  full decompiled source + XML defs sit beside it in `rimworld-{decomp,data,source}` (patterns only —
-  Ludeon copyright, never copy code).
+- `docs/references/rimworld-simple/` — the RimWorld 1.6 atlas: how EVERY RimWorld subsystem works (start:
+  `README.md` + `19-patterns-catalog.md`), plus the ballpiece verdicts — `adoption-tiers.md` (all patterns
+  tiered S/A/B/C/D with milestone triggers) and `others.md` (deep adopt/skip on the six core subsystems).
+  Full decompiled source + XML defs for deeper digs: `C:\Files\Phaser\References\rimworld\rimworld-{decomp,
+  data,source}` (patterns only — Ludeon copyright, never copy code).
 
 ## Tech stack
 - Phaser **3.90** (Canvas), **TypeScript**, **Vite 5**, **Vitest**. Procedural Graphics (no sprite assets).
