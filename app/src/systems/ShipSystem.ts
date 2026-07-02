@@ -83,7 +83,9 @@ export class ShipSystem {
     const sh = ship.ship!;
     const t = ship.transform!;
     const d = ShipHulls.get(sh.hull);
-    t.angle += turn * d.turnRate * dt;
+    // rudder authority comes from water flowing past it: full turn at speed, only minTurnFrac while idle
+    const flow = Math.min(1, Math.abs(sh.speed) / d.maxSpeed);
+    t.angle += turn * d.turnRate * (d.minTurnFrac + (1 - d.minTurnFrac) * flow) * dt;
     sh.speed = clamp(sh.speed + fwd * d.accel * dt, -d.maxSpeed * 0.4, d.maxSpeed);
     e.transform!.angle = t.angle;
   }
