@@ -10,10 +10,16 @@ export interface ShipHullDef extends Def {
   klass: 'sloop' | 'caravel' | 'galleon';
   hp: number; // hull health
   maxSpeed: number; // px/s forward
-  accel: number; // px/s^2 throttle response
+  accel: number; // px/s^2 throttle response — LOW on purpose: sails catching wind, not a motorboat
+  /** Reverse cap as a fraction of maxSpeed (0..1). Sail ships can't sail backwards — this is slow "backing"
+   *  to unstick from docks, not a gear. */
+  reverseFrac: number;
+  /** Speed bled while turning (exp rate/s at full rudder) — carving a hard turn costs momentum. */
+  turnBrake: number;
   turnRate: number; // rad/s at full sail
-  /** Fraction of turnRate available at ZERO speed (0..1). A rudder needs waterflow — idle ships mostly can't
-   *  turn; a small floor keeps you from being stuck at a dock. Smaller hulls scull around more easily. */
+  /** Fraction of turnRate available at ZERO speed (0..1). A rudder needs waterflow, so 0 = a stopped ship
+   *  cannot turn at all (chosen: backing up restores flow, hence steering — no dock-lock). Raise above 0
+   *  only if idle turning ever needs to come back as a QoL floor. */
   minTurnFrac: number;
   r: number; // collision radius
   length: number; // draw size (full px)
@@ -25,7 +31,7 @@ export interface ShipHullDef extends Def {
 export const ShipHulls = new Registry<ShipHullDef>('ShipHulls');
 
 ShipHulls.registerAll([
-  { id: 'ship.sloop', name: 'Sloop', klass: 'sloop', hp: 220, maxSpeed: 235, accel: 300, turnRate: 1.9, minTurnFrac: 0.25, r: 26, length: 92, width: 42, cannonSlots: 2, color: 0x8a5a2c },
-  { id: 'ship.caravel', name: 'Caravel', klass: 'caravel', hp: 430, maxSpeed: 200, accel: 240, turnRate: 1.3, minTurnFrac: 0.18, r: 34, length: 124, width: 54, cannonSlots: 4, color: 0x7a4a22 },
-  { id: 'ship.galleon', name: 'Galleon', klass: 'galleon', hp: 820, maxSpeed: 165, accel: 180, turnRate: 0.9, minTurnFrac: 0.12, r: 46, length: 168, width: 74, cannonSlots: 8, color: 0x6a3f1c },
+  { id: 'ship.sloop', name: 'Sloop', klass: 'sloop', hp: 220, maxSpeed: 235, accel: 120, reverseFrac: 0.25, turnBrake: 0.3, turnRate: 1.9, minTurnFrac: 0, r: 26, length: 92, width: 42, cannonSlots: 2, color: 0x8a5a2c },
+  { id: 'ship.caravel', name: 'Caravel', klass: 'caravel', hp: 430, maxSpeed: 200, accel: 80, reverseFrac: 0.2, turnBrake: 0.3, turnRate: 1.3, minTurnFrac: 0, r: 34, length: 124, width: 54, cannonSlots: 4, color: 0x7a4a22 },
+  { id: 'ship.galleon', name: 'Galleon', klass: 'galleon', hp: 820, maxSpeed: 165, accel: 55, reverseFrac: 0.15, turnBrake: 0.3, turnRate: 0.9, minTurnFrac: 0, r: 46, length: 168, width: 74, cannonSlots: 8, color: 0x6a3f1c },
 ]);

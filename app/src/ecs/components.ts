@@ -127,6 +127,9 @@ export interface Ship {
   mode: 'exploration' | 'battle';
   anchored: boolean;
   speed: number; // current forward speed along heading
+  /** Pilot input this tick (-1..1); 0 when uncrewed/coasting. Water drag + the stop-snap apply ONLY while
+   *  coasting — under sail, `accel` is the NET force (otherwise drag silently caps speed below maxSpeed). */
+  throttle: number;
 }
 
 /** Marks an entity riding/piloting a ship (its world position is pinned to the ship). */

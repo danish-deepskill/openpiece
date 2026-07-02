@@ -20,9 +20,12 @@ export class ShipSystem {
     for (const ship of this.world.with('ship', 'transform')) {
       const sh = ship.ship!;
       const t = ship.transform!;
-      // water drag
-      sh.speed *= Math.exp(-0.8 * dt); // exact exponential drag — same coast distance at any fps
-      if (Math.abs(sh.speed) < 2) sh.speed = 0;
+      // water drag + stop-snap apply only while COASTING — under throttle, accel is the net force. (The
+      // snap once ate the ship's whole first tick of thrust: accel·dt < 2 was zeroed before it could move.)
+      if (sh.throttle === 0) {
+        sh.speed *= Math.exp(-0.8 * dt); // exact exponential drag — same coast distance at any fps
+        if (Math.abs(sh.speed) < 2) sh.speed = 0;
+      }
       if (sh.speed !== 0) {
         const dx = Math.cos(t.angle) * sh.speed * dt;
         const dy = Math.sin(t.angle) * sh.speed * dt;
@@ -68,6 +71,7 @@ export class ShipSystem {
           delete e.riding;
           ship.ship!.anchored = true;
           ship.ship!.speed = 0;
+          ship.ship!.throttle = 0; // pilot() no longer runs for this ship — don't leave it 'powered'
           events.emit('notify', { msg: 'Stepped ashore.' });
           return;
         }
@@ -84,9 +88,12 @@ export class ShipSystem {
     const t = ship.transform!;
     const d = ShipHulls.get(sh.hull);
     // rudder authority comes from water flowing past it: full turn at speed, only minTurnFrac while idle
+    sh.throttle = fwd; // remembered by update(): drag applies only when this is 0 (coasting)
     const flow = Math.min(1, Math.abs(sh.speed) / d.maxSpeed);
     t.angle += turn * d.turnRate * (d.minTurnFrac + (1 - d.minTurnFrac) * flow) * dt;
-    sh.speed = clamp(sh.speed + fwd * d.accel * dt, -d.maxSpeed * 0.4, d.maxSpeed);
+    // carving costs momentum: a hard turn bleeds speed (exp form — frame-rate independent)
+    if (turn !== 0) sh.speed *= Math.exp(-d.turnBrake * Math.abs(turn) * dt);
+    sh.speed = clamp(sh.speed + fwd * d.accel * dt, -d.maxSpeed * d.reverseFrac, d.maxSpeed);
     e.transform!.angle = t.angle;
   }
 }
