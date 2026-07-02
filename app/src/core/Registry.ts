@@ -27,6 +27,11 @@ export type Validator<T> = (def: T) => string | null;
 const ID_GRAMMAR = /^[a-z][a-zA-Z0-9]*\.[a-z][a-zA-Z0-9]*$/;
 
 export class Registry<T extends Def> {
+  /** Every registry ever constructed — the boot sweep (defs/validateContent) and the content tests iterate
+   *  THIS instead of a hand-maintained list, so a new family is covered the moment its module loads
+   *  (RimWorld's DefDatabase idiom; content registration, not sim state — tick order is unaffected). */
+  static readonly instances: Registry<Def>[] = [];
+
   private readonly raw = new Map<ContentId, T>(); // as registered
   private readonly resolved = new Map<ContentId, T>(); // inheritance-flattened + validated (lazy)
   private finalized = false;
@@ -34,7 +39,11 @@ export class Registry<T extends Def> {
   constructor(
     readonly name: string,
     private readonly validate?: Validator<T>,
-  ) {}
+  ) {
+    // generic-machinery cast (via unknown — private fields make Registry<T> invariant): the instances
+    // list is READ-only (name/all/has/size) so erasing T to Def is safe at every consumer
+    Registry.instances.push(this as unknown as Registry<Def>);
+  }
 
   register(def: T): T {
     if (!ID_GRAMMAR.test(def.id))

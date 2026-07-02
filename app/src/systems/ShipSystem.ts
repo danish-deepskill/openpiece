@@ -38,19 +38,21 @@ export class ShipSystem {
         }
       }
     }
-    // pin riders to their ship's deck
+    // pin riders to their ship's deck (riding stores the ship's ID — resolve it; a sunk ship = ref gone)
     for (const e of this.world.with('riding', 'transform')) {
-      const ship = e.riding!.ship;
+      const ship = this.world.byId(e.riding!.shipId);
       if (ship?.transform) {
         e.transform!.x = ship.transform.x;
         e.transform!.y = ship.transform.y;
+      } else {
+        delete (e as Entity).riding; // the ship no longer exists — the rider is simply no longer riding
       }
     }
   }
 
   /** Board `ship`: pin the actor to its deck and unanchor it. (Driven by the `verb.board` interaction.) */
   board(e: Entity, ship: Entity): void {
-    e.riding = { ship };
+    e.riding = { shipId: ship.id }; // id at rest — every use re-resolves via world.byId
     ship.ship!.anchored = false;
     const name = ShipHulls.get(ship.ship!.hull).name;
     events.emit('notify', { msg: `Boarded the ${name} — W/S throttle, A/D steer, E to disembark.` });
@@ -58,8 +60,12 @@ export class ShipSystem {
 
   /** Step the rider off their ship onto the nearest open land; re-anchors the ship. */
   disembark(e: Entity): void {
-    const ship = e.riding!.ship;
-    const st = ship.transform!;
+    const ship = this.world.byId(e.riding!.shipId);
+    if (!ship?.ship || !ship.transform) {
+      delete (e as Entity).riding; // ship gone (sunk/despawned) — nothing to step off of
+      return;
+    }
+    const st = ship.transform;
     for (let r = st.r + 10; r <= st.r + 90; r += 12) {
       for (let a = 0; a < 12; a++) {
         const ang = (a / 12) * Math.PI * 2;
@@ -82,10 +88,10 @@ export class ShipSystem {
 
   /** Apply helm input to the ridden ship: throttle (fwd ∈ -1..1) + steer (turn ∈ -1..1). */
   pilot(e: Entity, fwd: number, turn: number, dt: number): void {
-    const ship = e.riding?.ship;
-    if (!ship) return;
-    const sh = ship.ship!;
-    const t = ship.transform!;
+    const ship = e.riding !== undefined ? this.world.byId(e.riding.shipId) : undefined;
+    if (!ship?.ship || !ship.transform) return;
+    const sh = ship.ship;
+    const t = ship.transform;
     const d = ShipHulls.get(sh.hull);
     // rudder authority comes from water flowing past it: full turn at speed, only minTurnFrac while idle
     sh.throttle = fwd; // remembered by update(): drag applies only when this is 0 (coasting)

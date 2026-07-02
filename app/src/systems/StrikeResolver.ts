@@ -45,7 +45,7 @@ export class StrikeResolver {
     // getting hit ALERTS an AI target to where the blow came from — a blind-side ambush buys only the first hit
     if (o.ai && e.transform) {
       const bb = o.ai.bb;
-      bb.quarry = e; // pursue the attacker once it rounds toward them
+      bb.quarryId = e.id; // pursue the attacker once it rounds toward them (id at rest — brains resolve it)
       bb.perceivedX = bb.lastSeenX = e.transform.x;
       bb.perceivedY = bb.lastSeenY = e.transform.y;
       bb.lostT = 0;

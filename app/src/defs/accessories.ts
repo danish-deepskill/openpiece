@@ -1,4 +1,4 @@
-import type { Modifier } from '../combat/Modifier';
+import { modifierProblem, type Modifier } from '../combat/Modifier';
 import { Registry, type Def } from '../core/Registry';
 
 /** Where an accessory sits on the body. Add a slot here to support a new wear location. */
@@ -27,7 +27,11 @@ export interface AccessoryDef extends Def {
   tags?: string[];
 }
 
-export const Accessories = new Registry<AccessoryDef>('Accessories');
+// validated at boot: a 0/negative scale renders an invisible accessory — a content bug, not a style choice
+export const Accessories = new Registry<AccessoryDef>('Accessories', (a) => {
+  if (!(a.scale > 0)) return `scale must be > 0 (got ${a.scale})`;
+  return modifierProblem(a.modifiers);
+});
 
 Accessories.registerAll([
   // the hero's icon — worn from frame one (id grammar: accessory.<camelCase>, DESIGN_PATTERNS §3)

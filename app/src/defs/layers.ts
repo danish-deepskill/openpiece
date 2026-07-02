@@ -1,5 +1,5 @@
-import { Registry, type ContentId, type Def } from '../core/Registry';
-import type { Modifier } from '../combat/Modifier';
+import { Registry, type ContentId, type Def, type Validator } from '../core/Registry';
+import { modifierProblem, type Modifier } from '../combat/Modifier';
 
 /**
  * The four combat layers, each pure data. Equipping one registers its Modifiers (by source) onto the
@@ -27,10 +27,14 @@ export interface StyleDef extends LayerDef {
 }
 export type PotentialDef = LayerDef;
 
-export const Weapons = new Registry<WeaponDef>('Weapons');
-export const Fruits = new Registry<FruitDef>('Fruits');
-export const Styles = new Registry<StyleDef>('Styles');
-export const Potentials = new Registry<PotentialDef>('Potentials');
+// one boot validator for all four layer families: a NaN modifier silently computes as 0 mid-game otherwise
+// (their ContentId refs — primary/heavy/slots/dash → Abilities — are checked by defs/validateContent.ts)
+const layerValid: Validator<LayerDef> = (d) => modifierProblem(d.modifiers);
+
+export const Weapons = new Registry<WeaponDef>('Weapons', layerValid);
+export const Fruits = new Registry<FruitDef>('Fruits', layerValid);
+export const Styles = new Registry<StyleDef>('Styles', layerValid);
+export const Potentials = new Registry<PotentialDef>('Potentials', layerValid);
 
 Weapons.register({
   id: 'weapon.cutlass',

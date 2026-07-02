@@ -8,6 +8,7 @@ import type { SpatialQuery } from '../world/SpatialQuery';
 import type { AbilitySystem } from './AbilitySystem';
 import type { DialogueSystem } from './DialogueSystem';
 import type { GameDirector } from './GameDirector';
+import type { InspectSystem } from './InspectSystem';
 import type { InteractionSystem } from './InteractionSystem';
 import type { ShipSystem } from './ShipSystem';
 
@@ -48,6 +49,7 @@ export class InputSystem {
     private readonly director: GameDirector,
     private readonly interactions: InteractionSystem,
     private readonly dialogue: DialogueSystem,
+    private readonly inspect: InspectSystem,
   ) {
     this.keys = scene.input.keyboard!.addKeys(
       'W,A,S,D,J,K,L,U,I,Q,F,E,G,C,B,R,T,SHIFT,UP,DOWN,LEFT,RIGHT',
@@ -148,7 +150,8 @@ export class InputSystem {
 
     // abilities (the loadout decides what each key does)
     if (this.tap('Q') && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.dash);
-    if ((ptr.leftButtonDown() || this.down('J')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.primary); // light: LMB / J
+    const lmb = ptr.leftButtonDown() && !this.inspect.modifierHeld; // V+click = inspect pick, never a swing
+    if ((lmb || this.down('J')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.primary); // light: LMB / J
     if ((ptr.rightButtonDown() || this.down('K')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.heavy); // heavy: RMB / K
     if (this.down('U') && e.loadout.slots[0]) this.abilities.activate(e, e.loadout.slots[0]); // special 1
     if (this.down('I') && e.loadout.slots[1]) this.abilities.activate(e, e.loadout.slots[1]); // special 2

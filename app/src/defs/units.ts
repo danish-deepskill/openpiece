@@ -1,4 +1,5 @@
 import { Registry, type ContentId, type Def } from '../core/Registry';
+import type { AttributeId } from '../combat/attributes';
 import type { PowerTier } from '../combat/PowerTier';
 import type { BodyKey } from './bodies';
 import type { FactionId } from './factions';
@@ -16,6 +17,10 @@ export interface UnitDef extends Def {
   /** Tier the combat stats (hp/atk/def/atkSpeed) are read from; defaults to `tier`. Lets a unit be ranked
    *  higher than it actually fights — e.g. ranked E- (combatant, can sprint) but with F- fodder stats. */
   statTier?: PowerTier;
+  /** Per-unit attribute spread: REPLACES the tier seed per attribute (absolute points, not a delta —
+   *  registry canon: child values replace, never merge). E.g. `{ health: 12 }` makes a glass cannon at any
+   *  tier; omitted attributes keep their seed. Derived stats (maxHp/maxStam/def) follow automatically. */
+  attributes?: Partial<Record<AttributeId, number>>;
   faction: FactionId;
   aiProfile: ContentId;
   attackAbility: ContentId;
@@ -43,7 +48,12 @@ export const DASH_MIN_TIER: PowerTier = 'E+';
  *  and spawns reference this, never string literals (CLAUDE.md: no hardcoded content lists in code). */
 export const BASE_KIT = { primary: 'ability.punch', heavy: 'ability.kick', dash: 'ability.dodge' } as const;
 
-export const Units = new Registry<UnitDef>('Units');
+export const Units = new Registry<UnitDef>('Units', (u) => {
+  for (const [k, v] of Object.entries(u.attributes ?? {}))
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return `attributes.${k} must be a finite number ≥ 0 (got ${v})`;
+  if (u.hpMult !== undefined && !(u.hpMult > 0)) return `hpMult must be > 0 (got ${u.hpMult})`; // ≤0 would spawn a corpse
+  return null;
+});
 
 Units.registerAll([
   // the player's body — same data path as everyone else; what makes it "the player" is the control tag

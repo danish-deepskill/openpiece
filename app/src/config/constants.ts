@@ -56,7 +56,8 @@ export const SPRINT_DRAIN = 24;
 export const STAM_REGEN_DELAY = 1.0;
 /** Stamina per second once regen kicks in (gated by STAM_REGEN_DELAY — the two halves of one mechanic). */
 export const STAM_REGEN = 12;
-/** Shared stamina pool size (same for everyone for now; a maxStam attribute can override later). */
+/** Baseline stamina pool — seeds every tier's `endurance` attribute, which `maxStam` derives from
+ *  (combat/attributes.ts); a unit's def can override its endurance to differ from this. */
 export const MAX_STAM = 100;
 /** Combo: consecutive-hit damage bonus cap, and how long the chain survives between hits (s). */
 export const COMBO_CAP = 5;
@@ -84,11 +85,11 @@ export interface AbilityBarEntry { key: string; id: string; cd: number }
 
 /** Registry keys the WorldScene publishes and the HudScene reads. */
 export const RegKey = {
-  Hp: 'hud.hp',
-  MaxHp: 'hud.maxHp',
-  Stam: 'hud.stam',
-  MaxStam: 'hud.maxstam',
-  Tier: 'hud.tier',
+  /** UnitPlateView | null — the controlled unit's plate (replaces the old per-stat hp/stam/tier keys:
+   *  ONE view-model shared with Inspect, so every plate on screen renders the same readout). */
+  Player: 'hud.player',
+  /** UnitPlateView | null — the V+click inspected unit's plate (published by InspectSystem). */
+  Inspect: 'hud.inspect',
   Gold: 'hud.gold',
   EnemiesLeft: 'hud.enemies',
   Objective: 'hud.objective',

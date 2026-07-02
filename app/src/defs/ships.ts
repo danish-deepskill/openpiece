@@ -28,7 +28,18 @@ export interface ShipHullDef extends Def {
   color: number;
 }
 
-export const ShipHulls = new Registry<ShipHullDef>('ShipHulls');
+// validated at boot: accel ≤ 0 is the "W does nothing" bug class as a data typo; fraction knobs must be 0..1
+export const ShipHulls = new Registry<ShipHullDef>('ShipHulls', (s) => {
+  if (!(s.hp > 0)) return `hp must be > 0 (got ${s.hp})`;
+  if (!(s.maxSpeed > 0)) return `maxSpeed must be > 0 (got ${s.maxSpeed})`;
+  if (!(s.accel > 0)) return `accel must be > 0 — a hull that can't thrust can't sail (got ${s.accel})`;
+  if (s.reverseFrac < 0 || s.reverseFrac > 1) return `reverseFrac must be in [0, 1] (got ${s.reverseFrac})`;
+  if (s.minTurnFrac < 0 || s.minTurnFrac > 1) return `minTurnFrac must be in [0, 1] (got ${s.minTurnFrac})`;
+  if (!(s.turnRate > 0)) return `turnRate must be > 0 (got ${s.turnRate})`;
+  if (!(s.turnBrake >= 0)) return `turnBrake must be ≥ 0 (got ${s.turnBrake})`;
+  if (!(s.r > 0)) return `r must be > 0 (got ${s.r})`;
+  return null;
+});
 
 ShipHulls.registerAll([
   { id: 'ship.sloop', name: 'Sloop', klass: 'sloop', hp: 220, maxSpeed: 235, accel: 120, reverseFrac: 0.25, turnBrake: 0.3, turnRate: 1.9, minTurnFrac: 0, r: 26, length: 92, width: 42, cannonSlots: 2, color: 0x8a5a2c },

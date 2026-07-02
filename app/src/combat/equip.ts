@@ -2,6 +2,7 @@ import type { ContentId } from '../core/Registry';
 import type { Entity } from '../ecs/components';
 import { Fruits, Potentials, Styles, Weapons, type LayerDef } from '../defs/layers';
 import { BASE_KIT } from '../defs/units';
+import { syncDerivedResources } from './attributes';
 
 export type LayerKind = 'weapon' | 'fruit' | 'style' | 'potential';
 
@@ -19,6 +20,7 @@ export function giveWeapon(e: Entity, weaponId: ContentId): void {
     e.loadout.granted.add(d.primary);
     e.loadout.primary = d.primary;
   }
+  syncDerivedResources(e); // every modifier write path re-syncs the maxHp/maxStam pools (combat/attributes)
 }
 
 function registryFor(kind: LayerKind) {
@@ -51,6 +53,7 @@ export function equip(e: Entity, kind: LayerKind, id: ContentId): void {
     eq[kind] = id;
     applyMods(e, def);
   }
+  syncDerivedResources(e); // a layer's maxHp/maxStam modifiers move the pools' ceilings (combat/attributes)
   refreshLoadout(e);
 }
 
@@ -69,6 +72,7 @@ export function unequip(e: Entity, kind: LayerKind, id?: ContentId): void {
     removeMods(e, registryFor(kind).get(prev) as LayerDef);
     eq[kind] = undefined;
   }
+  syncDerivedResources(e); // removing a layer may LOWER maxHp/maxStam — clamp the pools to the new ceiling
   refreshLoadout(e);
 }
 

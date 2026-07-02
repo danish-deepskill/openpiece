@@ -20,6 +20,7 @@ const PRESENTATION_SYSTEMS = new Set([
   'DebugOverlay.ts',
   'FxSystem.ts',
   'InputSystem.ts',
+  'InspectSystem.ts',
   'NameplateSystem.ts',
   'RenderSystem.ts',
 ]);
@@ -60,5 +61,18 @@ describe('architecture — the sim/presentation boundary holds', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('components hold no live Entity refs — cross-entity refs are IDS at rest (ecs-hot-loop canon)', () => {
+    // A component field typed `Entity` is a live pointer that survives ticks: it dangles after destroy()
+    // and blocks the snapshot/save layer. Store the id, resolve via world.byId() at point of use.
+    // Strip the Entity DECLARATION (defined in this file) and all comments, then ANY bare `Entity` token
+    // left is a leak — `: Entity` alone missed generic positions (Set<Entity>, Map<n, Entity>, () => Entity).
+    const src = readFileSync(join(SRC, 'ecs', 'components.ts'), 'utf8');
+    const body = src
+      .replace(/export type Entity = [^;]*;/, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    expect(body.match(/\bEntity\b/g) ?? []).toEqual([]);
   });
 });

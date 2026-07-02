@@ -130,7 +130,7 @@ export class DebugOverlay {
           g.strokePath();
         }
         if (focusL) {
-          const f = bb.focus;
+          const f = bb.focusId !== undefined ? this.world.byId(bb.focusId) : undefined;
           if (f?.transform) {
             g.lineStyle(1, color, 0.5);
             g.lineBetween(t.x, t.y, f.transform.x, f.transform.y);

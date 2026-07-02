@@ -29,6 +29,9 @@ export interface TierStats {
  * Baseline combat stats for a tier band. A smooth curve so it extends cleanly from `F-` fodder to `SSS+`
  * monsters; a unit composes these onto its body archetype, then gear/fruit/haki modifiers stack on top.
  * (Move speed is NOT here — it's a body/race property, so a weak and a strong human run about the same.)
+ * `hp`/`def` reach units as the `health`/`defense` attribute seeds (combat/attributes.tierAttributes);
+ * `atk`/`atkSpeed` are read directly — there is deliberately no attack ATTRIBUTE (damage belongs to
+ * weapon/style/tier, not stat allocation).
  */
 export function tierStats(t: PowerTier): TierStats {
   const i = tierIndex(t);

@@ -1,5 +1,6 @@
 import { actorBrain } from '../ai/brains';
 import { MAX_STAM } from '../config/constants';
+import { deriveAttributeStats, tierAttributes } from '../combat/attributes';
 import { tierIndex, tierStats } from '../combat/PowerTier';
 import { StatBlock } from '../combat/StatBlock';
 import { TagSet } from '../combat/TagSet';
@@ -15,9 +16,10 @@ import { DASH_MIN_TIER, SPRINT_MIN_TIER, Units } from '../defs/units';
 import type { Combatant, Entity } from './components';
 import type { World } from './World';
 
-/** The shared per-fight resource block every spawn (and possession) starts with — one literal, no drift. */
-export function defaultCombatant(): Combatant {
-  return { stam: MAX_STAM, maxStam: MAX_STAM, combo: 0, comboT: 0 };
+/** The shared per-fight resource block — one literal, no drift. Spawns pass the endurance-derived
+ *  `maxStam` attribute; the MAX_STAM default covers attribute-less targets (possessing a prop/ship). */
+export function defaultCombatant(maxStam: number = MAX_STAM): Combatant {
+  return { stam: maxStam, maxStam, combo: 0, comboT: 0 };
 }
 
 /**
@@ -55,8 +57,16 @@ export class Spawner {
     const u = Units.get(unitId);
     const faction = factionOverride ?? u.faction; // faction is data — any unit can be spawned under any banner (allies, defectors, tests)
     const b = Bodies[u.body];
-    const ts = tierStats(u.statTier ?? u.tier); // stats from statTier (else rank tier)
-    const hp = Math.round(ts.hp * (u.hpMult ?? 1)); // elites bloat HP beyond their power tier
+    const seedTier = u.statTier ?? u.tier; // stats from statTier (else rank tier)
+    const ts = tierStats(seedTier); // atk/atkSpeed magnitudes; hp/def flow through the attribute seed below
+    // Six attributes (tier seed, then the def's per-unit spread wins) + the non-attribute combat stats.
+    const base: Record<string, number> = { ...tierAttributes(seedTier), atk: ts.atk, atkSpeed: ts.atkSpeed, reach: b.reach };
+    for (const [k, v] of Object.entries(u.attributes ?? {})) if (v !== undefined) base[k] = v;
+    const attributes = new StatBlock(base);
+    deriveAttributeStats(attributes); // maxHp/maxStam/def derive from health/endurance/defense
+    if (u.hpMult !== undefined) attributes.add({ stat: 'maxHp', op: 'mulPct', value: u.hpMult - 1, source: 'unit:hpBloat' }); // elites bloat HP beyond their power tier
+    const hp = Math.round(attributes.get('maxHp'));
+    const maxStam = Math.round(attributes.get('maxStam'));
     const profile = AIProfiles.get(u.aiProfile);
     // tier-gated advanced movement: dash is granted as a normal ability; sprint is a brain capability flag
     const ti = tierIndex(u.tier);
@@ -69,11 +79,11 @@ export class Spawner {
       mover: { vx: 0, vy: 0, speed: b.speed, mass: b.mass, mode: 'foot', dodgeT: 0, dvx: 0, dvy: 0 },
       health: { hp, maxHp: hp, dead: false, hitFlash: 0, iframes: 0 },
       faction: { id: faction },
-      combatant: defaultCombatant(),
-      attributes: new StatBlock({ atk: ts.atk, def: ts.def, maxHp: hp, maxStam: MAX_STAM, reach: b.reach, atkSpeed: ts.atkSpeed }),
+      combatant: defaultCombatant(maxStam),
+      attributes,
       tags: new TagSet(),
       loadout: { granted, cd: new Map(), primary: u.attackAbility, heavy: '', dash: canDash ? 'ability.dodge' : '', slots: [] },
-      effects: { active: [] }, // EVERY actor can carry effects (dodge i-frames…) — the Moat, not hero-only
+      effects: { active: [], seq: 0 }, // EVERY actor can carry effects (dodge i-frames…) — the Moat, not hero-only
       ai: { brain: actorBrain, bb: { state: 'wander', home: { x, y }, wanderT: this.rng.range(0, 2), boss: !!u.boss, profile, canSprint, lastSeenX: x, lastSeenY: y, lostT: 0 } },
       render: { draw: b.draw, baseColor: b.baseColor, hatColor: b.hatColor, bob: 0, showHpBar: true },
       identity: { name: u.name, tier: u.tier },

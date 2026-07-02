@@ -13,15 +13,24 @@ export type With<K extends ComponentName> = Entity & { [P in K]-?: NonNullable<C
 export class World {
   private nextId = 1;
   readonly entities = new Set<Entity>();
+  private readonly index = new Map<number, Entity>(); // id → entity, so id-at-rest refs resolve O(1)
 
   create(components: Omit<Partial<Entity>, 'id'> = {}): Entity {
     const e = { id: this.nextId++, ...components } as Entity;
     this.entities.add(e);
+    this.index.set(e.id, e);
     return e;
   }
 
   destroy(e: Entity): void {
     this.entities.delete(e);
+    this.index.delete(e.id);
+  }
+
+  /** Resolve a stored entity id (components keep cross-entity refs as IDS at rest — serializable, and a
+   *  destroyed entity reads as `undefined` instead of a stale live pointer). */
+  byId(id: number): Entity | undefined {
+    return this.index.get(id);
   }
 
   /** Every live entity that has all of the named components (typed as guaranteed-present). */

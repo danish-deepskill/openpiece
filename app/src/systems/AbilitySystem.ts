@@ -23,7 +23,7 @@ export class AbilitySystem {
     private readonly world: World,
     private readonly effects: EffectSystem,
     private readonly strikes: StrikeResolver,
-    private readonly rng: Rng, // the seeded `combat` stream: scatter / motion / side picks (determinism)
+    private readonly rng: Rng, // the seeded `combat` stream: scatter / motion picks (determinism)
   ) {}
 
   /** Decrement every loadout's ability cooldowns. (Combatant resource upkeep lives in CombatantSystem.) */
@@ -121,8 +121,13 @@ export class AbilitySystem {
       side = e.combatant.kickSide;
     } else if (!stretch && e.equipment?.weapon) {
       side = 1; // armed hand swings use the weapon hand
+    } else if (e.combatant) {
+      // alternate throwing hands like the feet above (right → left → right …) — a random pick reads as a
+      // stutter whenever two swings happen to land on the same side back-to-back
+      e.combatant.handSide = -(e.combatant.handSide ?? -1);
+      side = e.combatant.handSide;
     } else {
-      side = this.rng.sign(); // a bare fist or rubber stretch throws from either hand
+      side = 1; // combatant-less swinger (not spawned via Spawner) — lead hand
     }
     e.melee = {
       ability: id,

@@ -17,6 +17,7 @@ import { EffectSystem } from '../systems/EffectSystem';
 import { FxSystem } from '../systems/FxSystem';
 import { GameDirector } from '../systems/GameDirector';
 import { InputSystem } from '../systems/InputSystem';
+import { InspectSystem } from '../systems/InspectSystem';
 import { AccessorySystem } from '../systems/AccessorySystem';
 import { MeleeSystem } from '../systems/MeleeSystem';
 import { MovementSystem } from '../systems/MovementSystem';
@@ -28,12 +29,14 @@ import { RenderSystem } from '../systems/RenderSystem';
 import { ShipSystem } from '../systems/ShipSystem';
 import { StrikeResolver } from '../systems/StrikeResolver';
 import { SquadSystem } from '../systems/SquadSystem';
+import { validateAllContent } from '../defs/validateContent';
 import { Collision } from '../world/Collision';
 import { Pathfinder } from '../world/Pathfinder';
 import { SpatialQuery } from '../world/SpatialQuery';
 import { SeaRenderer } from '../draw/SeaRenderer';
 import { TerrainRenderer } from '../draw/TerrainRenderer';
 import { generateLevel } from '../world/WorldGen';
+import { unitPlateView } from '../ui/plateView';
 
 /** Owns the ECS world + systems, drives the fixed update order, and publishes HUD state. */
 export class WorldScene extends Phaser.Scene {
@@ -57,6 +60,7 @@ export class WorldScene extends Phaser.Scene {
   private doorSys!: DoorSystem;
   private doorRenderer!: DoorRenderer;
   private debug!: DebugOverlay;
+  private inspectSys!: InspectSystem;
   private fx!: FxSystem;
   private sea!: SeaRenderer;
   private readonly camTarget = { x: 0, y: 0 }; // camera follows the CONTROLLED entity (possession-safe)
@@ -66,6 +70,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
+    validateAllContent(); // fail-loud-at-boot: every def + cross-registry id checked BEFORE anything spawns
     // The ONE legal wall-clock read in the sim path: minting a new game's master seed (persisted with the
     // save later). Everything downstream is a pure function of it — one stream per domain (DESIGN_PATTERNS §8).
     const masterSeed = Date.now() >>> 0;
@@ -134,7 +139,8 @@ export class WorldScene extends Phaser.Scene {
     this.debug = new DebugOverlay(this, world, level.grid);
     this.dialogueSys = new DialogueSystem();
     this.interactionSys = new InteractionSystem(world, ships, this.dialogueSys);
-    this.inputSys = new InputSystem(this, world, query, abilities, ships, this.director, this.interactionSys, this.dialogueSys);
+    this.inspectSys = new InspectSystem(this, world, query);
+    this.inputSys = new InputSystem(this, world, query, abilities, ships, this.director, this.interactionSys, this.dialogueSys, this.inspectSys);
     this.aiSys = new AISystem(world, ctx);
     this.moveSys = new MovementSystem(world, collision);
     this.bodySys = new BodyCollisionSystem(world, query, collision);
@@ -181,6 +187,7 @@ export class WorldScene extends Phaser.Scene {
     this.renderSys.update(dt);
     this.accessorySys.update();
     this.nameplateSys.update();
+    this.inspectSys.update(); // publish the inspected unit's plate + selection ring (presentation-only)
     this.debug.update();
     this.publish();
   }
@@ -212,14 +219,10 @@ export class WorldScene extends Phaser.Scene {
   private publish(): void {
     const r = this.registry;
     const e = this.world.first('control');
-    if (e?.health && e.combatant) {
-      r.set(RegKey.Hp, e.health.hp);
-      r.set(RegKey.MaxHp, e.health.maxHp);
-      r.set(RegKey.Stam, e.combatant.stam);
-      r.set(RegKey.MaxStam, e.combatant.maxStam);
-      r.set(RegKey.Combo, e.combatant.combo);
-      r.set(RegKey.Tier, e.identity?.tier ?? '');
-    }
+    // ONE view-model for the controlled unit — the same shape InspectSystem publishes for any clicked
+    // unit, so the player HUD can never drift from the universal unit readout (the Moat at the UI layer)
+    r.set(RegKey.Player, e ? unitPlateView(e) : null);
+    if (e?.combatant) r.set(RegKey.Combo, e.combatant.combo);
     if (e?.loadout) {
       const lo = e.loadout;
       const entries = ([

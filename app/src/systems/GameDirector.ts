@@ -134,7 +134,7 @@ export class GameDirector {
     target.control = {};
     if (!target.avatar) target.avatar = defaultAvatar();
     if (!target.combatant) target.combatant = defaultCombatant(); // same pool as every spawn (no drifting literals)
-    if (!target.effects) target.effects = { active: [] }; // effects must work on ANY possessed body (i-frames…)
+    if (!target.effects) target.effects = { active: [], seq: 0 }; // effects must work on ANY possessed body (i-frames…)
     events.emit('notify', { msg: 'You take control of a new body.' });
   }
 }

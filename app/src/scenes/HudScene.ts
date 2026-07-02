@@ -4,6 +4,8 @@ import { GAME_H, GAME_W, MAPH, MAPW, RegKey, WORLD_H, WORLD_W, type AbilityBarEn
 import { events } from '../core/EventBus';
 import { clamp } from '../core/math';
 import type { DialogueView } from '../systems/DialogueSystem';
+import { PLATE_CONTENT_H, UnitPlate } from '../ui/UnitPlate';
+import type { UnitPlateView } from '../ui/plateView';
 
 /** Canvas HUD overlay (parallel scene). Reads continuous state from the registry; one-offs via EventBus. */
 export class HudScene extends Phaser.Scene {
@@ -18,11 +20,13 @@ export class HudScene extends Phaser.Scene {
   private cardMsg!: Phaser.GameObjects.Text;
   private abilSlots: { key: Phaser.GameObjects.Text; name: Phaser.GameObjects.Text }[] = [];
   private dlg!: { name: Phaser.GameObjects.Text; text: Phaser.GameObjects.Text; hint: Phaser.GameObjects.Text };
+  private playerPlate!: UnitPlate;
+  private inspectPlate!: UnitPlate;
 
-  /** Bottom-left player plate: groups identity, vitals, and the ability bar in one card. */
-  private readonly panel = { x: 12, y: GAME_H - 132, w: 290, h: 120 };
+  /** Bottom-left player card: THE shared unit readout (UnitPlate) + a player-only ability-bar row below
+   *  the content block — extras go OUTSIDE the readout so every unit's plate stays identical. */
+  private readonly panel = { x: 12, y: GAME_H - 168, w: 290, h: 156 };
   private readonly barX = 24; // panel.x + inner pad
-  private readonly barW = 176;
   private barY = 0; // ability-row top (set in create)
 
   constructor() {
@@ -35,10 +39,9 @@ export class HudScene extends Phaser.Scene {
       this.add.text(x, y, '', style).setDepth(2);
     const P = this.panel;
 
-    // --- bottom-left player plate ---
-    this.txt.identity = mk(P.x + 12, P.y + 8, { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '13px', color: '#f0b429' });
-    this.txt.hudCombo = mk(P.x + P.w - 12, P.y + 9, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '12px', color: '#ffcf5a' }).setOrigin(1, 0).setVisible(false);
-    this.txt.hp = mk(P.x + P.w - 12, P.y + 28, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#ffffff' }).setOrigin(1, 0);
+    // --- bottom-left player card: the SAME UnitPlate any unit gets; badges sit ABOVE the card ---
+    this.playerPlate = new UnitPlate(this, P.x, P.y, P.w, P.h);
+    this.txt.hudCombo = mk(P.x + P.w - 4, P.y - 20, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '12px', color: '#ffcf5a' }).setOrigin(1, 0).setVisible(false);
     this.txt.autoaim = mk(P.x + 4, P.y - 20, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#7fd1ff' }).setVisible(false);
 
     // --- corners / center (world + objective info, not "the player") ---
@@ -57,6 +60,9 @@ export class HudScene extends Phaser.Scene {
       .setStrokeStyle(1.5, 0xf0b429, 0.4)
       .setDepth(0);
 
+    // inspected unit (V+click): the IDENTICAL readout, docked above the minimap
+    this.inspectPlate = new UnitPlate(this, GAME_W - 18 - P.w, this.mm.y - PLATE_CONTENT_H - 10, P.w);
+
     this.cardBg = this.add.graphics().setDepth(5).setVisible(false);
     this.cardTitle = this.add.text(GAME_W / 2, GAME_H / 2 - 10, '', { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '42px', color: '#ffffff' }).setOrigin(0.5).setDepth(6).setVisible(false);
     this.cardMsg = this.add.text(GAME_W / 2, GAME_H / 2 + 28, '', { fontFamily: 'Trebuchet MS', fontSize: '16px', color: '#f3e7c9' }).setOrigin(0.5).setDepth(6).setVisible(false);
@@ -68,8 +74,8 @@ export class HudScene extends Phaser.Scene {
       hint: this.add.text(0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '12px', color: '#f0b429' }).setOrigin(1, 1).setDepth(4).setVisible(false),
     };
 
-    // ability bar (inside the plate): one box per equipped/granted ability
-    this.barY = P.y + 68;
+    // ability bar (player-only row, below the shared readout block): one box per equipped/granted ability
+    this.barY = P.y + PLATE_CONTENT_H + 4;
     for (let i = 0; i < 5; i++) {
       const bx = this.barX + i * 53 + 24;
       const key = this.add.text(bx, this.barY + 4, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '10px', color: '#f0b429' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
@@ -84,17 +90,6 @@ export class HudScene extends Phaser.Scene {
     events.on('autoAimChanged', ({ on }) => {
       this.txt.autoaim.setText('◎ AUTO-AIM').setVisible(on);
     });
-  }
-
-  /** The plate frame: dark translucent card with a gold trim, matching the start-screen theme. */
-  private drawPanel(g: Phaser.GameObjects.Graphics): void {
-    const P = this.panel;
-    g.fillStyle(0x0b0a08, 0.72);
-    g.fillRoundedRect(P.x, P.y, P.w, P.h, 8);
-    g.lineStyle(1.5, 0xf0b429, 0.5);
-    g.strokeRoundedRect(P.x, P.y, P.w, P.h, 8);
-    g.lineStyle(1, 0x7a4f1f, 0.4);
-    g.strokeRoundedRect(P.x + 3, P.y + 3, P.w - 6, P.h - 6, 6);
   }
 
   private drawAbilityBar(g: Phaser.GameObjects.Graphics, bar: AbilityBarEntry[] | undefined): void {
@@ -166,19 +161,11 @@ export class HudScene extends Phaser.Scene {
     const r = this.registry;
     const g = this.g;
     g.clear();
-    const P = this.panel;
 
-    this.drawPanel(g);
+    // both plates render the SAME view-model shape — player bottom-left, inspected unit by the minimap
+    this.playerPlate.draw(g, (r.get(RegKey.Player) as UnitPlateView | null) ?? null);
+    this.inspectPlate.draw(g, (r.get(RegKey.Inspect) as UnitPlateView | null) ?? null);
 
-    const hp = (r.get(RegKey.Hp) as number) ?? 0;
-    const maxHp = (r.get(RegKey.MaxHp) as number) ?? 1;
-    const stam = (r.get(RegKey.Stam) as number) ?? 0;
-    const maxstam = (r.get(RegKey.MaxStam) as number) ?? 1;
-    const tier = (r.get(RegKey.Tier) as string) ?? '';
-    this.bar(g, this.barX, P.y + 28, this.barW, 13, hp, maxHp, 0xd4483b);
-    this.bar(g, this.barX, P.y + 47, this.barW, 7, stam, maxstam, 0x5ea0d8);
-    this.txt.identity.setText(tier ? `YOU · ${tier}` : 'YOU');
-    this.txt.hp.setText(`${Math.max(0, Math.ceil(hp))}/${maxHp}`);
     this.txt.gold.setText('● ' + ((r.get(RegKey.Gold) as number) ?? 0) + ' gold');
     this.txt.enemies.setText('Enemies left: ' + ((r.get(RegKey.EnemiesLeft) as number) ?? 0));
     this.txt.objective.setText('◆ ' + ((r.get(RegKey.Objective) as string) ?? ''));
@@ -216,13 +203,6 @@ export class HudScene extends Phaser.Scene {
     if (state === 'dead') this.showCard('Washed Ashore', 'You were defeated. Press [E] to recover at home.', '#d4483b');
     else if (state === 'win') this.showCard('Victory!', 'The enemy isle is yours, Captain. Press [E] to keep sailing.', '#f0b429');
     else this.hideCard();
-  }
-
-  private bar(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, val: number, max: number, color: number): void {
-    g.fillStyle(0x000000, 0.55);
-    g.fillRoundedRect(x - 2, y - 2, w + 4, h + 4, 4);
-    g.fillStyle(color, 1);
-    g.fillRect(x, y, w * clamp(val / max, 0, 1), h);
   }
 
   private showCard(title: string, msg: string, color: string): void {

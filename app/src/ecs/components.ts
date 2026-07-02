@@ -49,9 +49,10 @@ export interface Blackboard {
   home: { x: number; y: number }; // spawn/post position
   canSprint: boolean;
   boss?: boolean;
-  // pursuit & perception
-  quarry?: Entity; // who we're chasing (persists past line-of-sight)
-  focus?: Entity; // squad-assigned focus-fire target
+  // pursuit & perception — cross-entity refs are IDS at rest (ecs-hot-loop canon: serializable, and a dead
+  // ref resolves to undefined via world.byId instead of dangling); brains re-resolve them each tick
+  quarryId?: number; // who we're chasing (persists past line-of-sight)
+  focusId?: number; // squad-assigned focus-fire target
   lastSeenX: number;
   lastSeenY: number;
   lostT: number; // time since we last saw the target
@@ -132,9 +133,10 @@ export interface Ship {
   throttle: number;
 }
 
-/** Marks an entity riding/piloting a ship (its world position is pinned to the ship). */
+/** Marks an entity riding/piloting a ship (its world position is pinned to the ship).
+ *  Id at rest — ShipSystem resolves it via world.byId each use, so a sunk ship reads as gone, not stale. */
 export interface Riding {
-  ship: Entity;
+  shipId: number;
 }
 
 /**
@@ -148,6 +150,7 @@ export interface Combatant {
   combo: number;
   comboT: number;
   kickSide?: number; // last kicking foot (±1); alternated each kick so left/right kicks mirror
+  handSide?: number; // last throwing hand (±1); alternated each bare/stretch swing (R → L → R, never random)
   regenT?: number; // stamina-regen delay remaining (s): set on every spend, ticks down; regen only at 0
   stunT?: number; // hitstun remaining (s): while > 0 the unit can't attack and moves slowed (a stagger)
 }
@@ -203,6 +206,9 @@ export interface ActiveEffect {
 
 export interface ActiveEffects {
   active: ActiveEffect[];
+  /** Per-entity instance counter: gives each applied effect a UNIQUE modifier source, so two stacked
+   *  instances of one effect can never share a source (a shared source made the first expiry strip both). */
+  seq: number;
 }
 
 /** The four equipped combat layers (potentials stack). */

@@ -3,7 +3,9 @@ import { TILE } from '../config/constants';
 import { trySprint } from '../combat/stamina';
 import { angleDiff, dist, norm, smoothFactor } from '../core/math';
 import { combatStance, type AIProfileDef } from '../defs/aiProfiles';
+import { Bodies } from '../defs/bodies';
 import { factions } from '../defs/factions';
+import { ShipHulls } from '../defs/ships';
 import type { Entity } from '../ecs/components';
 import type { AIContext } from './Brain';
 import { FsmBrain, type FsmState } from './FsmBrain';
@@ -11,6 +13,14 @@ import { perceives } from './perception';
 
 // All AI tuning now lives per-unit in the AIProfileDef (data), read via `p` below — no global behaviour knobs.
 const profileOf = (e: Entity): AIProfileDef => e.ai!.bb.profile;
+
+/** Daylight (px) beyond touching within which the separation push applies — ONE const shared by the
+ *  prefilter and the per-pair test, so the two can never drift apart. */
+const SEPARATION_GAP = 6;
+/** Widest transform.r any ally can have — bodies AND ship hulls (allied ships are transform+faction
+ *  entities too, and the old full scan pushed away from them; the prefilter must not silently stop).
+ *  Bounds the separation() prefilter radius from DATA, not a magic number. */
+const MAX_NEIGHBOR_R = Math.max(...Object.values(Bodies).map((b) => b.r), ...ShipHulls.all().map((s) => s.r));
 
 /** Turn `t.angle` toward `want` at up to `rate` rad/s (a heavy body can't snap its heading), then return the
  *  resulting FACING unit vector. Moving along this — instead of straight at the goal — makes a low-turn-rate
@@ -22,17 +32,21 @@ function faceAndHeading(e: Entity, want: number, rate: number, dt: number): [num
   return [Math.cos(t.angle), Math.sin(t.angle)];
 }
 
-/** Boids-style separation from same-faction allies, so they don't stack on a target. */
+/** Boids-style separation from same-faction allies, so they don't stack on a target.
+ *  Goes through SpatialQuery — the ONE swap point for the future uniform grid — never world.with() directly:
+ *  a neighbor scan that bypasses the chokepoint would silently stay O(N) after the grid lands. */
 function separation(e: Entity, ctx: AIContext): [number, number] {
   const t = e.transform!;
   const mine = e.faction!.id;
   let sx = 0;
   let sy = 0;
-  for (const o of ctx.world.with('transform', 'faction')) {
-    if (o === e || !factions.isAlly(mine, o.faction!.id)) continue;
+  // prefilter radius covers the widest possible pair (own r + widest neighbor + the gap); the exact
+  // per-pair test below still decides — the query only bounds WHO we look at
+  const near = ctx.query.within(t.x, t.y, t.r + MAX_NEIGHBOR_R + SEPARATION_GAP, (o) => o !== e && !!o.faction && factions.isAlly(mine, o.faction.id));
+  for (const o of near) {
     const ot = o.transform!;
     const d = dist(t.x, t.y, ot.x, ot.y);
-    if (d > 0 && d < t.r + ot.r + 6) {
+    if (d > 0 && d < t.r + ot.r + SEPARATION_GAP) {
       sx += (t.x - ot.x) / d;
       sy += (t.y - ot.y) / d;
     }
@@ -192,11 +206,12 @@ const chase: FsmState = {
     if (!loadout) return 'wander';
 
     // squad focus-fire: engage the squad's chosen target if I can see it, else whatever I can see myself
-    const focus = bb.focus;
+    // (ids at rest → resolve to a live entity per tick; a destroyed target simply reads as undefined)
+    const focus = bb.focusId !== undefined ? ctx.world.byId(bb.focusId) : undefined;
     const foe = focus && !focus.health?.dead && canSee(e, focus, ctx) ? focus : spot(e, ctx);
     bb.alertT = Math.max(0, ((bb.alertT) ?? 0) - dt); // "I was hit" investigate-timer ticks down
     if (foe) {
-      bb.quarry = foe; // remember who we're after, so we can keep pursuing once sight breaks
+      bb.quarryId = foe.id; // remember who we're after, so we can keep pursuing once sight breaks
       bb.lastSeenX = foe.transform!.x;
       bb.lastSeenY = foe.transform!.y;
       bb.lostT = 0;
@@ -209,7 +224,7 @@ const chase: FsmState = {
     if (!foe && (bb.alertT) <= 0 && ((bb.lostT) > p.loseSightSec || strayed)) {
       bb.path = null;
       bb.perceivedX = undefined; // forget perceived aim; re-seed fresh on next sighting
-      bb.quarry = undefined;
+      bb.quarryId = undefined;
       return 'wander';
     }
 
@@ -219,7 +234,7 @@ const chase: FsmState = {
     // a quarry that's gone. The give-up timer still bounds how long it can pursue blind.
     let rx: number;
     let ry: number;
-    const quarry = bb.quarry;
+    const quarry = bb.quarryId !== undefined ? ctx.world.byId(bb.quarryId) : undefined;
     if (foe) {
       rx = foe.transform!.x;
       ry = foe.transform!.y;
@@ -374,8 +389,8 @@ const chase: FsmState = {
   },
 };
 
-/** Prey flight: bolt directly away from the last attacker (bb.quarry) until the scare wears off, then graze again.
- *  No pathfinding — a panicked animal just runs; collision slides it along any wall it hits. */
+/** Prey flight: bolt directly away from the last attacker (bb.quarryId) until the scare wears off, then graze
+ *  again. No pathfinding — a panicked animal just runs; collision slides it along any wall it hits. */
 const flee: FsmState = {
   update(e, ctx, dt) {
     const t = e.transform!;
@@ -384,10 +399,10 @@ const flee: FsmState = {
     const p = profileOf(e);
     bb.alertT = Math.max(0, ((bb.alertT) ?? 0) - dt);
     if ((bb.alertT) <= 0) {
-      bb.quarry = undefined;
+      bb.quarryId = undefined;
       return 'wander'; // calmed down → back to grazing
     }
-    const threat = bb.quarry;
+    const threat = bb.quarryId !== undefined ? ctx.world.byId(bb.quarryId) : undefined;
     const alive = threat?.transform && !threat.health?.dead;
     const tx = alive ? threat!.transform!.x : (bb.lastSeenX);
     const ty = alive ? threat!.transform!.y : (bb.lastSeenY);

@@ -69,7 +69,18 @@ const BASE: Omit<AIProfileDef, 'id' | 'name' | 'approach' | 'sight' | 'preferred
   strikeFrac: 0.8,
 };
 
-export const AIProfiles = new Registry<AIProfileDef>('AIProfiles');
+// validated at boot: brains divide by `reaction` and scale by `strikeFrac`, so a 0 or NaN here is not a
+// tuning choice — it's a division-by-zero / never-strikes bug that must fail on load
+export const AIProfiles = new Registry<AIProfileDef>('AIProfiles', (p) => {
+  for (const [k, v] of Object.entries(p)) {
+    if (typeof v === 'number' && !Number.isFinite(v)) return `${k} must be finite (got ${v})`;
+  }
+  if (p.sight < 0) return `sight must be ≥ 0 (got ${p.sight})`;
+  if (!(p.reaction > 0)) return `reaction must be > 0 — brains compute 1/reaction (got ${p.reaction})`;
+  if (!(p.strikeFrac > 0 && p.strikeFrac <= 1)) return `strikeFrac must be in (0, 1] (got ${p.strikeFrac})`;
+  if (p.fleeBelowHp !== undefined && (p.fleeBelowHp < 0 || p.fleeBelowHp > 1)) return `fleeBelowHp must be in [0, 1] (got ${p.fleeBelowHp})`;
+  return null;
+});
 
 AIProfiles.registerAll([
   { ...BASE, id: 'ai.rusher', name: 'Rusher', approach: 'rush', sight: 210, reaction: 0.16 },

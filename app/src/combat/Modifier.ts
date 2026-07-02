@@ -18,3 +18,14 @@ export interface Modifier {
   /** e.g. 'weapon:cutlass', 'fruit:gomu', 'haki:armament', 'potential:ironbody', 'buff:rage'. */
   source: string;
 }
+
+/** Shared def-validator piece for any family that carries Modifiers (layers, accessories, effects):
+ *  a NaN value or empty stat/source is a content bug that must fail at boot, not compute as 0 mid-game. */
+export function modifierProblem(mods: readonly Modifier[] | undefined): string | null {
+  for (const m of mods ?? []) {
+    if (!m.stat) return 'modifier has an empty stat id';
+    if (!Number.isFinite(m.value)) return `modifier '${m.stat}' value must be finite (got ${m.value})`;
+    if (!m.source) return `modifier '${m.stat}' has an empty source`;
+  }
+  return null;
+}
