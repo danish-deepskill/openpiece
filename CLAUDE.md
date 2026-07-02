@@ -7,6 +7,10 @@ through from F-tier nobody to Yonko — strategic command + possess-any-unit —
 (**ballpiece.io**, server-authoritative). The architecture decisions below exist to serve that endgame.
 
 ## Working agreements (how the developer works — don't make him repeat these)
+The developer-side half of this contract is `docs/WORKING_WITH_CLAUDE.md` (request template, shared
+vocabulary, session rituals) — point him there if he asks "how should I phrase this?", and honor the
+promises it makes on Claude's behalf (restate → read code → honest verdict → smallest canon change →
+knobs + playtest list → gates).
 - **Verify = `npm run typecheck` + `npm test`** (from `app/`), plus `npx vite build` when the bundler is
   touched. **Never Playwright/browser automation** — visual/feel checks are the developer's job; tell him
   WHAT to look at in one short list.
