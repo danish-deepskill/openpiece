@@ -180,6 +180,31 @@ src/
 - No privileged player code — every character uses the same stack (the Moat; `docs/ARCHITECTURE.md §11.2`).
 - Log any silent cap/truncation (spawn limits, loot caps) — never fail silently.
 
+## 11. Scaling roadmap — load-bearing pillars (retrofit-risk ordered)
+
+At full scope (the whole story, interact-with-anything), the architecture's one job is to **make content
+nearly free and avoid retrofits.** §0–§2 (data-driven + GAS-lite + composition) are the right, proven
+foundation — keep them. Below are the pillars that are **expensive to add late**: design each *before* it's
+load-bearing, even as a stub. Everything NOT listed (fruits, weapons, styles, enemies, items, abilities,
+animations, swing motions) is **just data** — added forever once these exist. Don't pre-build content; build
+the engines that make content cheap.
+
+| # | Pillar | Proven pattern (game) | Seam in current code | Build when |
+|---|--------|-----------------------|----------------------|-----------|
+| 1 | **Content as EXTERNAL data + def inheritance** | RimWorld **Def / DefDatabase + XML `ParentName` inheritance + abstract base defs**; Necesse data-loaded content | `core/Registry` already *is* the DefDatabase — feed it from JSON/data files + add def-inheritance (a "base cutlass" extended by variants) + boot-time schema validation, instead of hardcoded `.ts` | **now** — unblocks all content, cheap today |
+| 2 | **Persistence w/ reference resolution + versioning** | RimWorld **Scribe** (`LoadReferenceable`: save an id, re-link refs on load) + save version + migration | each component gets serialize/deserialize; entities keyed by stable id; cross-entity refs (crew, ownership, AI target) saved as **ids**, re-linked on load. Extends §6 | **early** — before the world holds state; retrofitting save into a live game is a rewrite |
+| 3 | **Generic interaction system (verbs/affordances)** — the "interact with anything" spine | RimWorld designators/jobs; **Caves of Qud** part-driven verbs | generalize the current E-to-interact (pickup / door / ship board) into an `interactable` component that *lists verbs* (talk, open, harvest, use, board, read, sit); one `InteractionSystem` resolves them — the **Moat for interaction**, never a per-object `if` | **soon** — it's the literal core of "anything is interactable" |
+| 4 | **Sim-LOD: tiered ticking + region streaming** | RimWorld **TickRare / TickLong** (cheap things tick every 250–2000 frames); Factorio / Necesse **chunk streaming** + fixed timestep | a tick scheduler (per-system cadence) + active-region streaming (§5) + the spatial grid (§7); distant / off-region entities freeze or slow-tick. Fixes the linear `world.with` scans at scale | **when entity counts / world size climb** (after the 2nd island) |
+| 5 | **Quest / flag / dialogue engine** — the "story" pillar (biggest current gap) | OSRS **varbits / varps** (a world-state flag store) + quest state machines; RimWorld **Storyteller / Incidents** (pacing); dialogue trees | a serialized `WorldState` flag store (saved by #2) + `QuestDef` (graph of steps gated on flags) + a dialogue system, paced by the Event Director (§5). The story is **authored on top of** this engine, not coded | **at the first real quest / arc** |
+| 6 | **AI: jobs/tasks + behavior trees + schedules** | RimWorld **ThinkTree → Job → Toils** (a coroutine-like action sequence) + pawn **schedules** (daily routines); Kenshi NPC depth | the `Brain` strategy already swaps (§7); add a Job/Task decomposition *under* the brain + a `schedule` component for routines | **when NPCs need non-combat depth** |
+
+**The senior rule:** build *engines, not content*; design the un-retrofittable pillars (**1, 2, 3**) early
+even as stubs; ship **one arc fully playable** before widening. "Interact with anything" means *the verb
+system supports it generically + sim-LOD keeps it affordable* — never "everything simulated at once." Match
+rigor to leverage: a pillar that touches every future system earns heavy machinery; a one-off doesn't.
+
+---
+
 ## References (industry-standard patterns this mirrors)
 - **Unreal Gameplay Ability System** — Abilities + Attributes + Effects + Tags; data-table-driven, scalable
   RPG combat. https://dev.epicgames.com/documentation/en-us/unreal-engine/gameplay-ability-system-for-unreal-engine ·
@@ -189,3 +214,12 @@ src/
 - **Stat modifier systems** — flat→additive→multiplicative ordering, source tracking / removeBySource.
   https://github.com/meredoth/Stat-System ·
   https://refreshertowelgames.wordpress.com/2024/02/17/how-to-comfortably-deal-with-modifiable-stats/
+- **RimWorld** — the canonical data-driven content + deep-sim model: **Def system + DefDatabase + def
+  inheritance**, **Comp** composition, **Hediff** modular effects, **ThinkTree → Job → Toils** AI,
+  **Storyteller/Incidents** event pacing, **Scribe** reference-resolving save, **TickRare/TickLong** sim-LOD.
+  https://rimworldwiki.com/wiki/Modding
+- **OSRS** — massive content via data + a **varbit/varp** world-state flag store driving quest state machines.
+  https://oldschool.runescape.wiki/w/Varbit
+- **Factorio** — fixed-timestep deterministic sim + update groups + chunk streaming (scaling a huge live world).
+  https://factorio.com/blog/post/fff-364
+- **Caves of Qud** — part/blueprint-driven entities + generic interaction verbs (anything is interactable).

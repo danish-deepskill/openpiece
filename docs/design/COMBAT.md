@@ -43,12 +43,41 @@ bounty, content gates, and "can I even hurt this boss" checks (tier gaps reduce 
 - **Cross-class abilities:** active/passive abilities slot into finite **loadout slots** regardless of class
   (a Swordsman can run a Gunner mobility ability). Core attack style/primary weapon stays class-bound.
 
+## Resources — two complementary bars (stamina + posture)
+Two separate `Combatant` bars gate the two sides of a fight; they compose cleanly and don't interfere.
+
+- **Stamina — the OFFENSE gate (Dark Souls / Elden Ring lineage).** *Depletes* when you act (attack / dodge /
+  sprint) and regenerates when idle, with a **regen-delay** that pauses after any spend — so it only refills out
+  of combat and you can't spam. **Shipped.** *(This is Souls-style. **Deepwoken has no stamina bar** — don't
+  mis-source it; its defensive resource is Posture, below.)*
+- **Posture — the DEFENSE / guard gate (Sekiro / Deepwoken lineage).** Works *inversely*: it **builds up** as you
+  block or get pressured, and when it overflows you **guard-break** (staggered + open). Landing hits pressures the
+  opponent's posture; a well-timed **parry** dumps yours and spikes theirs. **To build** (a sibling derived
+  resource next to stamina).
+
+Together: Souls-style resource management on offense + Sekiro/Deepwoken guard-break dueling on defense.
+
+## Skill-expression cluster (the moat's ceiling — Deepwoken/Sekiro lineage)
+The depth that separates "deep" from "spammy" (see `REFERENCES.md` S#2, A#8, A#14, B#20):
+- **Parry / block / feint triangle** — a timed **parry** cancels an attack; a held **block** braces but builds
+  posture toward a break; **feints** (fake windups) are the mind-game. Best feints have no rhythm.
+- **Telegraphed / perilous attacks** — a colored glyph + sound dictates the *required* counter (parry / dodge /
+  reposition). Makes deep combat **readable**, not memorized — and it reads *better* top-down (whole scene visible).
+- **Anti-infinite-combo** — a flourish/combo-ender launches after N hits, so no perma-stunlock.
+- **Elemental status effects** — chilled / burning / shocked / winded / dazed / anti-heal — the debuff layer the
+  four combat layers grant via Effects + Tags.
+
+**2D top-down feasibility:** all of the above is *timing + resources + reads* (view-independent) or *positional*
+(top-down 360° movement excels at spacing/flanking/backstab). The one real adaptation is the **vertical layer** —
+map aerials/uppercuts/jump-over telegraphs to **ground-plane states** (knockdown/ragdoll; dodge/reposition prompts).
+
 ## Bosses
 Where you test the full build. Each boss has a unique ability drop (first kill guaranteed). **Mesh-form
 bosses** (multiple enemies combine into a giant) emerge in War events.
 
 ## Engine implications (preview)
-- **Attributes**: Health, Endurance, Defense, Willpower, Luck, Spiritual (+ derived: power tier, stamina, …).
+- **Attributes**: Health, Endurance, Defense, Willpower, Luck, Spiritual (+ derived: power tier, **stamina**
+  (offense gate), **posture** (defense/guard gate), …).
 - **Abilities**: cost (stamina/haki), cooldown, cast/active windows, tags, granted by any of the four layers.
 - **Effects**: instant (damage), duration (buffs/debuffs/DoT), infinite (passives), CC (Conqueror fear,
   stuns). Stackable, source-tracked.

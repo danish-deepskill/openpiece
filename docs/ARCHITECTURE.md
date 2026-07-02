@@ -41,7 +41,7 @@ which is exactly us.
 | Concern   | Choice                                                  |
 |-----------|---------------------------------------------------------|
 | Engine    | Phaser **3.90**, **Canvas** renderer                    |
-| Language  | **TypeScript** (strict; `strictNullChecks:false`)       |
+| Language  | **TypeScript** (fully strict — `strictNullChecks` ON)   |
 | Build     | **Vite 5**                                              |
 | Tests     | **Vitest** — pure logic only (ECS, collision, AI, defs) |
 | Art       | **Procedural Graphics** draw fns — no sprite assets     |
@@ -58,56 +58,61 @@ Everything under `app/` so repo root stays clean.
 
 ```
 ballpiece/
-  grand_voyage.html             # reference ONLY (behavior spec); not built upon
   docs/ARCHITECTURE.md          # this file
-  docs/features/big-walkable-ship.md
+  docs/DESIGN_PATTERNS.md       # the coding-standards canon (SOLID/naming/boundary rules) — PRs review against it
+  docs/references/grand_voyage.html  # reference ONLY (behavior spec); not built upon
   app/
     index.html  package.json  tsconfig.json  vite.config.ts
-    src/
-      main.ts                   # new Phaser.Game(GameConfig)
+    src/                        # SIM folders (ai/combat/core/defs/ecs/world) are Phaser-free —
+      main.ts                   #   enforced by test/architecture.test.ts (headless-server ready)
       config/
-        constants.ts            # TILE/MAP sizes, world bounds, depth bands, balance
+        constants.ts            # TILE/MAP sizes, SIM_DT, combat-feel consts, RegKey, HUD view-model types
         GameConfig.ts           # Phaser.Game config + scene list
       core/
-        EventBus.ts             # typed event bus (singleton `events`)
-        math.ts                 # clamp, lerp, dist, norm, rand, angleDiff
-        Pool.ts                 # generic object pool
+        EventBus.ts             # typed event bus (singleton `events`) incl. the fx: channel
+        Rng.ts                  # seeded mulberry32 streams (worldgen/ai/combat) — sim determinism
+        math.ts                 # clamp, dist, norm, segDist, angleDiff, smoothFactor, cosmetic rand
+        Registry.ts             # typed content registries (+ parent inheritance, boot validators)
+        Pool.ts                 # generic object pool (presentation churn)
       ecs/
-        World.ts                # entity store + component queries (world.with(...))
-        components.ts           # Component data interfaces + Components tag union
-        spawn.ts                # factory: spawnPlayer/Enemy/Crew/Npc/... from Defs
-      defs/
-        actors.ts               # ActorDef table (player, grunt, captain, villager, pirate)
-        abilities.ts            # AbilityDef table (punch, gomuPistol, gatling, rocket)
-        level.ts                # level/spawn layout (islands, building + spawn placement)
+        World.ts                # entity store + NARROWED queries (world.with<K>(...) proves components)
+        components.ts           # Component data interfaces (plain, serializable) + Components union
+        Spawner.ts              # sim-side factory: spawnHero/spawnUnit/spawnPickup/spawnShip from Defs
+      defs/                     # content rows: units, bodies, factions, aiProfiles, layers, ships,
+        ...                     #   accessories (BASE_KIT lives in units.ts) — data only, no bundler imports
+      combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier,
+        ...                     #   swing (motion registry + shared geom), equip, stamina, targeting, apparel
       ai/
-        Brain.ts                # Brain interface { think(e, ctx, dt) }  + Blackboard
+        Brain.ts                # Brain interface { think(e, ctx, dt) } + minimal AIContext
         FsmBrain.ts             # generic finite-state-machine brain
-        brains.ts               # enemyBrain / crewBrain / npcBrain state tables
+        brains.ts               # actorBrain — ONE profile-driven brain for every actor (the Moat)
+        perception.ts           # vision cone / peripheral / blind-arc checks
       world/
-        TileGrid.ts             # tile data + tileType()/walkable(mode)
-        WorldGen.ts             # procedural two-island gen -> TileGrid + placements
-        Collision.ts            # circle-vs-tile + circle-vs-building move resolve
-        TerrainRenderer.ts      # bake tiles -> RenderTexture; minimap texture
+        TileGrid.ts             # tile data + walkable(mode) + terrain speed
+        WorldGen.ts             # seeded two-island gen -> TileGrid + placements (pure fn of the seed)
+        Collision.ts            # circle-vs-tile move resolve (canOccupy/tryMove)
+        Pathfinder.ts           # grid A* + line-of-sight
         SpatialQuery.ts         # nearest()/within() neighbor queries (swap-in grid later)
-      systems/
-        System.ts               # System interface { update(dt) }
-        InputSystem.ts          # input -> player intent/actions/commands
+      systems/                  # sim systems are Phaser-free; presentation systems take `scene` FIRST
+        InputSystem.ts          # (presentation boundary) input -> the controlled entity's intent/abilities
         AISystem.ts             # runs each ai.brain.think()
-        MovementSystem.ts       # integrate movers via Collision; separation
-        CombatSystem.ts         # resolve attacks/abilities, damage, knockback (events)
-        CameraSystem.ts         # follow player + shake
-        RenderSystem.ts         # sync Graphics, depth=y, redraw (procedural)
-        FxSystem.ts             # POOLED particles/dmg-text/swings/corpses (not ECS)
-        GameDirector.ts         # game state (start|play|paused|dead|win), objectives, win/lose
-      draw/
-        actorDraws.ts           # procedural draw fns keyed by Def (hero/grunt/captain/...)
+        MovementSystem.ts       # integrate movers via Collision (fixed SIM_DT steps)
+        MeleeSystem.ts          # moving-hitbox contact resolution (shares swing geom with the render)
+        AbilitySystem.ts        # the single attack path: costs, cooldowns, swings, launches
+        StrikeResolver.ts       # (service) a confirmed hit -> damage/combo/stun; Damage.ts applies it
+        BodyCollisionSystem.ts  # body-vs-body shove (mass-weighted)
+        CombatantSystem.ts      # stamina delayed-regen, combo decay, hitstun
+        EffectSystem.ts / SquadSystem.ts / ShipSystem.ts / DoorSystem.ts / DialogueSystem.ts
+        InteractionSystem.ts    # generic verb engine (talk/take/board/disembark)
+        GameDirector.ts         # game state, objectives, death cleanup, possession
+        RenderSystem.ts         # (presentation) OWNS the Graphics side-table; render components are data
+        FxSystem.ts / NameplateSystem.ts / AccessorySystem.ts / DebugOverlay.ts   # (presentation)
+      draw/                     # (presentation) procedural draw fns + DrawFn type + world renderers
+        actorDraws.ts / shipDraws.ts / TerrainRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
       scenes/
-        BootScene.ts            # scale setup -> launch World + Hud
-        WorldScene.ts           # owns World + systems; runs the loop; publishes registry
+        BootScene.ts            # asset manifest (import.meta.glob) -> launch World + Hud
+        WorldScene.ts           # composition root; fixed-timestep sim loop (stepSim); publishes registry
         HudScene.ts             # canvas HUD + minimap; reads registry
-      ui/
-        overlay.ts              # binds DOM start/help overlay to EventBus
 ```
 
 ---
@@ -151,8 +156,8 @@ interface Brain { think(e: Entity, ctx: AIContext, dt: number): void } // mutate
 ```
 
 - Now: `FsmBrain` (a state table: per-state `update` + `transitions`). `brains.ts` defines
-  `enemyBrain` (idle→wander→chase→attack, tether-to-spawn), `crewBrain` (follow↔hold, attack-on-command,
-  auto-engage), `npcBrain` (wander+tether). AISystem just calls `brain.think()`.
+  ONE `actorBrain` drives every actor (wander→chase→flee), with all per-unit personality as `AIProfileDef`
+  data (the Moat: villager, wildlife, and boss differ by profile row, not by brain). AISystem calls `brain.think()`.
 - Later: a `BehaviorTreeBrain` / `UtilityBrain` / `JobBrain` implement the **same interface** and drop in
   per-entity with zero system changes — the RimWorld-depth path.
 
@@ -179,7 +184,7 @@ spatial hash when entity counts climb — single chokepoint).
 ## 8. Frame loop (WorldScene.update → GameDirector → systems, fixed order)
 
 ```
-InputSystem → AISystem → MovementSystem → CombatSystem → CameraSystem → RenderSystem → FxSystem
+doors → input → squads → AI → movement → body-collision → ships → melee → abilities → combatant → effects → director (fixed SIM_DT steps), then presentation: sea/dialogue/fx/render/accessories/nameplates
 → (WorldScene publishes registry)
 ```
 dt clamped (≤ 1/30). `GameDirector` gates updates by game state and owns win/lose/respawn + objectives.
@@ -207,9 +212,9 @@ dt clamped (≤ 1/30). `GameDirector` gates updates by game state and owns win/l
 
 0. **Tooling + boot** — Vite/TS/Phaser; `BootScene`→`WorldScene` renders baked terrain. *(pixels on screen)*
 1. **ECS + hero** — World/components/spawn; `transform/mover/render`; `InputSystem`+`MovementSystem`+
-   `Collision`+`CameraSystem`+`RenderSystem`; hero walks the islands. **← vertical slice target**
-2. **Combat** — enemies via `enemyBrain`(FSM); `CombatSystem` melee; `FxSystem`; `HudScene` bars.
-3. **Crew & NPCs** — `npcBrain` (dialogue/hire), `crewBrain` (follow/hold/attack).
+   `Collision`+`RenderSystem`; hero walks the islands. **← vertical slice target (DONE)**
+2. **Combat** — enemies via `actorBrain`(FSM); `MeleeSystem`+`AbilitySystem`; `FxSystem`; `HudScene` bars. **(DONE)**
+3. **Crew & NPCs** — recruitment + crew command (the squad/verb seams exist; crew system pending).
 4. **Abilities** — devil-fruit unlock; pistol/gatling/rocket as `AbilityDef`s.
 5. **Boat** — board/leave/sail (parity).
 6. **Flow & polish** — overlay/pause/dead/win, objectives, minimap, notifications.
