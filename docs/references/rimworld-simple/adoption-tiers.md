@@ -110,7 +110,10 @@
 ## C — defer until scale or pain proves it
 
 31. **Stat caching with tolerated staleness** *(ch 04)* — profile first; adopt RimWorld's shape (value +
-    computed-tick, caller declares staleness) only when stat queries show up in a profile. 🧊
+    computed-tick, caller declares staleness) only when stat queries show up in a profile. Correction from
+    the 2026-07 comparison review (`ballpiece-comparison.md`): staleness is declared in *sim ticks*, so a
+    cached read is a pure function of deterministic state — lockstep-safe, **not** a desync seed. Don't
+    reject it on MP grounds when a profile says adopt. 🧊
 32. **Region-based reachability/path hierarchy** *(ch 12/18 §8)* — hierarchy-first pathfinding; only when
     islands outgrow plain grid A* + `SpatialQuery`. 🧊
 33. **StatParts plugin list** *(ch 04)* — ballpiece's "parts" are its four layers; revisit only if per-stat
@@ -140,8 +143,12 @@
     exists for). Keep the choreography idea (#24) on the **typed** EventBus.
 43. **Reflection instantiation (`Activator` from Type fields)** *(ch 19)* — the TS translation is
     discriminated unions + handler maps / function-bearing def rows — already house style, fully typed.
-44. **Symmetric `ExposeData` mode machine** *(ch 16)* — a C#-ism (one method, global mode flag). In TS,
-    explicit toJSON/fromJSON or schema serialization is clearer; keep #17's ownership rule + passes.
+44. **Symmetric `ExposeData` mode machine** *(ch 16)* — refuse the *global static mode flag* (one
+    serialization context per process kills N-sims-per-server), but keep the **symmetry property**: one
+    declaration drives both directions, so save and load structurally can't drift. In TS that means schema
+    tables or a passed-in scribe context — **not** hand-written toJSON/fromJSON pairs, which reintroduce
+    the exact two-directions-diverge-silently bug class Scribe was built to kill (corrected 2026-07,
+    `ballpiece-comparison.md`). Keep #17's ownership rule + passes.
 45. **XML list-append inheritance** *(ch 01)* — ballpiece deliberately chose arrays-REPLACE (simpler, already
     documented); don't import the append rule. Do steal base-defs-as-tuning-sheets (a usage habit, not a rule
     change).

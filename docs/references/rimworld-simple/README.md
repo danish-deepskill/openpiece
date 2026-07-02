@@ -18,6 +18,9 @@ atlas records patterns and pointers, never copied code. Decompiled line numbers 
 - **Ballpiece verdicts** live beside this file: `adoption-tiers.md` — every pattern tiered S/A/B/C/D by
   worth/fit for ballpiece, with milestone triggers — and `others.md` — the deep adopt/skip analysis of the
   six core subsystems. The atlas describes RimWorld; those two decide what ballpiece takes.
+- **Head-to-head verdict:** `ballpiece-comparison.md` (2026-07) — which codebase is closer to best practice
+  and which better supports complex systems, dimension by dimension, adversarially reviewed; includes the
+  confirmed-defects list and the prioritized steal list.
 - **Path note:** `..\rimworld-decomp\` / `..\rimworld-data\` references in the chapters point to the
   decompiled source, which stays *outside* the repo at `C:\Files\Phaser\References\rimworld\`.
 
