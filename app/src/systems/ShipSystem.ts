@@ -4,7 +4,6 @@ import { ShipHulls } from '../defs/ships';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { Collision } from '../world/Collision';
-import type { FxSystem } from './FxSystem';
 
 /**
  * Moves ships (heading + throttle, water-only collision), drags them to a stop, pins riders to the deck,
@@ -15,7 +14,6 @@ export class ShipSystem {
   constructor(
     private readonly world: World,
     private readonly collision: Collision,
-    private readonly fx: FxSystem,
   ) {}
 
   update(dt: number): void {
@@ -23,7 +21,7 @@ export class ShipSystem {
       const sh = ship.ship!;
       const t = ship.transform!;
       // water drag
-      sh.speed *= Math.max(0, 1 - dt * 0.8);
+      sh.speed *= Math.exp(-0.8 * dt); // exact exponential drag — same coast distance at any fps
       if (Math.abs(sh.speed) < 2) sh.speed = 0;
       if (sh.speed !== 0) {
         const dx = Math.cos(t.angle) * sh.speed * dt;
@@ -32,8 +30,8 @@ export class ShipSystem {
         const py = t.y;
         this.collision.tryMove(t, dx, dy, t.r, 'boat');
         if (t.x === px && t.y === py) sh.speed = 0; // ran aground / hit the world edge
-        else if (Math.abs(sh.speed) > 60 && Math.random() < dt * 24) {
-          this.fx.burst(t.x - Math.cos(t.angle) * t.r, t.y - Math.sin(t.angle) * t.r, 0xdff0ff, 3, 40);
+        else if (Math.abs(sh.speed) > 60 && Math.random() < dt * 24) { // cosmetic roll — NOT a sim stream (dt-scaled Bernoulli)
+          events.emit('fx:burst', { x: t.x - Math.cos(t.angle) * t.r, y: t.y - Math.sin(t.angle) * t.r, color: 0xdff0ff, n: 3, speed: 40 });
         }
       }
     }
@@ -47,46 +45,16 @@ export class ShipSystem {
     }
   }
 
-  /** Nearest boardable ship within reach of an on-foot actor. */
-  nearestShip(e: Entity): Entity | undefined {
-    const t = e.transform;
-    if (!t) return undefined;
-    let best: Entity | undefined;
-    let bestD = Infinity;
-    for (const ship of this.world.with('ship', 'transform')) {
-      const st = ship.transform!;
-      const reach = st.r + 38;
-      const d = (t.x - st.x) ** 2 + (t.y - st.y) ** 2;
-      if (d < reach * reach && d < bestD) {
-        bestD = d;
-        best = ship;
-      }
-    }
-    return best;
-  }
-
-  /** E-press: disembark if aboard, else board the nearest ship. Returns true if it handled the press. */
-  interact(e: Entity): boolean {
-    if (e.riding) {
-      this.disembark(e);
-      return true;
-    }
-    const ship = this.nearestShip(e);
-    if (ship) {
-      this.board(e, ship);
-      return true;
-    }
-    return false;
-  }
-
-  private board(e: Entity, ship: Entity): void {
+  /** Board `ship`: pin the actor to its deck and unanchor it. (Driven by the `verb.board` interaction.) */
+  board(e: Entity, ship: Entity): void {
     e.riding = { ship };
     ship.ship!.anchored = false;
     const name = ShipHulls.get(ship.ship!.hull).name;
     events.emit('notify', { msg: `Boarded the ${name} — W/S throttle, A/D steer, E to disembark.` });
   }
 
-  private disembark(e: Entity): void {
+  /** Step the rider off their ship onto the nearest open land; re-anchors the ship. */
+  disembark(e: Entity): void {
     const ship = e.riding!.ship;
     const st = ship.transform!;
     for (let r = st.r + 10; r <= st.r + 90; r += 12) {
@@ -94,7 +62,7 @@ export class ShipSystem {
         const ang = (a / 12) * Math.PI * 2;
         const lx = st.x + Math.cos(ang) * r;
         const ly = st.y + Math.sin(ang) * r;
-        if (this.collision.canBe(lx, ly, e.transform!.r, 'foot')) {
+        if (this.collision.canOccupy(lx, ly, e.transform!.r, 'foot')) {
           e.transform!.x = lx;
           e.transform!.y = ly;
           delete e.riding;

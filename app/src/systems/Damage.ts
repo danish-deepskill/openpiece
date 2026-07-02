@@ -1,13 +1,13 @@
+import { FX_COLOR, KNOCKBACK_CARRY } from '../config/constants';
+import { events } from '../core/EventBus';
 import type { Entity } from '../ecs/components';
-import type { FxSystem } from './FxSystem';
 
 /**
- * The single place damage is applied. Used by both the player's CombatSystem and AI brains
- * (via AIContext.applyDamage) so every attacker resolves hits identically — part of the
+ * The single place damage is applied. Every hit funnels here through StrikeResolver (melee contact,
+ * pistol cones, landing AoEs) so every attacker resolves damage identically — part of the
  * "every character uses the same system" Moat.
  */
 export class Damage {
-  constructor(private readonly fx: FxSystem) {}
 
   apply(target: Entity, dmg: number, kx: number, ky: number, byPlayer = false): boolean {
     const h = target.health;
@@ -23,13 +23,14 @@ export class Damage {
     // teleport — so it reads as a real shove the target's AI/input can't instantly cancel. Same for everyone.
     const m = target.mover;
     if (m) {
-      m.dvx = kx;
-      m.dvy = ky;
-      m.dodgeT = Math.max(m.dodgeT, 0.12); // brief hitstun while the impulse carries
+      const rubber = target.tags?.has('fruit.gomu.rubber') ? 0.25 : 1; // rubber body barely budges
+      m.dvx = kx * rubber;
+      m.dvy = ky * rubber;
+      m.dodgeT = Math.max(m.dodgeT, KNOCKBACK_CARRY); // the impulse carries briefly (same rule for everyone)
     }
     // moverless targets (e.g. a docked ship) are immovable — no knockback
-    this.fx.dmgText(t.x, t.y - t.r - 6, dmg, byPlayer ? '#ffd4d4' : '#ffffff');
-    this.fx.burst(t.x, t.y, 0xc0303a, 6, 160);
+    events.emit('fx:dmgText', { x: t.x, y: t.y - t.r - 6, value: dmg, color: byPlayer ? '#ffd4d4' : '#ffffff' });
+    events.emit('fx:burst', { x: t.x, y: t.y, color: FX_COLOR.blood, n: 6, speed: 160 });
     if (h.hp <= 0) h.dead = true;
     return true;
   }

@@ -28,7 +28,7 @@ export class Pathfinder {
   constructor(private readonly grid: TileGrid) {}
 
   private walkable(tx: number, ty: number, mode: MoveMode): boolean {
-    return TileGrid.walkable(this.grid.tileAt(tx, ty), mode);
+    return TileGrid.pathable(this.grid.tileAt(tx, ty), mode); // doorways are routable for AI
   }
 
   private toCenter(tx: number, ty: number): Waypoint {
@@ -126,13 +126,40 @@ export class Pathfinder {
     return path;
   }
 
+  /**
+   * Can a circle of radius `r` travel the straight line a→b without its BODY clipping a wall? Radius-aware,
+   * for movement decisions — so an agent routes around a corner its body can't clear, even when the thin
+   * center-line is open. (Vision uses plain lineOfSight; a gap you can see through may be too tight to walk.)
+   */
+  clearLine(ax: number, ay: number, bx: number, by: number, mode: MoveMode, r: number): boolean {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy);
+    const steps = Math.max(1, Math.ceil(len / (TILE * 0.5)));
+    const ox = len > 0 ? (-dy / len) * r : 0; // perpendicular ×r = the body's half-width
+    const oy = len > 0 ? (dx / len) * r : 0;
+    for (let i = 0; i <= steps; i++) {
+      const x = ax + (dx * i) / steps;
+      const y = ay + (dy * i) / steps;
+      // sample the center line AND both swept edges — if any clips a wall, the body won't fit
+      if (
+        !TileGrid.pathable(this.grid.tileAtPx(x, y), mode) ||
+        !TileGrid.pathable(this.grid.tileAtPx(x + ox, y + oy), mode) ||
+        !TileGrid.pathable(this.grid.tileAtPx(x - ox, y - oy), mode)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /** True if a straight line between two pixel points crosses no blocking tile. */
   lineOfSight(ax: number, ay: number, bx: number, by: number, mode: MoveMode): boolean {
     const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / (TILE * 0.5)));
     for (let i = 0; i <= steps; i++) {
       const x = ax + ((bx - ax) * i) / steps;
       const y = ay + ((by - ay) * i) / steps;
-      if (!TileGrid.walkable(this.grid.tileAtPx(x, y), mode)) return false;
+      if (!TileGrid.pathable(this.grid.tileAtPx(x, y), mode)) return false; // can see through doorways
     }
     return true;
   }

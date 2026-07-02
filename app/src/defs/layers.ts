@@ -14,12 +14,13 @@ export interface LayerDef extends Def {
 export interface WeaponDef extends LayerDef {
   wclass: 'light' | 'medium' | 'heavy' | 'ranged';
   primary: ContentId; // basic-attack ability
-  visual?: { kind: 'blade' | 'club'; length: number; width: number; color: number }; // drawn in-hand
+  visual?: { kind: 'blade' | 'dagger' | 'club'; length: number; width: number; color: number }; // drawn in-hand
 }
 export interface FruitDef extends LayerDef {
   ftype: 'paramecia' | 'zoan' | 'logia';
-  primary: ContentId; // overrides the basic attack while held
-  slots: ContentId[]; // extra abilities (K, L)
+  primary: ContentId; // overrides the LIGHT attack while held
+  heavy?: ContentId; // overrides the HEAVY attack while held (e.g. Gomu Stamp); falls back to the kick
+  slots: ContentId[]; // extra abilities (U, I)
 }
 export interface StyleDef extends LayerDef {
   dash: ContentId;
@@ -35,10 +36,20 @@ Weapons.register({
   id: 'weapon.cutlass',
   name: 'Cutlass',
   wclass: 'medium',
-  primary: 'ability.slash',
+  primary: 'ability.cut',
   visual: { kind: 'blade', length: 30, width: 5, color: 0xcdd3da },
   modifiers: [{ stat: 'atk', op: 'flat', value: 6, source: 'weapon:weapon.cutlass' }],
   tags: ['weapon.class.medium'],
+});
+
+Weapons.register({
+  id: 'weapon.knife',
+  name: 'Knife',
+  wclass: 'light',
+  primary: 'ability.stab',
+  visual: { kind: 'dagger', length: 22, width: 3, color: 0xbfc6cf }, // short, thin dagger (grip + guard + point)
+  modifiers: [{ stat: 'atk', op: 'flat', value: 3, source: 'weapon:weapon.knife' }], // light = modest bonus (cutlass is +6)
+  tags: ['weapon.class.light'],
 });
 
 Fruits.register({
@@ -46,9 +57,10 @@ Fruits.register({
   name: 'Gomu Gomu no Mi',
   ftype: 'paramecia',
   primary: 'ability.gomuPistol',
+  heavy: 'ability.gomuStamp',
   slots: ['ability.gomuGatling', 'ability.gomuRocket'],
   modifiers: [{ stat: 'atk', op: 'flat', value: 5, source: 'fruit:fruit.gomu' }],
-  tags: ['fruit.type.paramecia'],
+  tags: ['fruit.type.paramecia', 'fruit.gomu.rubber'],
 });
 
 Styles.register({

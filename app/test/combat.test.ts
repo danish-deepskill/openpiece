@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Registry } from '../src/core/Registry';
-import { StatBlock } from '../src/combat/Stat';
-import { TagSet } from '../src/combat/Tags';
+import { StatBlock } from '../src/combat/StatBlock';
+import { TagSet } from '../src/combat/TagSet';
 import { tierFromScore, tierIndex, tierStats } from '../src/combat/PowerTier';
 
 describe('StatBlock', () => {
@@ -52,10 +52,10 @@ describe('TagSet', () => {
 describe('Registry', () => {
   it('registers, looks up, and fails fast on dup/unknown', () => {
     const r = new Registry<{ id: string; v: number }>('Test');
-    r.register({ id: 'a', v: 1 });
-    expect(r.get('a').v).toBe(1);
+    r.register({ id: 'test.a', v: 1 });
+    expect(r.get('test.a').v).toBe(1);
     expect(r.size).toBe(1);
-    expect(() => r.register({ id: 'a', v: 2 })).toThrow();
+    expect(() => r.register({ id: 'test.a', v: 2 })).toThrow();
     expect(() => r.get('nope')).toThrow();
   });
 });
@@ -77,6 +77,6 @@ describe('PowerTier', () => {
     expect(ePlus.hp).toBeGreaterThan(fMinus.hp); // higher tier = more hp
     expect(ePlus.atk).toBeGreaterThan(fMinus.atk);
     expect(ePlus.atkSpeed).toBeGreaterThan(fMinus.atkSpeed); // and faster recovery
-    expect(fMinus.atkSpeed).toBeCloseTo(0.55); // fodder swings slowly
+    expect(fMinus.atkSpeed).toBeCloseTo(0.45); // fodder swings slowly
   });
 });

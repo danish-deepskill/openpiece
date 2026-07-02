@@ -36,8 +36,31 @@ export function tierStats(t: PowerTier): TierStats {
     hp: Math.round(46 * Math.pow(1.29, i)),
     atk: Math.round(5 * Math.pow(1.26, i)),
     def: Math.round(Math.max(0, i - 2) * 1.3), // stays 0 through the F bands; matters from E- up
-    atkSpeed: +(0.55 + 0.15 * i).toFixed(2),
+    atkSpeed: +(0.45 + 0.1 * i).toFixed(2), // deliberate base pace; only high tiers climb past 1.0 (fast)
   };
+}
+
+/**
+ * Rank color per letter tier (the -/+ bands share their letter's color), matching the design reference:
+ * F/E/D are grayscale (weak → light), then green → blue → purple → red → orange → gold at the apex.
+ * (F/E kept legibly light rather than near-black so they read on the dark nameplate stroke.)
+ */
+const TIER_COLORS: Record<TierLetter, string> = {
+  F: '#7c8085', // dark gray
+  E: '#a7adb3', // gray
+  D: '#cfd4d8', // light gray
+  C: '#5ec84d', // green
+  B: '#4a90e2', // blue
+  A: '#9b59f6', // purple
+  S: '#ff4d4d', // red
+  SS: '#ff8c1a', // orange
+  SSS: '#ffd24a', // gold
+};
+
+/** CSS hex color for a tier band (accepts 'F-', 'SS+', …); falls back to white for anything unrecognized. */
+export function tierColor(tier: string): string {
+  const letter = tier.replace(/[+-]+$/, '') as TierLetter;
+  return TIER_COLORS[letter] ?? '#e3e3e3';
 }
 
 /** Placeholder reverse map (numeric power score → tier band); real formula from attributes+gear is TBD. */

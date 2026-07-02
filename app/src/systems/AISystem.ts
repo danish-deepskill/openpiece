@@ -9,10 +9,9 @@ export class AISystem {
   ) {}
 
   update(dt: number): void {
-    this.ctx.controlled = this.world.first('control');
     for (const e of this.world.with('ai', 'transform', 'mover')) {
       if (e.control) continue;
-      e.ai!.brain.think(e, this.ctx, dt);
+      e.ai.brain.think(e, this.ctx, dt);
     }
   }
 }

@@ -9,6 +9,7 @@ export type FactionId =
   | 'straw_hat'
   | 'bandits'
   | 'civilians'
+  | 'wildlife'
   | 'marines'
   | 'revolutionary'
   | 'worldgov'
@@ -37,13 +38,22 @@ export const FactionDefs: Record<FactionId, FactionDef> = {
     id: 'bandits',
     name: 'Island Bandits',
     color: 0xb5483a,
-    default: 'hostile', // hostile to everyone (but allied with their own kind)
+    default: 'hostile', // hostile to every FACTION of people (allied with their own kind)…
+    stances: { wildlife: 'neutral' }, // …but they don't hunt animals — wildlife is only ever prey to the player
   },
   civilians: {
     id: 'civilians',
     name: 'Townsfolk',
     color: 0x3f7f4a,
     default: 'neutral',
+    // allied with the player's crew; at war with the bandits (so townsfolk defend themselves + the town)
+    stances: { straw_hat: 'ally', bandits: 'hostile' },
+  },
+  wildlife: {
+    id: 'wildlife',
+    name: 'Wildlife',
+    color: 0x9a7b4f, // tan; wildlife is neutral to ALL — passive critters (cows/pigs) nobody's AI hunts…
+    default: 'neutral', // …but the player can still strike them (see Factions.canHarm), so they're huntable
   },
   // --- defined for the road ahead; not yet spawned ---
   marines: {
@@ -76,7 +86,7 @@ export const FactionDefs: Record<FactionId, FactionDef> = {
   },
 };
 
-export class Factions {
+export class FactionRelations {
   constructor(private readonly defs: Record<FactionId, FactionDef> = FactionDefs) {}
 
   def(id: FactionId): FactionDef {
@@ -93,10 +103,19 @@ export class Factions {
     return this.stance(a, b) === 'hostile';
   }
 
+  /** Can A's attack damage B? Anything that isn't an ally — hostiles AND neutral wildlife (so critters are
+   *  huntable), but never a friend. AI *targeting* still uses isHostile; this only gates what a swing lands on. */
+  canHarm(a: FactionId, b: FactionId): boolean {
+    return !this.isAlly(a, b);
+  }
+
   isAlly(a: FactionId, b: FactionId): boolean {
     return a === b || this.stance(a, b) === 'ally';
   }
 }
 
-/** Shared singleton, like the EventBus. Content/data, so a singleton is fine. */
-export const factions = new Factions();
+/** Shared singleton, like the EventBus — stateless data/contract, so a singleton is allowed (see DESIGN_PATTERNS §5). */
+export const factions = new FactionRelations();
+
+/** The faction a fresh game's controlled hero belongs to (used as the no-controlled-entity fallback). */
+export const DEFAULT_PLAYER_FACTION: FactionId = 'straw_hat';

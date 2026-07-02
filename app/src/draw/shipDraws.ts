@@ -1,6 +1,6 @@
 import { clamp } from '../core/math';
 import { ShipHulls } from '../defs/ships';
-import type { DrawFn } from '../ecs/components';
+import type { DrawFn } from './actorDraws';
 
 type P = { x: number; y: number };
 

@@ -1,14 +1,18 @@
 import { Abilities, abilityRange, type AbilityDef } from '../combat/Ability';
+import { spendStamina } from '../combat/stamina';
+import { harmableBy } from '../combat/targeting';
+import { FX_COLOR } from '../config/constants';
+import { events } from '../core/EventBus';
 import { angleDiff, dist, norm } from '../core/math';
-import { factions } from '../defs/factions';
+import type { Rng } from '../core/Rng';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
-import type { Damage } from './Damage';
 import type { EffectSystem } from './EffectSystem';
-import type { FxSystem } from './FxSystem';
+import type { StrikeResolver } from './StrikeResolver';
 
-/** Stamina regenerated per second, shared by every combatant. */
-const STAM_REGEN = 16;
+/** Per-strike aim error (rad), centred toward 0 — natural imprecision so combat isn't a perfect lock.
+ *  (Could become a per-unit `accuracy` stat later: skilled fighters tighten this.) */
+const AIM_SPREAD = 0.18;
 
 /**
  * Resolves abilities for any actor with a `loadout` — the single attack path (the old CombatSystem folded
@@ -17,13 +21,13 @@ const STAM_REGEN = 16;
 export class AbilitySystem {
   constructor(
     private readonly world: World,
-    private readonly damage: Damage,
-    private readonly fx: FxSystem,
     private readonly effects: EffectSystem,
+    private readonly strikes: StrikeResolver,
+    private readonly rng: Rng, // the seeded `combat` stream: scatter / motion / side picks (determinism)
   ) {}
 
-  /** Decrement cooldowns, regen stamina, and decay combo — for every combatant, not just the player. */
-  tick(dt: number): void {
+  /** Decrement every loadout's ability cooldowns. (Combatant resource upkeep lives in CombatantSystem.) */
+  update(dt: number): void {
     for (const e of this.world.with('loadout')) {
       const cd = e.loadout!.cd;
       for (const [k, v] of cd) {
@@ -32,13 +36,39 @@ export class AbilitySystem {
         else cd.set(k, n);
       }
     }
-    for (const e of this.world.with('combatant')) {
-      const c = e.combatant!;
-      if (c.comboT > 0) {
-        c.comboT -= dt;
-        if (c.comboT <= 0) c.combo = 0;
+    // deferred launches (Gomu Rocket): fire the body-impulse once the grab-arm has reached forward
+    for (const e of this.world.with('melee', 'mover', 'transform')) {
+      const m = e.melee!;
+      const d = Abilities.get(m.ability);
+      if (!d.selfImpulse) continue;
+      if (!m.launched && d.launchAt !== undefined && m.t / m.dur >= d.launchAt) {
+        m.launched = true; // the grab reached forward → rocket the body
+        this.launch(e, m.angle, d.selfImpulse, d.impulseDur ?? 0.16);
+      } else if (m.launched && !m.landed && d.shape?.landRadius !== undefined && e.mover!.dodgeT <= 0) {
+        m.landed = true; // the leap has stopped → slam the area it landed in
+        this.landAoe(e, d);
       }
-      if (c.stam < c.maxStam) c.stam = Math.min(c.maxStam, c.stam + STAM_REGEN * dt);
+    }
+  }
+
+  /** Gomu Rocket landing: a slam AoE where the body stops — damage + outward knockback to hostiles in radius. */
+  private landAoe(e: Entity, d: AbilityDef): void {
+    const t = e.transform!;
+    const radius = d.shape!.landRadius!;
+    const canHit = harmableBy(e);
+    const base = this.strikes.baseDamage(e, d);
+    const kb = d.knockback ?? 0;
+    events.emit('fx:burst', { x: t.x, y: t.y, color: FX_COLOR.spark, n: 22, speed: 320 });
+    if (d.shake) events.emit('fx:shake', { amount: d.shake }); // one shake for the slam impact (data opt-in)
+    for (const o of this.world.with('transform', 'health', 'faction')) {
+      if (!canHit(o)) continue;
+      const ot = o.transform;
+      const dx = ot.x - t.x;
+      const dy = ot.y - t.y;
+      const gap = Math.hypot(dx, dy); // NOT `dist` — that would shadow the core/math import used below
+      if (gap > radius + ot.r) continue;
+      const inv = gap > 0.01 ? 1 / gap : 0; // knock each target radially outward from the impact
+      this.strikes.hit(e, o, base, dx * inv * kb, dy * inv * kb, 0, d.stun ?? 0); // no per-target shake; the slam shook once above
     }
   }
 
@@ -47,38 +77,75 @@ export class AbilitySystem {
     if (!lo || !lo.granted.has(id)) return false;
     if ((lo.cd.get(id) ?? 0) > 0) return false;
     const d = Abilities.get(id);
-    if (d.minStam && (e.combatant?.stam ?? 0) < d.minStam) return false;
+    if (d.costStam && (e.combatant?.stam ?? 0) < d.costStam) return false; // can't use what you can't afford
     if (d.blockTags && e.tags && d.blockTags.some((t) => e.tags!.has(t))) return false;
     if (d.requireTags && (!e.tags || !d.requireTags.every((t) => e.tags!.has(t)))) return false;
     return true;
   }
 
   activate(e: Entity, id: string): boolean {
+    if ((e.combatant?.stunT ?? 0) > 0) return false; // staggered (hitstun) — can't act
     if (!this.ready(e, id)) return false;
     const d = Abilities.get(id);
-    if (d.costStam && e.combatant) e.combatant.stam = Math.max(0, e.combatant.stam - d.costStam);
+    if (d.costStam && e.combatant) spendStamina(e.combatant, d.costStam); // spend + regen pause, one rule
     // attack speed is a tier stat: effective recovery = base cooldown / atkSpeed (default 1)
     const atkSpeed = Math.max(0.1, e.attributes?.get('atkSpeed') ?? 1);
     e.loadout!.cd.set(id, d.cooldown / atkSpeed);
-    if (d.selfImpulse) this.impulse(e, d.selfImpulse);
     if (d.grantEffect) this.effects.apply(e, d.grantEffect, id);
     if (d.shape) {
-      // decide the swing shape here so the animation and the hit match (e.g. 'mixed' → random arc/line)
-      const pattern = d.shape.pattern === 'mixed' ? (Math.random() < 0.5 ? 'line' : 'arc') : d.shape.pattern ?? 'arc';
-      const line = pattern === 'line';
-      if (e.render) {
-        e.render.swingT = 0.18;
-        e.render.swingMax = 0.18;
-        e.render.swingSide = e.equipment?.weapon ? 1 : Math.random() < 0.5 ? -1 : 1; // weapon hand if armed
-        e.render.swingArc = !line; // arc → sweep the weapon; line → lunge it forward
-        e.render.swingArcHalf = d.shape.arc;
-      }
-      this.resolveHit(e, d, line);
+      if (d.shape.swing === 'pistol') this.resolveHit(e, d); // ranged: instant shot
+      else this.startSwing(e, id, d); // melee: a moving hitbox MeleeSystem resolves on contact
     }
+    // immediate dash (dodge/flash); a launchAt ability defers its impulse until mid-swing (grab → THEN rocket)
+    if (d.selfImpulse && d.launchAt === undefined) this.impulse(e, d.selfImpulse, d.impulseDur ?? 0.16);
     return true;
   }
 
-  private impulse(e: Entity, speed: number): void {
+  /** A small centred random aim error so no strike is a perfect lock (biased toward 0; rarely wide). */
+  private scatter(angle: number): number {
+    return angle + (this.rng.next() - this.rng.next()) * AIM_SPREAD;
+  }
+
+  /** Begin a melee swing — the animated fist/blade becomes the hitbox (see MeleeSystem). */
+  private startSwing(e: Entity, id: string, d: AbilityDef): void {
+    const shape = d.shape!;
+    const pat = shape.pattern ?? 'arc';
+    // resolve to a concrete motion archetype; 'mixed' picks once HERE so the render + hitbox agree all swing
+    const motion = pat === 'mixed' ? (this.rng.chance(0.5) ? 'stab' : 'arc') : pat === 'line' ? 'stab' : pat;
+    const stretch = motion === 'stretch';
+    const foot = shape.limb === 'foot';
+    let side: number;
+    if (foot && e.combatant) {
+      // alternate kicking feet so consecutive kicks visibly MIRROR (left → right → left …), like real kicks
+      e.combatant.kickSide = -(e.combatant.kickSide ?? -1);
+      side = e.combatant.kickSide;
+    } else if (!stretch && e.equipment?.weapon) {
+      side = 1; // armed hand swings use the weapon hand
+    } else {
+      side = this.rng.sign(); // a bare fist or rubber stretch throws from either hand
+    }
+    e.melee = {
+      ability: id,
+      t: 0,
+      dur: shape.swingTime ?? 0.18,
+      motion,
+      side,
+      angle: this.scatter(e.transform!.angle), // committed aim + natural scatter — moving still makes it whiff
+      hit: [],
+      lastJab: stretch ? -1 : undefined,
+    };
+  }
+
+  /** Rocket the body along `angle` (Gomu Rocket) — a far, committed leap, longer-carrying than a dodge hop. */
+  private launch(e: Entity, angle: number, speed: number, dur: number): void {
+    const m = e.mover!;
+    m.dvx = Math.cos(angle) * speed;
+    m.dvy = Math.sin(angle) * speed;
+    m.dodgeT = dur; // per-ability carry (Gomu Rocket sets a long leap in its def)
+    events.emit('fx:burst', { x: e.transform!.x, y: e.transform!.y, color: 0xffffff, n: 12, speed: 240 });
+  }
+
+  private impulse(e: Entity, speed: number, dur: number): void {
     const t = e.transform!;
     const m = e.mover!;
     let dx = m.vx;
@@ -90,63 +157,35 @@ export class AbilitySystem {
     const [nx, ny] = norm(dx, dy);
     m.dvx = nx * speed;
     m.dvy = ny * speed;
-    m.dodgeT = 0.16; // short hop, not a long glide
-    this.fx.burst(t.x, t.y, 0xffffff, 8, 160);
+    m.dodgeT = dur; // short hop by default; abilities tune it via impulseDur
+    events.emit('fx:burst', { x: t.x, y: t.y, color: 0xffffff, n: 8, speed: 160 });
   }
 
-  private resolveHit(e: Entity, d: AbilityDef, line: boolean): void {
+  /** Instant ranged shot (pistol): a cone test from the muzzle; each chosen target resolved via StrikeResolver. */
+  private resolveHit(e: Entity, d: AbilityDef): void {
     const t = e.transform!;
     const shape = d.shape!;
-    const mine = e.faction!.id;
-    const combo = Math.min(e.combatant?.combo ?? 0, 5);
-    const base = (d.damageStat ? e.attributes?.get(d.damageStat) ?? 0 : 0) + (d.damageFlat ?? 0) + combo;
-    const range = abilityRange(d, e.attributes?.get('reach') ?? 0); // body reach + weapon bonus (melee)
-    const swingType = line ? 'thrust' : shape.swing; // a thrust draws a forward line, not an arc
-    const life = shape.swing === 'pistol' ? 0.16 : 0.14;
-    this.fx.swing({ type: swingType, x: t.x, y: t.y, angle: t.angle, len: range, life, max: life, arc: shape.arc });
-
-    const fwx = Math.cos(t.angle);
-    const fwy = Math.sin(t.angle);
-    const halfW = shape.width ?? 12;
+    const canHit = harmableBy(e);
+    const base = this.strikes.baseDamage(e, d);
+    const range = abilityRange(d, e.attributes?.get('reach') ?? 0);
+    const aim = this.scatter(t.angle); // the shot scatters slightly off true aim
+    events.emit('fx:swing', { type: 'pistol', x: t.x, y: t.y, angle: aim, len: range, life: 0.16, max: 0.16, arc: shape.arc });
 
     const targets = this.world
       .with('transform', 'health', 'faction')
-      .filter((o) => o !== e && !o.ship && !o.health!.dead && factions.isHostile(mine, o.faction!.id))
+      .filter(canHit)
       .sort((a, b) => dist(t.x, t.y, a.transform!.x, a.transform!.y) - dist(t.x, t.y, b.transform!.x, b.transform!.y));
 
+    const kb = d.knockback ?? 0;
     for (const o of targets) {
       const ot = o.transform!;
       const rx = ot.x - t.x;
       const ry = ot.y - t.y;
-      if (line) {
-        // forward corridor: in front, within reach, and close to the aim line
-        const proj = rx * fwx + ry * fwy;
-        if (proj < 0 || proj > range + ot.r) continue;
-        if (Math.abs(rx * -fwy + ry * fwx) > halfW + ot.r) continue;
-      } else {
-        if (dist(t.x, t.y, ot.x, ot.y) > range + ot.r) continue;
-        if (Math.abs(angleDiff(Math.atan2(ry, rx), t.angle)) >= shape.arc) continue;
-      }
-
-      // Logia intangibility: the blow phases through unless the attacker has Armament Haki active.
-      // (The rock-paper-scissors counter emerges purely from tags — no fruit/haki-specific code.)
-      if (o.tags?.has('state.logia.intangible') && !e.tags?.has('haki.armament.active')) {
-        this.fx.burst(ot.x, ot.y, 0x9fd0ff, 6, 110);
-        if (shape.single) break;
-        continue;
-      }
-
+      if (dist(t.x, t.y, ot.x, ot.y) > range + ot.r) continue;
+      if (Math.abs(angleDiff(Math.atan2(ry, rx), aim)) >= shape.arc) continue;
       const [nx, ny] = norm(rx, ry);
-      const kb = d.knockback ?? 0;
-      // `toHero` only tints the floating damage number (red when the hero is hit) — works for any attacker
-      this.damage.apply(o, base, nx * kb, ny * kb, !!o.control);
-      this.fx.burst((t.x + ot.x) / 2, (t.y + ot.y) / 2, 0xffe08a, 5, 200);
-      this.fx.shake(shape.swing === 'pistol' ? 7 : 3);
-      if (e.combatant) {
-        e.combatant.combo++;
-        e.combatant.comboT = 2;
-      }
-      if (shape.single) break;
+      this.strikes.hit(e, o, base, nx * kb, ny * kb, d.shake ?? 0, d.stun ?? 0);
+      if (shape.single) break; // single-target shot stops at the nearest in the cone (hit or phased)
     }
   }
 }

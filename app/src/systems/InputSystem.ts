@@ -1,33 +1,43 @@
 import Phaser from 'phaser';
-import { equip } from '../combat/equip';
+import { toggleAttackMode } from '../combat/equip';
+import { trySprint } from '../combat/stamina';
 import { events } from '../core/EventBus';
-import { norm } from '../core/math';
-import type { Entity } from '../ecs/components';
+import { angleDiff, norm, smoothFactor } from '../core/math';
 import type { World } from '../ecs/World';
 import type { SpatialQuery } from '../world/SpatialQuery';
 import type { AbilitySystem } from './AbilitySystem';
+import type { DialogueSystem } from './DialogueSystem';
 import type { GameDirector } from './GameDirector';
+import type { InteractionSystem } from './InteractionSystem';
 import type { ShipSystem } from './ShipSystem';
 
 interface Keys {
   W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key;
-  J: Phaser.Input.Keyboard.Key; K: Phaser.Input.Keyboard.Key; L: Phaser.Input.Keyboard.Key;
+  J: Phaser.Input.Keyboard.Key; K: Phaser.Input.Keyboard.Key; L: Phaser.Input.Keyboard.Key; U: Phaser.Input.Keyboard.Key; I: Phaser.Input.Keyboard.Key; R: Phaser.Input.Keyboard.Key;
   Q: Phaser.Input.Keyboard.Key; F: Phaser.Input.Keyboard.Key; E: Phaser.Input.Keyboard.Key; G: Phaser.Input.Keyboard.Key;
   C: Phaser.Input.Keyboard.Key; B: Phaser.Input.Keyboard.Key; T: Phaser.Input.Keyboard.Key; SHIFT: Phaser.Input.Keyboard.Key;
   UP: Phaser.Input.Keyboard.Key; DOWN: Phaser.Input.Keyboard.Key; LEFT: Phaser.Input.Keyboard.Key; RIGHT: Phaser.Input.Keyboard.Key;
 }
 
-/** Sprint: hold SHIFT for a speed boost that drains the shared stamina pool. */
-const SPRINT_MULT = 1.5;
-const SPRINT_DRAIN = 24; // stamina/sec while sprinting
+/** Auto-aim turn rate (rad/s): a soft lock that tracks the target rather than snapping onto it. */
+const AUTO_AIM_TRACK = 7;
+/** Auto-aim acquisition radius (px) — input feel, so file-local rather than sim data. */
+const AUTO_AIM_RANGE = 700;
 
 /**
  * Drives whichever entity holds the `control` tag. Movement sets `mover` intent; combat keys activate the
  * entity's loadout abilities through the AbilitySystem (so the four-layer build decides what each key does).
  */
+type TapKey = 'E' | 'T' | 'Q' | 'C' | 'R';
+
 export class InputSystem {
   private readonly keys: Keys;
-  private autoAim = false;
+  private autoAim = true; // on by default — toggle with T
+  private announced = false;
+  /** Edge-taps latched per RENDER frame (sample()) and consumed by exactly one sim step (tap()) — under the
+   *  fixed timestep a frame can run 0 sim steps, and Phaser clears JustDown on keyup, so polling JustDown
+   *  inside the step could drop a fast tap entirely. */
+  private readonly tapped = new Set<TapKey>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -36,9 +46,11 @@ export class InputSystem {
     private readonly abilities: AbilitySystem,
     private readonly ships: ShipSystem,
     private readonly director: GameDirector,
+    private readonly interactions: InteractionSystem,
+    private readonly dialogue: DialogueSystem,
   ) {
     this.keys = scene.input.keyboard!.addKeys(
-      'W,A,S,D,J,K,L,Q,F,E,G,C,B,T,SHIFT,UP,DOWN,LEFT,RIGHT',
+      'W,A,S,D,J,K,L,U,I,Q,F,E,G,C,B,R,T,SHIFT,UP,DOWN,LEFT,RIGHT',
     ) as unknown as Keys;
     scene.input.mouse?.disableContextMenu();
   }
@@ -47,14 +59,29 @@ export class InputSystem {
     return this.keys[k].isDown;
   }
 
+  /** Called once per RENDER frame (WorldScene), BEFORE the sim steps — latches edge-presses. */
+  sample(): void {
+    for (const k of ['E', 'T', 'Q', 'C', 'R'] as const) {
+      if (Phaser.Input.Keyboard.JustDown(this.keys[k])) this.tapped.add(k);
+    }
+  }
+
+  /** Consume a latched tap (fires in exactly ONE sim step). */
+  private tap(k: TapKey): boolean {
+    return this.tapped.delete(k);
+  }
+
   update(dt: number): void {
+    if (!this.announced) {
+      this.announced = true; // surface the starting auto-aim state once the HUD is listening
+      events.emit('autoAimChanged', { on: this.autoAim });
+    }
     const e = this.world.first('control');
     if (!e || !e.avatar || !e.loadout) return;
-    const av = e.avatar;
     const t = e.transform!;
     const m = e.mover!;
 
-    const ePressed = Phaser.Input.Keyboard.JustDown(this.keys.E);
+    const ePressed = this.tap('E');
     if (this.director.state !== 'play') {
       if (ePressed && this.director.state === 'dead') this.director.respawn();
       else if (ePressed && this.director.state === 'win') this.director.setState('play');
@@ -63,8 +90,10 @@ export class InputSystem {
       return;
     }
 
-    // interact: ship board/disembark, else pick up a nearby item
-    if (ePressed && !this.ships.interact(e)) this.tryPickup(e);
+    // E: advance an open dialogue first; otherwise resolve the best interaction verb (board/disembark/take/talk/…)
+    if (ePressed) {
+      if (!this.dialogue.advance()) this.interactions.interact(e);
+    }
 
     // piloting a ship — route movement to the helm, skip foot controls
     if (e.riding) {
@@ -79,7 +108,7 @@ export class InputSystem {
     // (stamina regen + combo decay are ticked for ALL combatants in AbilitySystem.tick — not here)
 
     // auto-aim toggle (T): lock attacks onto the nearest hostile; otherwise follow the pointer
-    if (Phaser.Input.Keyboard.JustDown(this.keys.T)) {
+    if (this.tap('T')) {
       this.autoAim = !this.autoAim;
       events.emit('autoAimChanged', { on: this.autoAim });
       events.emit('notify', { msg: `Auto-aim ${this.autoAim ? 'ON' : 'OFF'}` });
@@ -87,9 +116,11 @@ export class InputSystem {
     const ptr = this.scene.input.activePointer;
     let aimed = false;
     if (this.autoAim) {
-      const foe = this.query.nearestHostile(t.x, t.y, 700, e.faction!.id);
+      const foe = this.query.nearestHostile(t.x, t.y, AUTO_AIM_RANGE, e.faction!.id);
       if (foe?.transform) {
-        t.angle = Math.atan2(foe.transform.y - t.y, foe.transform.x - t.x);
+        // soft lock: rotate TOWARD the target, don't snap — a strafing enemy is hard to keep dead-on
+        const target = Math.atan2(foe.transform.y - t.y, foe.transform.x - t.x);
+        t.angle += angleDiff(target, t.angle) * smoothFactor(AUTO_AIM_TRACK, dt);
         aimed = true;
       }
     }
@@ -102,12 +133,8 @@ export class InputSystem {
     const ix = (this.down('D') || this.down('RIGHT') ? 1 : 0) - (this.down('A') || this.down('LEFT') ? 1 : 0);
     const iy = (this.down('S') || this.down('DOWN') ? 1 : 0) - (this.down('W') || this.down('UP') ? 1 : 0);
     const moving = ix !== 0 || iy !== 0;
-    const c = e.combatant;
     let speed = m.speed;
-    if (this.down('SHIFT') && moving && c && c.stam > 1) {
-      speed *= SPRINT_MULT;
-      c.stam = Math.max(0, c.stam - SPRINT_DRAIN * dt);
-    }
+    if (this.down('SHIFT') && moving) speed = trySprint(e, speed, dt); // the SAME sprint rule the AI uses (the Moat)
     if (m.dodgeT > 0) {
       // velocity from the dash impulse (MovementSystem)
     } else if (moving) {
@@ -120,42 +147,13 @@ export class InputSystem {
     }
 
     // abilities (the loadout decides what each key does)
-    if (Phaser.Input.Keyboard.JustDown(this.keys.Q) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.dash);
-    if ((ptr.leftButtonDown() || this.down('J')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.primary);
-    if (this.down('K') && e.loadout.slots[0]) this.abilities.activate(e, e.loadout.slots[0]);
-    if ((ptr.rightButtonDown() || this.down('L')) && e.loadout.slots[1]) this.abilities.activate(e, e.loadout.slots[1]);
-    if (Phaser.Input.Keyboard.JustDown(this.keys.C)) this.abilities.activate(e, 'ability.armament');
-
-    // DEBUG: G = eat the Gomu fruit (until a fruit pickup is placed in the world)
-    if (Phaser.Input.Keyboard.JustDown(this.keys.G) && !e.equipment?.fruit) {
-      equip(e, 'fruit', 'fruit.gomu');
-      av.hasFruit = true;
-      events.emit('notify', { msg: 'You ate the Gomu Gomu no Mi! Pistol/Gatling/Rocket unlocked.' });
-    }
+    if (this.tap('Q') && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.dash);
+    if ((ptr.leftButtonDown() || this.down('J')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.primary); // light: LMB / J
+    if ((ptr.rightButtonDown() || this.down('K')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.heavy); // heavy: RMB / K
+    if (this.down('U') && e.loadout.slots[0]) this.abilities.activate(e, e.loadout.slots[0]); // special 1
+    if (this.down('I') && e.loadout.slots[1]) this.abilities.activate(e, e.loadout.slots[1]); // special 2
+    if (this.tap('C') && e.loadout.utility) this.abilities.activate(e, e.loadout.utility); // buff slot (Haki layer grants it later)
+    if (this.tap('R')) toggleAttackMode(e); // swap stance: fist (Punch/Kick) ↔ fruit
   }
 
-  private tryPickup(e: Entity): void {
-    const t = e.transform!;
-    let best: Entity | undefined;
-    let bd = 42 * 42;
-    for (const it of this.world.with('pickup', 'transform')) {
-      const d = (t.x - it.transform!.x) ** 2 + (t.y - it.transform!.y) ** 2;
-      if (d < bd) {
-        bd = d;
-        best = it;
-      }
-    }
-    if (!best) return;
-    const pk = best.pickup!;
-    if (pk.kind === 'weapon') {
-      equip(e, 'weapon', pk.defId);
-      events.emit('notify', { msg: `Equipped ${pk.label}.` });
-    } else {
-      equip(e, 'fruit', pk.defId);
-      if (e.avatar) e.avatar.hasFruit = true;
-      events.emit('notify', { msg: `Ate the ${pk.label}!` });
-    }
-    best.render?.gfx.destroy();
-    this.world.destroy(best);
-  }
 }

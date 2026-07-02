@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { Depth } from '../config/constants';
+import { Depth, FX_COLOR } from '../config/constants';
+import { events, type SwingFx } from '../core/EventBus';
 import { clamp, rand } from '../core/math';
 import { Pool } from '../core/Pool';
 
@@ -7,30 +8,23 @@ interface Particle { x: number; y: number; vx: number; vy: number; life: number;
 interface Corpse { x: number; y: number; r: number; color: number; life: number; max: number }
 interface DmgText { obj: Phaser.GameObjects.Text; vy: number; life: number }
 
-export interface SwingOpts {
-  type: 'melee' | 'pistol' | 'thrust';
-  x: number;
-  y: number;
-  angle: number;
-  len: number;
-  life: number;
-  max: number;
-  arc?: number; // half-angle of the melee swing visual (matches the ability's hit cone)
-  enemy?: boolean;
-  thin?: boolean;
-}
-
 /** Pooled, presentation-only effects. Lives outside the ECS to keep the hot path allocation-free. */
 export class FxSystem {
   private readonly gfx: Phaser.GameObjects.Graphics;
   private particles: Particle[] = [];
-  private swings: SwingOpts[] = [];
+  private swings: SwingFx[] = [];
   private corpses: Corpse[] = [];
   private texts: DmgText[] = [];
   private readonly textPool: Pool<Phaser.GameObjects.Text>;
 
   constructor(private readonly scene: Phaser.Scene) {
     this.gfx = scene.add.graphics().setDepth(Depth.Fx);
+    // the sim EMITS fx events; this presentation system is their one subscriber (DESIGN_PATTERNS §7)
+    events.on('fx:burst', ({ x, y, color, n, speed }) => this.burst(x, y, color, n, speed));
+    events.on('fx:dmgText', ({ x, y, value, color }) => this.dmgText(x, y, value, color));
+    events.on('fx:swing', (o) => this.swing(o));
+    events.on('fx:corpse', ({ x, y, r, color }) => this.corpse(x, y, r, color));
+    events.on('fx:shake', ({ amount }) => this.shake(amount));
     this.textPool = new Pool<Phaser.GameObjects.Text>(
       () =>
         scene.add
@@ -44,7 +38,7 @@ export class FxSystem {
 
   burst(x: number, y: number, color: number, n: number, spd: number): void {
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2;
+      const a = Math.random() * Math.PI * 2; // cosmetic — MUST stay off the sim Rng streams (fx call counts vary)
       const s = rand(spd * 0.3, spd);
       this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.25, 0.55), max: 0.55, color, r: rand(2, 4) });
     }
@@ -56,7 +50,7 @@ export class FxSystem {
     this.texts.push({ obj: o, vy: -34, life: 0.8 });
   }
 
-  swing(o: SwingOpts): void {
+  swing(o: SwingFx): void {
     this.swings.push(o);
   }
 
@@ -72,8 +66,8 @@ export class FxSystem {
     for (const p of this.particles) {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.vx *= 0.9;
-      p.vy *= 0.9;
+      p.vx *= Math.pow(0.9, dt * 60); // time-based (visual only)
+      p.vy *= Math.pow(0.9, dt * 60);
       p.life -= dt;
     }
     this.particles = this.particles.filter((p) => p.life > 0);
@@ -87,7 +81,7 @@ export class FxSystem {
     for (let i = this.texts.length - 1; i >= 0; i--) {
       const d = this.texts[i];
       d.obj.y += d.vy * dt;
-      d.vy *= 0.92;
+      d.vy *= Math.pow(0.92, dt * 60);
       d.life -= dt;
       d.obj.setAlpha(clamp(d.life / 0.8, 0, 1));
       if (d.life <= 0) {
@@ -109,15 +103,15 @@ export class FxSystem {
     }
   }
 
-  private drawSwing(s: SwingOpts): void {
+  private drawSwing(s: SwingFx): void {
     const g = this.gfx;
     const k = s.life / s.max;
     if (s.type === 'pistol') {
-      g.lineStyle(s.thin ? 5 : 9, s.enemy ? 0xdc5050 : 0xffe08a, (s.enemy ? 1 : 0.9) * k);
+      g.lineStyle(s.thin ? 5 : 9, s.enemy ? 0xdc5050 : FX_COLOR.spark, (s.enemy ? 1 : 0.9) * k);
       const ex = s.x + Math.cos(s.angle) * s.len * (1.05 - k * 0.1);
       const ey = s.y + Math.sin(s.angle) * s.len * (1.05 - k * 0.1);
       g.lineBetween(s.x, s.y, ex, ey);
-      g.fillStyle(s.enemy ? 0xdc5050 : 0xffe08a, k);
+      g.fillStyle(s.enemy ? 0xdc5050 : FX_COLOR.spark, k);
       g.fillCircle(ex, ey, 12);
     } else if (s.type === 'thrust') {
       // straight forward stab — the line SHOOTS OUT then retracts (matches the weapon lunge), not full at once

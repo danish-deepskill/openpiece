@@ -1,26 +1,38 @@
-import type { GameState } from '../config/constants';
-
 /**
  * Typed cross-system event contract. Discrete one-off signals go here; continuous
  * per-frame state goes through the Phaser registry instead (see WorldScene).
+ * RULE: every key has ≥1 emitter and ≥1 listener — dead keys are deleted, not kept "for later".
  */
+/** The pistol-shot / swing-arc visual the sim asks presentation to draw (payload of 'fx:swing'). */
+export interface SwingFx {
+  type: 'melee' | 'pistol' | 'thrust';
+  x: number;
+  y: number;
+  angle: number;
+  len: number;
+  life: number;
+  max: number;
+  arc?: number; // half-angle of the melee swing visual (matches the ability's hit cone)
+  enemy?: boolean;
+  thin?: boolean;
+}
+
 export interface GameEvents {
   startGame: {};
   setPaused: { paused: boolean };
-  stateChanged: { state: GameState };
   notify: { msg: string };
-  objectiveChanged: { text: string };
+  // director hooks — consumed by HUD today; the event director/persistence will subscribe later
   enemyKilled: { gold: number; boss: boolean };
-  crewRecruited: { name: string; count: number };
-  crewFell: { name: string };
-  dialogueOpen: { name: string; lines: string[] };
-  dialogueAdvance: {};
-  dialogueClose: {};
-  cameraShake: { amount: number };
-  fruitEaten: {};
   playerDied: {};
   gameWon: {};
   autoAimChanged: { on: boolean };
+  // fx channel -- the SIM emits these; FxSystem (presentation) subscribes. Sim never calls presentation
+  // directly (DESIGN_PATTERNS section 5); this stream is also the future audio hook + net-replication feed.
+  'fx:burst': { x: number; y: number; color: number; n: number; speed: number };
+  'fx:dmgText': { x: number; y: number; value: number; color: string };
+  'fx:swing': SwingFx;
+  'fx:corpse': { x: number; y: number; r: number; color: number };
+  'fx:shake': { amount: number };
 }
 
 type EventKey = keyof GameEvents;
@@ -30,7 +42,9 @@ class EventBus {
   private listeners: { [K in EventKey]?: Array<Listener<K>> } = {};
 
   on<K extends EventKey>(event: K, fn: Listener<K>): () => void {
-    (this.listeners[event] ??= []).push(fn);
+    // cast: TS can't correlate the mapped-type slot with K here (microsoft/TypeScript#30581)
+    const arr = (this.listeners[event] ??= []) as Array<Listener<K>>;
+    arr.push(fn);
     return () => this.off(event, fn);
   }
 

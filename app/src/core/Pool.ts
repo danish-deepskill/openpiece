@@ -28,16 +28,4 @@ export class Pool<T> {
     this.reset(item);
     this.free.push(item);
   }
-
-  /** Release every active item whose predicate returns true (e.g. expired). */
-  releaseWhere(pred: (item: T) => boolean): void {
-    for (let i = this.active.length - 1; i >= 0; i--) {
-      const item = this.active[i];
-      if (pred(item)) {
-        this.active.splice(i, 1);
-        this.reset(item);
-        this.free.push(item);
-      }
-    }
-  }
 }

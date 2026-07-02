@@ -1,19 +1,13 @@
 import Phaser from 'phaser';
+import { visionOf } from '../ai/perception';
 import { GAME_W, TILE, Tile } from '../config/constants';
 import { Debug } from '../core/Debug';
 import { Abilities, abilityRange } from '../combat/Ability';
-import type { AIProfileDef } from '../defs/aiProfiles';
-import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { TileGrid } from '../world/TileGrid';
 
 const DEPTH = 1_000_000;
 const SQUAD_COLORS = [0xff5a5a, 0x5aa0ff, 0x7fd17f, 0xf0b429, 0xc97fff, 0xff9f43];
-
-interface Waypoint {
-  x: number;
-  y: number;
-}
 
 /**
  * World-space debug view, drawn per-layer from the Debug flags (toggled via the DOM panel — backtick).
@@ -106,7 +100,7 @@ export class DebugOverlay {
       for (const e of this.world.with('ai', 'transform')) {
         const t = e.transform!;
         const bb = e.ai!.bb;
-        const p = bb.profile as AIProfileDef | undefined;
+        const p = bb.profile;
         const sq = e.squad;
         const color = sq ? SQUAD_COLORS[sq.id % SQUAD_COLORS.length] : 0x999999;
         const hex = '#' + color.toString(16).padStart(6, '0');
@@ -117,18 +111,33 @@ export class DebugOverlay {
           this.label(t.x, t.y - t.r - 22, sq ? sq.name : 'solo', hex);
         }
         if (sight && p) {
-          g.lineStyle(1, color, 0.12);
-          g.strokeCircle(t.x, t.y, p.sight);
+          const v = visionOf(p);
+          const a = t.angle;
+          // forward vision cone (full sight range) — translucent wedge
+          g.fillStyle(color, 0.08);
+          g.slice(t.x, t.y, v.sight, a - v.cone, a + v.cone, false);
+          g.fillPath();
+          g.lineStyle(1, color, 0.3);
+          g.slice(t.x, t.y, v.sight, a - v.cone, a + v.cone, false);
+          g.strokePath();
+          // short side/peripheral range on each flank, out to the rear blind arc (the gap behind = blind)
+          g.lineStyle(1, color, 0.25);
+          g.beginPath();
+          g.arc(t.x, t.y, v.nearSight, a + v.cone, a + Math.PI - v.blind, false);
+          g.strokePath();
+          g.beginPath();
+          g.arc(t.x, t.y, v.nearSight, a - Math.PI + v.blind, a - v.cone, false);
+          g.strokePath();
         }
         if (focusL) {
-          const f = bb.focus as Entity | undefined;
+          const f = bb.focus;
           if (f?.transform) {
             g.lineStyle(1, color, 0.5);
             g.lineBetween(t.x, t.y, f.transform.x, f.transform.y);
           }
         }
         if (paths) {
-          const path = bb.path as Waypoint[] | null;
+          const path = bb.path;
           if (path && path.length) {
             g.lineStyle(2, 0x00e0ff, 0.85);
             g.beginPath();
@@ -144,9 +153,10 @@ export class DebugOverlay {
           g.fillTriangle(t.x, t.y - t.r - 16, t.x - 4, t.y - t.r - 9, t.x + 4, t.y - t.r - 9);
         }
         if (stats) {
-          const hp = e.health ? `${Math.ceil(e.health.hp)}/${e.health.maxhp}` : '';
+          const id = `${e.identity?.name ?? '?'} ${e.identity?.tier ?? ''}`.trim(); // e.g. "Brute F+"
+          const hp = e.health ? `${Math.ceil(e.health.hp)}/${e.health.maxHp}` : '';
           const atk = e.attributes ? ` atk${Math.round(e.attributes.get('atk'))}` : '';
-          this.label(t.x, t.y - t.r - 33, `${p?.name ?? '?'}·${bb.state}·${hp}${atk}${bb.broken ? '·FLEE' : ''}`, '#e6e6e6');
+          this.label(t.x, t.y - t.r - 33, `${id}·${p?.name ?? '?'}·${bb.state}·${hp}${atk}${bb.broken ? '·FLEE' : ''}`, '#e6e6e6');
         }
       }
     }
@@ -154,11 +164,12 @@ export class DebugOverlay {
     if (stats) {
       const hero = this.world.first('control');
       if (hero?.transform) {
-        const hp = hero.health ? `${Math.ceil(hero.health.hp)}/${hero.health.maxhp}` : '';
+        const hp = hero.health ? `${Math.ceil(hero.health.hp)}/${hero.health.maxHp}` : '';
         const atk = hero.attributes ? Math.round(hero.attributes.get('atk')) : 0;
         const stam = hero.combatant ? Math.round(hero.combatant.stam) : 0;
-        const tier = hero.attributes ? ` spd${Math.round(hero.attributes.get('atkSpeed') * 100) / 100}` : '';
-        this.label(hero.transform.x, hero.transform.y - hero.transform.r - 18, `YOU hp${hp} atk${atk} stam${stam}${tier}`, '#ffd166');
+        const spd = hero.attributes ? ` spd${Math.round(hero.attributes.get('atkSpeed') * 100) / 100}` : '';
+        const tier = hero.identity?.tier ? ` ${hero.identity.tier}` : '';
+        this.label(hero.transform.x, hero.transform.y - hero.transform.r - 18, `YOU${tier} hp${hp} atk${atk} stam${stam}${spd}`, '#ffd166');
       }
     }
 

@@ -1,25 +1,28 @@
 import { ENEMY, HOME, TILE, Tile } from '../config/constants';
-import { rand } from '../core/math';
+import type { Rng } from '../core/Rng';
 import { TileGrid } from './TileGrid';
 
-export interface VillagerSpawn { x: number; y: number; line: string }
-export interface PirateSpawn { x: number; y: number; name: string; hp: number; dmg: number }
-export interface EnemySpawn { x: number; y: number; boss: boolean }
+export interface EnemySpawn { x: number; y: number; boss: boolean; unit: string }
+
+export interface PickupSpawn { kind: 'weapon' | 'fruit'; defId: string; x: number; y: number }
 
 export interface LevelLayout {
   grid: TileGrid;
   playerSpawn: { x: number; y: number };
   boatSpawn: { x: number; y: number };
-  fruit: { x: number; y: number; treeX: number; treeY: number };
-  villagers: VillagerSpawn[];
-  pirates: PirateSpawn[];
+  pickups: PickupSpawn[];
+  doors: { tx: number; ty: number }[];
   enemies: EnemySpawn[];
 }
 
 const px = (tx: number) => tx * TILE;
 
-/** Procedurally builds the two-island map and every spawn placement (all in pixels). */
-export function generateLevel(): LevelLayout {
+/** Enemy-isle fodder mix: F- / F / F+ variants (Brutes wield a cutlass). WHO spawns is level data, not scene code. */
+const FODDER = ['unit.thug', 'unit.bandit', 'unit.brute'];
+
+/** Procedurally builds the two-island map and every spawn placement (all in pixels).
+ *  Takes the seeded `worldgen` stream — the whole level is a pure function of the seed. */
+export function generateLevel(rng: Rng): LevelLayout {
   const grid = new TileGrid();
 
   for (let y = 0; y < grid.h; y++) {
@@ -28,7 +31,8 @@ export function generateLevel(): LevelLayout {
       let t = Tile.Water;
       const dh = Math.hypot(x - HOME.cx, (y - HOME.cy) * 1.05);
       const de = Math.hypot(x - ENEMY.cx, (y - ENEMY.cy) * 1.05);
-      if (dh < HOME.r) t = dh < HOME.r - 2 ? Tile.Grass : Tile.Sand;
+      if (dh < HOME.r + 2 || de < ENEMY.r + 2) t = Tile.ShallowWater; // coastal shallows: a wadable ring off the beach
+      if (dh < HOME.r) t = dh < HOME.r - 2 ? Tile.Grass : Tile.Sand; // …overridden by the island itself (sand/grass)
       if (de < ENEMY.r) t = de < ENEMY.r - 2 ? Tile.Grass : Tile.Sand;
       row.push(t);
     }
@@ -48,6 +52,7 @@ export function generateLevel(): LevelLayout {
 
   // home village buildings — stamped as hollow wall blocks (Wall perimeter, Floor interior, 1-tile door).
   // Real grid obstacles so collision + pathfinding share one source of truth.
+  const doors: { tx: number; ty: number }[] = [];
   const stampHouse = (tx: number, ty: number, tw: number, th: number, label: string) => {
     for (let y = ty; y < ty + th; y++) {
       for (let x = tx; x < tx + tw; x++) {
@@ -56,68 +61,49 @@ export function generateLevel(): LevelLayout {
         grid.tiles[y][x] = edge ? Tile.Wall : Tile.Floor;
       }
     }
-    const doorX = tx + Math.floor(tw / 2); // gap in the bottom wall
-    if (grid.tiles[ty + th - 1]) grid.tiles[ty + th - 1][doorX] = Tile.Floor;
+    const doorX = tx + Math.floor(tw / 2); // doorway in the bottom wall (openable — see DoorSystem)
+    const doorY = ty + th - 1;
+    if (grid.tiles[doorY]) {
+      grid.tiles[doorY][doorX] = Tile.Door;
+      doors.push({ tx: doorX, ty: doorY });
+    }
     grid.labels.push({ x: px(tx) + px(tw) / 2, y: px(ty) - 6, text: label });
   };
-  stampHouse(HOME.cx - 7, HOME.cy - 6, 5, 4, 'House');
-  stampHouse(HOME.cx - 2, HOME.cy - 9, 5, 4, 'House');
-  stampHouse(HOME.cx - 9, HOME.cy + 1, 5, 4, 'House');
-  stampHouse(HOME.cx, HOME.cy + 4, 6, 4, 'Tavern');
-
-  const fruitX = px(HOME.cx + 4);
-  const fruitY = px(HOME.cy - 3);
-
-  const villLines = [
-    "Mornin'! The sea's calm today.",
-    "Heard there's a strange fruit by the old tree...",
-    'Bandits took over the eastern isle. Stay sharp.',
+  const houses = [
+    { tx: HOME.cx - 7, ty: HOME.cy - 6, tw: 5, th: 4, label: 'House' },
+    { tx: HOME.cx - 2, ty: HOME.cy - 9, tw: 5, th: 4, label: 'House' },
+    { tx: HOME.cx - 9, ty: HOME.cy + 1, tw: 5, th: 4, label: 'House' },
+    { tx: HOME.cx, ty: HOME.cy + 4, tw: 6, th: 4, label: 'Tavern' },
   ];
-  const villSpots: Array<[number, number]> = [
-    [HOME.cx - 3, HOME.cy - 2],
-    [HOME.cx + 2, HOME.cy - 1],
-    [HOME.cx - 5, HOME.cy + 3],
-    [HOME.cx, HOME.cy + 2],
-  ];
-  const villagers: VillagerSpawn[] = villSpots.map((s, i) => ({
-    x: px(s[0]),
-    y: px(s[1]),
-    line: villLines[i % villLines.length],
-  }));
+  for (const h of houses) stampHouse(h.tx, h.ty, h.tw, h.th, h.label);
+  // interior-center pixel of a house — where stashed loot sits (walk in through the door, press E)
+  const inside = (h: (typeof houses)[number]) => ({ x: px(h.tx) + px(h.tw) / 2, y: px(h.ty) + px(h.th) / 2 });
 
-  const pirateNames = ['Roric', 'Bell', 'Tason'];
-  const pirateSpots: Array<[number, number]> = [
-    [HOME.cx + 2, HOME.cy + 3],
-    [HOME.cx + 4, HOME.cy + 3],
-    [HOME.cx + 5, HOME.cy + 5],
+  // loot stashed inside two of the village houses
+  const pickups: PickupSpawn[] = [
+    { kind: 'weapon', defId: 'weapon.cutlass', ...inside(houses[0]) },
+    { kind: 'fruit', defId: 'fruit.gomu', ...inside(houses[2]) },
   ];
-  const pirates: PirateSpawn[] = pirateSpots.map((s, i) => ({
-    x: px(s[0]),
-    y: px(s[1]),
-    name: pirateNames[i],
-    hp: 80 + i * 10,
-    dmg: 18 + i * 4,
-  }));
 
   const enemies: EnemySpawn[] = [];
   for (let i = 0; i < 7; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const rr = rand(2, 9) * TILE;
+    const a = rng.range(0, Math.PI * 2);
+    const rr = rng.range(2, 9) * TILE;
     enemies.push({
       x: px(ENEMY.cx) + Math.cos(a) * rr,
       y: px(ENEMY.cy) + Math.sin(a) * rr,
       boss: false,
+      unit: rng.pick(FODDER),
     });
   }
-  enemies.push({ x: px(ENEMY.cx), y: px(ENEMY.cy), boss: true });
+  enemies.push({ x: px(ENEMY.cx), y: px(ENEMY.cy), boss: true, unit: 'unit.captain' });
 
   return {
     grid,
-    playerSpawn: { x: px(HOME.cx), y: px(HOME.cy) },
+    playerSpawn: { x: px(HOME.cx - 7), y: px(HOME.cy) }, // west side of the island (near the loot houses)
     boatSpawn: { x: px(HOME.cx + 14), y: px(HOME.cy) },
-    fruit: { x: fruitX, y: fruitY, treeX: fruitX, treeY: fruitY - 24 },
-    villagers,
-    pirates,
+    pickups,
+    doors,
     enemies,
   };
 }

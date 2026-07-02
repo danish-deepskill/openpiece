@@ -1,13 +1,13 @@
-import type { GameState } from '../config/constants';
+import { FX_COLOR, type GameState } from '../config/constants';
 import { events } from '../core/EventBus';
-import { factions, type FactionId } from '../defs/factions';
+import { DEFAULT_PLAYER_FACTION, factions, type FactionId } from '../defs/factions';
 import type { Avatar, Entity } from '../ecs/components';
+import { defaultCombatant } from '../ecs/Spawner';
 import type { World } from '../ecs/World';
 import type { LevelLayout } from '../world/WorldGen';
-import type { FxSystem } from './FxSystem';
 
 function defaultAvatar(): Avatar {
-  return { hasFruit: false };
+  return {};
 }
 
 /** Game state, objectives, death/win, and the possession hook. Win = no hostiles to the controlled faction remain. */
@@ -19,7 +19,6 @@ export class GameDirector {
 
   constructor(
     private readonly world: World,
-    private readonly fx: FxSystem,
     private readonly level: LevelLayout,
   ) {
     events.on('startGame', () => {
@@ -31,13 +30,11 @@ export class GameDirector {
   }
 
   setState(s: GameState): void {
-    this.state = s;
-    events.emit('stateChanged', { state: s });
+    this.state = s; // continuous state — the HUD reads it via RegKey.State each frame (no event needed)
   }
 
   setObjective(o: string): void {
-    this.objective = o;
-    events.emit('objectiveChanged', { text: o });
+    this.objective = o; // read via RegKey.Objective
   }
 
   controlled(): Entity | undefined {
@@ -45,7 +42,7 @@ export class GameDirector {
   }
 
   controlledFaction(): FactionId {
-    return this.controlled()?.faction?.id ?? 'straw_hat';
+    return this.controlled()?.faction?.id ?? DEFAULT_PLAYER_FACTION;
   }
 
   enemiesAlive(): number {
@@ -89,20 +86,18 @@ export class GameDirector {
   private onDeath(e: Entity): void {
     const t = e.transform!;
     const boss = !!e.ai?.bb?.boss;
-    this.fx.corpse(t.x, t.y, t.r, boss ? 0x7a1f1f : 0x5a3a2a);
-    this.fx.burst(t.x, t.y, 0xc0303a, 14, 200);
+    events.emit('fx:corpse', { x: t.x, y: t.y, r: t.r, color: boss ? 0x7a1f1f : 0x5a3a2a });
+    events.emit('fx:burst', { x: t.x, y: t.y, color: FX_COLOR.blood, n: 14, speed: 200 });
     if (e.loot) {
       this.gold += e.loot.gold;
-      this.fx.dmgText(t.x, t.y, e.loot.gold, '#f0b429');
+      events.emit('fx:dmgText', { x: t.x, y: t.y, value: e.loot.gold, color: '#f0b429' });
       events.emit('enemyKilled', { gold: e.loot.gold, boss });
     }
-    if (e.crew) events.emit('crewFell', { name: e.crew.name });
-    e.render?.gfx.destroy();
-    this.world.destroy(e);
+    this.world.destroy(e); // RenderSystem's orphan sweep destroys the gfx -- sim never touches presentation objects
   }
 
   private die(): void {
-    this.fx.shake(8);
+    events.emit('fx:shake', { amount: 8 });
     this.setState('dead');
     events.emit('playerDied', {});
   }
@@ -110,7 +105,7 @@ export class GameDirector {
   respawn(): void {
     const e = this.controlled();
     if (!e) return;
-    e.health!.hp = e.health!.maxhp;
+    e.health!.hp = e.health!.maxHp;
     e.health!.dead = false;
     e.health!.iframes = 0;
     if (e.combatant) e.combatant.stam = e.combatant.maxStam;
@@ -135,10 +130,11 @@ export class GameDirector {
     if (!target.transform) return;
     const cur = this.world.first('control');
     if (cur === target) return;
-    if (cur) delete cur.control;
+    if (cur) delete (cur as Entity).control; // detach: presence-as-state (widen past the query narrowing)
     target.control = {};
     if (!target.avatar) target.avatar = defaultAvatar();
-    if (!target.combatant) target.combatant = { stam: 100, maxStam: 100, combo: 0, comboT: 0 };
+    if (!target.combatant) target.combatant = defaultCombatant(); // same pool as every spawn (no drifting literals)
+    if (!target.effects) target.effects = { active: [] }; // effects must work on ANY possessed body (i-frames…)
     events.emit('notify', { msg: 'You take control of a new body.' });
   }
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { equip, unequip } from '../src/combat/equip';
-import { StatBlock } from '../src/combat/Stat';
-import { TagSet } from '../src/combat/Tags';
+import { equip, toggleAttackMode, unequip } from '../src/combat/equip';
+import { StatBlock } from '../src/combat/StatBlock';
+import { TagSet } from '../src/combat/TagSet';
 import type { Entity } from '../src/ecs/components';
 
 /** A bare combat entity (no Phaser components) — equip() only touches attributes/tags/loadout/equipment. */
@@ -14,6 +14,7 @@ function makeFighter(): Entity {
       granted: new Set(['ability.punch', 'ability.dodge']),
       cd: new Map(),
       primary: 'ability.punch',
+      heavy: 'ability.kick',
       dash: 'ability.dodge',
       slots: [],
     },
@@ -31,7 +32,9 @@ describe('four-layer combat composition (data-driven)', () => {
 
     expect(e.attributes!.get('atk')).toBeCloseTo(25.3, 5); // (9+6+2+5) × 1.15
     expect(e.attributes!.get('def')).toBe(10);
-    expect(e.loadout!.primary).toBe('ability.gomuPistol'); // fruit takes over the basic attack
+    expect(e.loadout!.primary).toBe('ability.gomuPistol'); // fruit takes over the LIGHT attack
+    expect(e.loadout!.heavy).toBe('ability.gomuStamp'); // …and the HEAVY (the fruit's kick)
+    expect(e.loadout!.granted.has('ability.kick')).toBe(true); // bare kick still granted (toggle back to it)
     expect(e.loadout!.dash).toBe('ability.flashDash');
     expect([...e.loadout!.slots]).toEqual(['ability.gomuGatling', 'ability.gomuRocket']);
     expect(e.loadout!.granted.has('ability.gomuGatling')).toBe(true);
@@ -48,8 +51,21 @@ describe('four-layer combat composition (data-driven)', () => {
 
     unequip(e, 'fruit');
     expect(e.attributes!.get('atk')).toBeCloseTo(19.55, 5); // (9+6+2) × 1.15
-    expect(e.loadout!.primary).toBe('ability.slash'); // back to the weapon's attack
+    expect(e.loadout!.primary).toBe('ability.cut'); // back to the weapon's attack
     expect(e.loadout!.slots).toEqual([]);
     expect(e.tags!.has('fruit.type.paramecia')).toBe(false);
+  });
+
+  it('toggles the whole stance — light AND heavy — between bare fists and the fruit', () => {
+    const e = makeFighter();
+    equip(e, 'fruit', 'fruit.gomu'); // fruit stance: Gomu Pistol (light) + Gomu Stamp (heavy)
+    expect(e.loadout!.primary).toBe('ability.gomuPistol');
+    expect(e.loadout!.heavy).toBe('ability.gomuStamp');
+    toggleAttackMode(e); // → bare: Punch + Kick
+    expect(e.loadout!.primary).toBe('ability.punch');
+    expect(e.loadout!.heavy).toBe('ability.kick');
+    toggleAttackMode(e); // → fruit again
+    expect(e.loadout!.primary).toBe('ability.gomuPistol');
+    expect(e.loadout!.heavy).toBe('ability.gomuStamp');
   });
 });

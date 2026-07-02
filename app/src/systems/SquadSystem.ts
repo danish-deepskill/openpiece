@@ -11,7 +11,7 @@ const MORALE_BREAK = 0.4; // flee once the squad drops below this fraction of it
  * Group coordination on top of per-unit AI: each squad picks ONE focus target (focus-fire), grants a
  * limited number of attack tokens to its closest members (the rest circle), and breaks morale when thinned.
  * Solo enemies (no `squad`) are unaffected — they attack freely. Writes flags the brain reads:
- *   bb.focus (Entity), bb.attackOk (bool), bb.broken (bool).
+ *   bb.focus (Entity), bb.attackOk (bool), bb.broken (bool), bb.lane (-1..1 approach lane).
  */
 export class SquadSystem {
   private readonly peak = new Map<number, number>();
@@ -41,6 +41,12 @@ export class SquadSystem {
       const peak = Math.max(this.peak.get(id) ?? 0, count);
       this.peak.set(id, peak);
       const broken = count / peak < MORALE_BREAK;
+
+      // movement lanes: spread members across the approach (stable by id) so they fan in, not single-file
+      const byId = [...members].sort((a, b) => a.id - b.id);
+      byId.forEach((mb, i) => {
+        mb.ai!.bb.lane = byId.length > 1 ? (i / (byId.length - 1)) * 2 - 1 : 0;
+      });
 
       // focus-fire: the hostile nearest the squad's centre of mass
       let cx = 0;

@@ -1,12 +1,9 @@
 import Phaser from 'phaser';
 import { Abilities } from '../combat/Ability';
-import { GAME_H, GAME_W, MAPH, MAPW, RegKey, WORLD_H, WORLD_W } from '../config/constants';
+import { GAME_H, GAME_W, MAPH, MAPW, RegKey, WORLD_H, WORLD_W, type AbilityBarEntry, type MinimapDot } from '../config/constants';
 import { events } from '../core/EventBus';
 import { clamp } from '../core/math';
-
-interface AbilityBarEntry { key: string; id: string; cd: number }
-
-interface Dot { x: number; y: number; c: number; r: number }
+import type { DialogueView } from '../systems/DialogueSystem';
 
 /** Canvas HUD overlay (parallel scene). Reads continuous state from the registry; one-offs via EventBus. */
 export class HudScene extends Phaser.Scene {
@@ -20,7 +17,13 @@ export class HudScene extends Phaser.Scene {
   private cardTitle!: Phaser.GameObjects.Text;
   private cardMsg!: Phaser.GameObjects.Text;
   private abilSlots: { key: Phaser.GameObjects.Text; name: Phaser.GameObjects.Text }[] = [];
-  private barY = 0;
+  private dlg!: { name: Phaser.GameObjects.Text; text: Phaser.GameObjects.Text; hint: Phaser.GameObjects.Text };
+
+  /** Bottom-left player plate: groups identity, vitals, and the ability bar in one card. */
+  private readonly panel = { x: 12, y: GAME_H - 132, w: 290, h: 120 };
+  private readonly barX = 24; // panel.x + inner pad
+  private readonly barW = 176;
+  private barY = 0; // ability-row top (set in create)
 
   constructor() {
     super('Hud');
@@ -30,13 +33,19 @@ export class HudScene extends Phaser.Scene {
     this.g = this.add.graphics().setDepth(1);
     const mk = (x: number, y: number, style: Phaser.Types.GameObjects.Text.TextStyle) =>
       this.add.text(x, y, '', style).setDepth(2);
+    const P = this.panel;
 
-    this.txt.hp = mk(24, 21, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#ffffff' });
+    // --- bottom-left player plate ---
+    this.txt.identity = mk(P.x + 12, P.y + 8, { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '13px', color: '#f0b429' });
+    this.txt.hudCombo = mk(P.x + P.w - 12, P.y + 9, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '12px', color: '#ffcf5a' }).setOrigin(1, 0).setVisible(false);
+    this.txt.hp = mk(P.x + P.w - 12, P.y + 28, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#ffffff' }).setOrigin(1, 0);
+    this.txt.autoaim = mk(P.x + 4, P.y - 20, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#7fd1ff' }).setVisible(false);
+
+    // --- corners / center (world + objective info, not "the player") ---
     this.txt.gold = mk(GAME_W - 18, 16, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '14px', color: '#f0b429' }).setOrigin(1, 0);
     this.txt.enemies = mk(GAME_W - 18, 50, { fontFamily: 'Trebuchet MS', fontSize: '12px', color: '#ffffff' }).setOrigin(1, 0);
     this.txt.objective = mk(GAME_W / 2, GAME_H - 24, { fontFamily: 'Georgia', fontStyle: 'italic', fontSize: '13px', color: '#ffffff' }).setOrigin(0.5, 0);
     this.txt.prompt = mk(GAME_W / 2, GAME_H - 50, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '14px', color: '#f0b429' }).setOrigin(0.5, 0);
-    this.txt.autoaim = mk(20, GAME_H - 112, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#7fd1ff' }).setOrigin(0, 0).setVisible(false);
     this.txt.combo = mk(GAME_W / 2, 40, { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '20px', color: '#f0b429' }).setOrigin(0.5, 0);
     this.notifText = mk(GAME_W / 2, 74, { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '16px', color: '#f0b429' }).setOrigin(0.5, 0);
 
@@ -52,10 +61,17 @@ export class HudScene extends Phaser.Scene {
     this.cardTitle = this.add.text(GAME_W / 2, GAME_H / 2 - 10, '', { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '42px', color: '#ffffff' }).setOrigin(0.5).setDepth(6).setVisible(false);
     this.cardMsg = this.add.text(GAME_W / 2, GAME_H / 2 + 28, '', { fontFamily: 'Trebuchet MS', fontSize: '16px', color: '#f3e7c9' }).setOrigin(0.5).setDepth(6).setVisible(false);
 
-    // ability bar (bottom-left): one box per equipped/granted ability
-    this.barY = GAME_H - 92;
+    // dialogue box texts (the box graphics are drawn on `g` each frame in drawDialogue)
+    this.dlg = {
+      name: this.add.text(0, 0, '', { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '15px', color: '#f0b429' }).setDepth(4).setVisible(false),
+      text: this.add.text(0, 0, '', { fontFamily: 'Trebuchet MS', fontSize: '14px', color: '#f3e7c9', wordWrap: { width: 486 } }).setDepth(4).setVisible(false),
+      hint: this.add.text(0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '12px', color: '#f0b429' }).setOrigin(1, 1).setDepth(4).setVisible(false),
+    };
+
+    // ability bar (inside the plate): one box per equipped/granted ability
+    this.barY = P.y + 68;
     for (let i = 0; i < 5; i++) {
-      const bx = 18 + i * 64 + 30;
+      const bx = this.barX + i * 53 + 24;
       const key = this.add.text(bx, this.barY + 4, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '10px', color: '#f0b429' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
       const name = this.add.text(bx, this.barY + 20, '', { fontFamily: 'Trebuchet MS', fontSize: '9px', color: '#f3e7c9' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
       this.abilSlots.push({ key, name });
@@ -70,6 +86,17 @@ export class HudScene extends Phaser.Scene {
     });
   }
 
+  /** The plate frame: dark translucent card with a gold trim, matching the start-screen theme. */
+  private drawPanel(g: Phaser.GameObjects.Graphics): void {
+    const P = this.panel;
+    g.fillStyle(0x0b0a08, 0.72);
+    g.fillRoundedRect(P.x, P.y, P.w, P.h, 8);
+    g.lineStyle(1.5, 0xf0b429, 0.5);
+    g.strokeRoundedRect(P.x, P.y, P.w, P.h, 8);
+    g.lineStyle(1, 0x7a4f1f, 0.4);
+    g.strokeRoundedRect(P.x + 3, P.y + 3, P.w - 6, P.h - 6, 6);
+  }
+
   private drawAbilityBar(g: Phaser.GameObjects.Graphics, bar: AbilityBarEntry[] | undefined): void {
     for (let i = 0; i < this.abilSlots.length; i++) {
       const slot = this.abilSlots[i];
@@ -79,8 +106,8 @@ export class HudScene extends Phaser.Scene {
         slot.name.setVisible(false);
         continue;
       }
-      const bx = 18 + i * 64;
-      const w = 60;
+      const bx = this.barX + i * 53;
+      const w = 48;
       const h = 36;
       const def = Abilities.has(entry.id) ? Abilities.get(entry.id) : undefined;
       g.fillStyle(0x140c06, 0.82);
@@ -97,32 +124,76 @@ export class HudScene extends Phaser.Scene {
     }
   }
 
-  update(_t: number, delta: number): void {
+  /** Bottom-center dialogue box: speaker avatar + name + typewriter line + an [E] advance hint. */
+  private drawDialogue(g: Phaser.GameObjects.Graphics): void {
+    const v = this.registry.get(RegKey.Dialogue) as DialogueView | null | undefined;
+    if (!v) {
+      this.dlg.name.setVisible(false);
+      this.dlg.text.setVisible(false);
+      this.dlg.hint.setVisible(false);
+      return;
+    }
+    const BW = 600;
+    const BH = 112;
+    const BX = (GAME_W - BW) / 2;
+    const BY = GAME_H - 168;
+    g.fillStyle(0x000000, 0.35); // drop shadow
+    g.fillRoundedRect(BX + 4, BY + 5, BW, BH, 10);
+    g.fillStyle(0x140c06, 0.95); // panel
+    g.fillRoundedRect(BX, BY, BW, BH, 10);
+    g.lineStyle(2, 0xf0b429, 0.85);
+    g.strokeRoundedRect(BX, BY, BW, BH, 10);
+    g.lineStyle(1, 0xf0b429, 0.28);
+    g.strokeRoundedRect(BX + 3, BY + 3, BW - 6, BH - 6, 8);
+    // speaker avatar — skin circle + faction ring + outline (matches the actor art)
+    const cx = BX + 48;
+    const cy = BY + BH / 2;
+    const ar = 30;
+    g.fillStyle(v.skin, 1);
+    g.fillCircle(cx, cy, ar);
+    g.lineStyle(4, v.ring, 1);
+    g.strokeCircle(cx, cy, ar - 2);
+    g.lineStyle(2, 0x4d4a45, 1);
+    g.strokeCircle(cx, cy, ar);
+    this.dlg.name.setText(v.name).setPosition(BX + 92, BY + 16).setVisible(true);
+    this.dlg.text.setText(v.text).setPosition(BX + 92, BY + 42).setVisible(true);
+    const hint = v.done ? (v.last ? '[E] ✕  close' : '[E] ▼  more') : '[E] ▶▶  skip';
+    this.dlg.hint.setText(hint).setPosition(BX + BW - 16, BY + BH - 12).setVisible(true);
+  }
+
+  override update(_t: number, delta: number): void {
     const dt = delta / 1000;
     const r = this.registry;
     const g = this.g;
     g.clear();
+    const P = this.panel;
+
+    this.drawPanel(g);
 
     const hp = (r.get(RegKey.Hp) as number) ?? 0;
-    const maxhp = (r.get(RegKey.MaxHp) as number) ?? 1;
+    const maxHp = (r.get(RegKey.MaxHp) as number) ?? 1;
     const stam = (r.get(RegKey.Stam) as number) ?? 0;
     const maxstam = (r.get(RegKey.MaxStam) as number) ?? 1;
-    this.bar(g, 18, 18, 210, 16, hp, maxhp, 0xd4483b);
-    this.bar(g, 18, 40, 160, 9, stam, maxstam, 0x5ea0d8);
-    this.txt.hp.setText('HP ' + Math.max(0, Math.ceil(hp)));
+    const tier = (r.get(RegKey.Tier) as string) ?? '';
+    this.bar(g, this.barX, P.y + 28, this.barW, 13, hp, maxHp, 0xd4483b);
+    this.bar(g, this.barX, P.y + 47, this.barW, 7, stam, maxstam, 0x5ea0d8);
+    this.txt.identity.setText(tier ? `YOU · ${tier}` : 'YOU');
+    this.txt.hp.setText(`${Math.max(0, Math.ceil(hp))}/${maxHp}`);
     this.txt.gold.setText('● ' + ((r.get(RegKey.Gold) as number) ?? 0) + ' gold');
     this.txt.enemies.setText('Enemies left: ' + ((r.get(RegKey.EnemiesLeft) as number) ?? 0));
     this.txt.objective.setText('◆ ' + ((r.get(RegKey.Objective) as string) ?? ''));
     this.txt.prompt.setText((r.get(RegKey.Prompt) as string) ?? '');
+    this.drawDialogue(g);
     const combo = (r.get(RegKey.Combo) as number) ?? 0;
     this.txt.combo.setText(combo > 1 ? combo + 'x combo' : '').setVisible(combo > 1);
+    this.txt.hudCombo.setText('⚔ ' + combo + 'x').setVisible(combo > 1);
 
     // minimap (texture is baked by WorldScene; create the image lazily once it exists)
     if (!this.minimap && this.textures.exists('minimap')) {
       this.minimap = this.add.image(this.mm.x, this.mm.y, 'minimap').setOrigin(0, 0).setDepth(0);
       this.minimap.setDisplaySize(this.mm.w, this.mm.h);
     }
-    const dots = r.get(RegKey.Minimap) as Dot[] | undefined;
+    const dots = r.get(RegKey.Minimap) as MinimapDot[] | undefined;
     if (dots) {
       const sx = this.mm.w / WORLD_W;
       const sy = this.mm.h / WORLD_H;

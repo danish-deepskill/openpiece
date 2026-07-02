@@ -7,7 +7,7 @@ export class Collision {
   constructor(private readonly grid: TileGrid) {}
 
   /** Can a circle of radius r sit at (x,y) in this nav mode? */
-  canBe(x: number, y: number, r: number, mode: MoveMode): boolean {
+  canOccupy(x: number, y: number, r: number, mode: MoveMode): boolean {
     const pts: Array<[number, number]> = [
       [x, y],
       [x + r, y],
@@ -24,7 +24,12 @@ export class Collision {
 
   /** Axis-separated move so sliding along walls feels right. Mutates {x,y}. */
   tryMove(t: { x: number; y: number }, dx: number, dy: number, r: number, mode: MoveMode): void {
-    if (dx !== 0 && this.canBe(t.x + dx, t.y, r, mode)) t.x += dx;
-    if (dy !== 0 && this.canBe(t.x, t.y + dy, r, mode)) t.y += dy;
+    if (dx !== 0 && this.canOccupy(t.x + dx, t.y, r, mode)) t.x += dx;
+    if (dy !== 0 && this.canOccupy(t.x, t.y + dy, r, mode)) t.y += dy;
+  }
+
+  /** Movement multiplier for the terrain under (x,y) — e.g. 0.5 while wading shallows. */
+  terrainSpeed(x: number, y: number): number {
+    return TileGrid.speedMul(this.grid.tileAtPx(x, y));
   }
 }

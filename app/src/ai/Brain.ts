@@ -1,31 +1,21 @@
 import type { Entity } from '../ecs/components';
+import type { Rng } from '../core/Rng';
 import type { World } from '../ecs/World';
 import type { Pathfinder } from '../world/Pathfinder';
 import type { SpatialQuery } from '../world/SpatialQuery';
 import type { AbilitySystem } from '../systems/AbilitySystem';
-import type { FxSystem } from '../systems/FxSystem';
 
-/** Apply damage + knockback to a target. Returns true if it landed (not i-framed/dead). */
-export type ApplyDamage = (
-  target: Entity,
-  dmg: number,
-  kx: number,
-  ky: number,
-  byPlayer?: boolean,
-) => boolean;
-
-/** Everything a brain may read/use while deciding. Treated as read-only except the helpers. */
+/** Everything a brain may read/use while deciding. Treated as read-only except the helpers.
+ *  Kept MINIMAL on purpose — this is the sim-facing contract a headless server must satisfy. */
 export interface AIContext {
   world: World;
-  /** The entity the human currently drives (the `control` tag holder), if any. */
-  controlled: Entity | undefined;
   query: SpatialQuery;
-  fx: FxSystem;
+  /** The seeded `ai` stream — ALL brain randomness draws from it (determinism; never Math.random). */
+  rng: Rng;
   /** Activate an actor's ability — the SAME attack path the player uses. */
   abilities: AbilitySystem;
   /** Grid A* + line-of-sight, for navigating around walls. */
   pathfinder: Pathfinder;
-  applyDamage: ApplyDamage;
 }
 
 /**
