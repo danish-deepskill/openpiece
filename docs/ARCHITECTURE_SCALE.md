@@ -52,6 +52,10 @@ Four sub-systems, each generic and data-driven. This is where the four layers co
 - Base stats: **Health, Endurance, Defense, Willpower, Luck, Spiritual** (+ Haki tiers). Derived:
   stamina/haki pools, move speed, **power tier (-F…SSS+)**.
 - `StatBlock` = base values + a list of **Modifiers**; `get(stat)` recomputes on demand (or caches+dirties).
+- *Implemented* (`combat/attributes.ts`): tier seeds the six; `health→maxHp`, `endurance→maxStam`,
+  `defense→def` via linear factors, re-derived on attribute change (not live). `atk`/`atkSpeed` stay tier
+  magnitudes — deliberately no attack attribute (damage belongs to weapon/style/tier). Willpower/Luck/
+  Spiritual are reserved (posture/CC resist, crit/drops, haki pool). Per-unit spreads: `UnitDef.attributes`.
 
 ### 2.2 Modifiers (stacking, source-tracked) — *validated industry pattern*
 ```ts

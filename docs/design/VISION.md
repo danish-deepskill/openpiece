@@ -37,5 +37,7 @@ direct-control action combat, a living faction world, sailing the seas between m
 - `NAVAL.md` — ships, parts, stats, modes, cannons, naval combat, submarines.
 - `EVENTS.md` — sea events, land events, factions, reputation, the event director.
 - `ECONOMY_ACTIVITIES.md` — gathering, crafting, blacksmithing, market, activities/talents, mounts, items.
+- `AI_INTELLIGENCE.md` — the INT axis: one AI stack where INT 1–10 gates perception, knowledge, decision,
+  execution, and command; the information economy; counter-play; offline-only ML.
 
 **Status:** vision capture. Combat foundation is the agreed first build target ("good moat combat system first").

@@ -77,9 +77,11 @@ knobs + playtest list → gates).
 - New **content/def/system** → `/add-def` or `/add-system` skills (they encode the house pattern)
 - **Combat design** (stamina/posture/parry/telegraph plans) → `docs/design/COMBAT.md`
 - **Vision & future systems** (Yonko/strategic layer, deep sim, multiplayer stack, world structure)
-  → `docs/design/DEEP_SIMULATION.md`; idea tier list → `docs/design/REFERENCES.md`
+  → `docs/design/DEEP_SIMULATION.md`; idea tier list → `docs/design/REFERENCES.md`;
+  **AI intelligence design** (INT ladder, knowledge economy, counter-play) → `docs/design/AI_INTELLIGENCE.md`
 - **Per-system QA/edge cases before building or testing** → `docs/references/EDGE_CASES.md`
-- **External learning material** (chunks, netcode, ECS perf…) → `docs/references/ARCHITECTURE_PATTERNS.md`
+- **External learning material** (chunks, netcode, ECS perf…) → `docs/references/ARCHITECTURE_PATTERNS.md`;
+  where to LEARN each (verified free books/talks/codebases per subsystem) → `docs/references/LEARNING_SOURCES.md`
 - **Session-persistent context** also lives in Claude's auto-memory (loaded automatically); when the
   developer says "remember this", store it there — decisions belong in docs, preferences in memory.
 
