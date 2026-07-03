@@ -1,6 +1,11 @@
 import { MAPH, MAPW, SHALLOW_MOVE_MULT, TILE, Tile } from '../config/constants';
 import type { MoveMode } from '../ecs/components';
 
+/** Tiles that stop a foot actor (buildings + terrain barriers). Water is handled separately (per mode);
+ *  a closed Door blocks collision but is overridden passable for AI planning (see `pathable`). A new
+ *  blocking terrain kind joins this set — walkable/pathable then pick it up with no other change. */
+const FOOT_BLOCKED: ReadonlySet<Tile> = new Set([Tile.Wall, Tile.Door, Tile.StoneWall, Tile.Tree]);
+
 export interface MapLabel {
   x: number;
   y: number;
@@ -31,7 +36,7 @@ export class TileGrid {
    *  On foot, ShallowWater is passable (it's simply not deep Water); boats may cross shallows too. */
   static walkable(t: Tile, mode: MoveMode): boolean {
     if (mode === 'boat') return t === Tile.Water || t === Tile.Dock || t === Tile.ShallowWater;
-    return t !== Tile.Water && t !== Tile.Wall && t !== Tile.Door;
+    return t !== Tile.Water && !FOOT_BLOCKED.has(t);
   }
 
   /** Terrain movement modifier (1 = normal). The hook for wadable/rough ground — data, not branching in systems. */

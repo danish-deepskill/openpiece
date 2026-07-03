@@ -18,6 +18,8 @@ export enum Tile {
   Floor = 5, // building interior — walkable on foot
   Door = 6, // doorway in a building wall — blocks (closed) until the player approaches (see DoorSystem)
   ShallowWater = 7, // coastal shallows: wadable on foot (but slow — SHALLOW_MOVE_MULT); boats can cross it
+  StoneWall = 8, // freestanding stone barrier — blocks foot & boat, NO door mechanic (unlike a building Wall)
+  Tree = 9, // tree/grove — blocks foot movement (cover); not choppable yet (future: a Woodcutting entity)
 }
 
 /** Island layout, in tile coordinates. */
@@ -32,6 +34,7 @@ export const Depth = {
   Building: 10,
   Item: 12,
   Boat: 15,
+  Canopy: 3000, // baked tree-leaf overlay — above every y-sorted actor (max ≈ WORLD_H), below FX/nameplates
   Fx: 5000,
   DmgText: 6000,
   Prompt: 6500,
