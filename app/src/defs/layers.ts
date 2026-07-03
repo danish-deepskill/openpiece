@@ -12,12 +12,12 @@ export interface LayerDef extends Def {
   tags: string[];
 }
 export interface WeaponDef extends LayerDef {
-  wclass: 'light' | 'medium' | 'heavy' | 'ranged';
+  weaponClass: 'light' | 'medium' | 'heavy' | 'ranged';
   primary: ContentId; // basic-attack ability
   visual?: { kind: 'blade' | 'dagger' | 'club'; length: number; width: number; color: number }; // drawn in-hand
 }
 export interface FruitDef extends LayerDef {
-  ftype: 'paramecia' | 'zoan' | 'logia';
+  fruitType: 'paramecia' | 'zoan' | 'logia';
   primary: ContentId; // overrides the LIGHT attack while held
   heavy?: ContentId; // overrides the HEAVY attack while held (e.g. Gomu Stamp); falls back to the kick
   slots: ContentId[]; // extra abilities (U, I)
@@ -39,7 +39,7 @@ export const Potentials = new Registry<PotentialDef>('Potentials', layerValid);
 Weapons.register({
   id: 'weapon.cutlass',
   name: 'Cutlass',
-  wclass: 'medium',
+  weaponClass: 'medium',
   primary: 'ability.cut',
   visual: { kind: 'blade', length: 30, width: 5, color: 0xcdd3da },
   modifiers: [{ stat: 'atk', op: 'flat', value: 6, source: 'weapon:weapon.cutlass' }],
@@ -49,7 +49,7 @@ Weapons.register({
 Weapons.register({
   id: 'weapon.knife',
   name: 'Knife',
-  wclass: 'light',
+  weaponClass: 'light',
   primary: 'ability.stab',
   visual: { kind: 'dagger', length: 22, width: 3, color: 0xbfc6cf }, // short, thin dagger (grip + guard + point)
   modifiers: [{ stat: 'atk', op: 'flat', value: 3, source: 'weapon:weapon.knife' }], // light = modest bonus (cutlass is +6)
@@ -59,7 +59,7 @@ Weapons.register({
 Fruits.register({
   id: 'fruit.gomu',
   name: 'Gomu Gomu no Mi',
-  ftype: 'paramecia',
+  fruitType: 'paramecia',
   primary: 'ability.gomuPistol',
   heavy: 'ability.gomuStamp',
   slots: ['ability.gomuGatling', 'ability.gomuRocket'],

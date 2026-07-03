@@ -7,7 +7,7 @@ import { Registry, type Def } from '../core/Registry';
  */
 export interface ShipHullDef extends Def {
   name: string;
-  klass: 'sloop' | 'caravel' | 'galleon';
+  shipClass: 'sloop' | 'caravel' | 'galleon';
   hp: number; // hull health
   maxSpeed: number; // px/s forward
   accel: number; // px/s^2 throttle response — LOW on purpose: sails catching wind, not a motorboat
@@ -42,7 +42,7 @@ export const ShipHulls = new Registry<ShipHullDef>('ShipHulls', (s) => {
 });
 
 ShipHulls.registerAll([
-  { id: 'ship.sloop', name: 'Sloop', klass: 'sloop', hp: 220, maxSpeed: 235, accel: 120, reverseFrac: 0.25, turnBrake: 0.3, turnRate: 1.9, minTurnFrac: 0, r: 26, length: 92, width: 42, cannonSlots: 2, color: 0x8a5a2c },
-  { id: 'ship.caravel', name: 'Caravel', klass: 'caravel', hp: 430, maxSpeed: 200, accel: 80, reverseFrac: 0.2, turnBrake: 0.3, turnRate: 1.3, minTurnFrac: 0, r: 34, length: 124, width: 54, cannonSlots: 4, color: 0x7a4a22 },
-  { id: 'ship.galleon', name: 'Galleon', klass: 'galleon', hp: 820, maxSpeed: 165, accel: 55, reverseFrac: 0.15, turnBrake: 0.3, turnRate: 0.9, minTurnFrac: 0, r: 46, length: 168, width: 74, cannonSlots: 8, color: 0x6a3f1c },
+  { id: 'ship.sloop', name: 'Sloop', shipClass: 'sloop', hp: 220, maxSpeed: 235, accel: 120, reverseFrac: 0.25, turnBrake: 0.3, turnRate: 1.9, minTurnFrac: 0, r: 26, length: 92, width: 42, cannonSlots: 2, color: 0x8a5a2c },
+  { id: 'ship.caravel', name: 'Caravel', shipClass: 'caravel', hp: 430, maxSpeed: 200, accel: 80, reverseFrac: 0.2, turnBrake: 0.3, turnRate: 1.3, minTurnFrac: 0, r: 34, length: 124, width: 54, cannonSlots: 4, color: 0x7a4a22 },
+  { id: 'ship.galleon', name: 'Galleon', shipClass: 'galleon', hp: 820, maxSpeed: 165, accel: 55, reverseFrac: 0.15, turnBrake: 0.3, turnRate: 0.9, minTurnFrac: 0, r: 46, length: 168, width: 74, cannonSlots: 8, color: 0x6a3f1c },
 ]);
