@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Accessories } from '../defs/accessories';
+import { accessoryDraws } from '../draw/accessoryDraws';
 
 /** Bundled URL for every art asset, keyed by its src/art-relative path. Vite-only machinery lives HERE
  *  (presentation) so defs stay plain data a headless server can import (DESIGN_PATTERNS §9). */
@@ -8,8 +9,9 @@ const ART_URLS = import.meta.glob('../art/**/*.png', { eager: true, query: '?url
   string
 >;
 
-/** Loads the (few) image assets — accessory sprites — then launches the parallel world + HUD scenes.
- *  Everything else is procedural. */
+/** Loads the (few) image assets — every def whose `visual` is a sprite — and asserts proc visuals resolve
+ *  to a real draw fn. BOTH fail loud here (the presentation half of fail-loud-at-boot: the sim-side content
+ *  sweep can't see art files or draw registries). Everything else is procedural. */
 export class BootScene extends Phaser.Scene {
   constructor() {
     super('Boot');
@@ -17,9 +19,14 @@ export class BootScene extends Phaser.Scene {
 
   preload(): void {
     for (const d of Accessories.all()) {
-      const url = ART_URLS[`../art/${d.art}`];
-      if (!url) throw new Error(`Accessory art not found: ${d.art} (${d.id})`); // fail loud at boot, not as a blank hat
-      this.load.image(d.id, url);
+      const v = d.visual;
+      if (v.kind === 'sprite') {
+        const url = ART_URLS[`../art/${v.art}`];
+        if (!url) throw new Error(`Accessory art not found: ${v.art} (${d.id})`); // fail loud at boot, not as a blank hat
+        this.load.image(d.id, url);
+      } else if (v.kind === 'procedural' && !accessoryDraws[v.draw]) {
+        throw new Error(`Accessory draw key not found: '${v.draw}' (${d.id}) — add it to draw/accessoryDraws`);
+      }
     }
   }
 

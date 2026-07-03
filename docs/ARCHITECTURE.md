@@ -79,7 +79,7 @@ ballpiece/
         components.ts           # Component data interfaces (plain, serializable) + Components union
         Spawner.ts              # sim-side factory: spawnHero/spawnUnit/spawnPickup/spawnShip from Defs
       defs/                     # content rows: units, bodies, factions, aiProfiles, layers, ships,
-        ...                     #   accessories (BASE_KIT lives in units.ts) — data only, no bundler imports
+        ...                     #   accessories, visual (BASE_KIT lives in units.ts) — data only, no bundler imports
       combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier,
         ...                     #   swing (motion registry + shared geom), equip, stamina, targeting, apparel
       ai/
@@ -108,7 +108,7 @@ ballpiece/
         RenderSystem.ts         # (presentation) OWNS the Graphics side-table; render components are data
         FxSystem.ts / NameplateSystem.ts / AccessorySystem.ts / DebugOverlay.ts   # (presentation)
       draw/                     # (presentation) procedural draw fns + DrawFn type + world renderers
-        actorDraws.ts / shipDraws.ts / TerrainRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
+        actorDraws.ts / accessoryDraws.ts / shipDraws.ts / TerrainRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
       scenes/
         BootScene.ts            # asset manifest (import.meta.glob) -> launch World + Hud
         WorldScene.ts           # composition root; fixed-timestep sim loop (stepSim); publishes registry
