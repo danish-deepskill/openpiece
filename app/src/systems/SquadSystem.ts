@@ -55,7 +55,7 @@ export class SquadSystem {
         cx += mb.transform!.x;
         cy += mb.transform!.y;
       }
-      const focus = this.query.nearestHostile(cx / count, cy / count, 9999, members[0].faction!.id);
+      const focus = this.query.nearestHostile(members[0], 9999, cx / count, cy / count); // members[0]'s perspective, searched from the squad centroid
 
       if (!focus) {
         for (const mb of members) {

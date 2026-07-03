@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { toggleAttackMode } from '../combat/equip';
 import { trySprint } from '../combat/stamina';
+import { FRIENDLY_FIRE_TAG } from '../combat/targeting';
 import { events } from '../core/EventBus';
 import { angleDiff, norm, smoothFactor } from '../core/math';
 import type { World } from '../ecs/World';
@@ -29,7 +30,7 @@ const AUTO_AIM_RANGE = 700;
  * Drives whichever entity holds the `control` tag. Movement sets `mover` intent; combat keys activate the
  * entity's loadout abilities through the AbilitySystem (so the four-layer build decides what each key does).
  */
-type TapKey = 'E' | 'T' | 'Q' | 'C' | 'R';
+type TapKey = 'E' | 'T' | 'Q' | 'C' | 'R' | 'G';
 
 export class InputSystem {
   private readonly keys: Keys;
@@ -63,7 +64,7 @@ export class InputSystem {
 
   /** Called once per RENDER frame (WorldScene), BEFORE the sim steps — latches edge-presses. */
   sample(): void {
-    for (const k of ['E', 'T', 'Q', 'C', 'R'] as const) {
+    for (const k of ['E', 'T', 'Q', 'C', 'R', 'G'] as const) {
       if (Phaser.Input.Keyboard.JustDown(this.keys[k])) this.tapped.add(k);
     }
   }
@@ -115,10 +116,18 @@ export class InputSystem {
       events.emit('autoAimChanged', { on: this.autoAim });
       events.emit('notify', { msg: `Auto-aim ${this.autoAim ? 'ON' : 'OFF'}` });
     }
+    // friendly-fire toggle (G): lets your strikes land on allies (a betrayal past their tolerance turns
+    // them on you). A TAG so the harm gate reads it uniformly (the Moat) — not a control-only special case.
+    if (this.tap('G') && e.tags) {
+      const on = !e.tags.has(FRIENDLY_FIRE_TAG);
+      if (on) e.tags.add(FRIENDLY_FIRE_TAG);
+      else e.tags.remove(FRIENDLY_FIRE_TAG);
+      events.emit('notify', { msg: `Friendly fire ${on ? 'ON' : 'OFF'}` });
+    }
     const ptr = this.scene.input.activePointer;
     let aimed = false;
     if (this.autoAim) {
-      const foe = this.query.nearestHostile(t.x, t.y, AUTO_AIM_RANGE, e.faction!.id);
+      const foe = this.query.nearestHostile(e, AUTO_AIM_RANGE);
       if (foe?.transform) {
         // soft lock: rotate TOWARD the target, don't snap — a strafing enemy is hard to keep dead-on
         const target = Math.atan2(foe.transform.y - t.y, foe.transform.x - t.x);

@@ -139,6 +139,7 @@ style). Structural changes (add/remove component/entity) are cheap; queries iter
 | `crew`           | stance:'follow'\|'hold', slot, cmd{attack,t}                 | |
 | `npc`            | dialogue:string[], recruit?:{name,hp,dmg}                    | |
 | `loot`           | gold                                                          | drop on death |
+| `grudge`         | ids:Set&lt;number&gt;                                        | per-entity personal hostility ON TOP of the faction matrix (friendly-fire betrayal); mutual, permanent |
 | *(reserved)*     | `inventory`, `needs`, `job`, `rideable`, `vehicle`, `reputation`, `devilFruit`, `haki`, `rank` | sim / One Piece — not built yet (§12) |
 
 **Boundary:** gameplay actors live in the ECS. **Transient FX (particles, damage text, swing arcs,

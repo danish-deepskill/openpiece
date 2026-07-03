@@ -33,6 +33,9 @@ export interface UnitDef extends Def {
   dialogue?: string[];
   /** HP bloat multiplier on top of the tier baseline (elites/bosses are tankier than their power tier). */
   hpMult?: number;
+  /** Per-unit friendly-fire tolerance — overrides the AI profile's `betrayHpFrac` for THIS unit (a loyal
+   *  lieutenant at 0.4, a jumpy recruit at 0.95). Omitted ⇒ the profile default. See aiProfiles.betrayHpFrac. */
+  betrayHpFrac?: number;
   boss?: boolean;
 }
 
@@ -52,6 +55,7 @@ export const Units = new Registry<UnitDef>('Units', (u) => {
   for (const [k, v] of Object.entries(u.attributes ?? {}))
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return `attributes.${k} must be a finite number ≥ 0 (got ${v})`;
   if (u.hpMult !== undefined && !(u.hpMult > 0)) return `hpMult must be > 0 (got ${u.hpMult})`; // ≤0 would spawn a corpse
+  if (u.betrayHpFrac !== undefined && (u.betrayHpFrac < 0 || u.betrayHpFrac > 1)) return `betrayHpFrac must be in [0, 1] (got ${u.betrayHpFrac})`;
   return null;
 });
 

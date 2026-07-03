@@ -84,7 +84,7 @@ export class Spawner {
       tags: new TagSet(),
       loadout: { granted, cd: new Map(), primary: u.attackAbility, heavy: '', dash: canDash ? 'ability.dodge' : '', slots: [] },
       effects: { active: [], seq: 0 }, // EVERY actor can carry effects (dodge i-frames…) — the Moat, not hero-only
-      ai: { brain: actorBrain, bb: { state: 'wander', home: { x, y }, wanderT: this.rng.range(0, 2), boss: !!u.boss, profile, canSprint, lastSeenX: x, lastSeenY: y, lostT: 0 } },
+      ai: { brain: actorBrain, bb: { state: 'wander', home: { x, y }, wanderT: this.rng.range(0, 2), boss: !!u.boss, profile, canSprint, betrayHpFrac: u.betrayHpFrac ?? profile.betrayHpFrac, lastSeenX: x, lastSeenY: y, lostT: 0 } },
       render: { draw: b.draw, baseColor: b.baseColor, hatColor: b.hatColor, bob: 0, showHpBar: true },
       identity: { name: u.name, tier: u.tier },
     });

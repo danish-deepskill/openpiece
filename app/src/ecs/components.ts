@@ -57,6 +57,8 @@ export interface Blackboard {
   lastSeenY: number;
   lostT: number; // time since we last saw the target
   alertT?: number; // "I was hit" investigate/flee timer
+  betrayHpFrac?: number; // friendly-fire tolerance (HP frac): an ALLY that drops me to ≤ this earns a
+  //                        permanent grudge (seeded at spawn from unit/profile; undefined ⇒ never turns)
   perceivedX?: number; // perceived (reaction-lagged) target position — where it THINKS the target is
   perceivedY?: number;
   // wander / roam
@@ -165,6 +167,14 @@ export type Avatar = Record<string, never>;
 /** Tag marking the entity currently driven by human input. Move it to possess another. */
 export type Control = Record<string, never>;
 
+/** Per-entity personal grudges: entity ids this unit has PERMANENTLY turned hostile toward (an ally that
+ *  friendly-fired it past its `betrayHpFrac`). Layered ON TOP of the static faction matrix — a betrayal is
+ *  per-INDIVIDUAL (hitting one ally never sours its whole faction), and mutual once formed (both sides read
+ *  it via combat/targeting.entityHostile, so the provoker can retaliate without the friendly-fire toggle). */
+export interface Grudge {
+  ids: Set<number>;
+}
+
 /** A unit whose def carries dialogue is conversable (the `talk` verb). Recruitment lands with the crew system. */
 export interface Npc {
   dialogue: string[];
@@ -238,6 +248,7 @@ export interface Components {
   avatar: Avatar;
   combatant: Combatant;
   control: Control;
+  grudge: Grudge;
   npc: Npc;
   loot: Loot;
   squad: Squad;

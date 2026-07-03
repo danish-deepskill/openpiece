@@ -43,6 +43,10 @@ export interface AIProfileDef extends Def {
   preferredRange?: number; // kite: keep this much distance
   guardRadius?: number; // guard: only engage within this of its post
   fleeBelowHp?: number; // 0..1 HP fraction; flee below it
+  /** Friendly-fire tolerance: an ALLY that beats this unit down to ≤ this HP fraction earns a PERMANENT,
+   *  personal grudge (mutual hostility). 0.8 = snaps after losing 20%; HIGHER = jumpier (0.95 ≈ first hit);
+   *  LOWER = more loyal (absorbs more); 0 = never turns. Only allies provoke it — real enemies aren't betrayal. */
+  betrayHpFrac: number;
 }
 
 /** The default brain. Each profile spreads this and overrides only what makes it distinct. */
@@ -67,6 +71,7 @@ const BASE: Omit<AIProfileDef, 'id' | 'name' | 'approach' | 'sight' | 'preferred
   chargeCd: 2,
   chargeStam: 25,
   strikeFrac: 0.8,
+  betrayHpFrac: 0.8, // default: an ally that knocks off 20% of my HP has crossed the line
 };
 
 // validated at boot: brains divide by `reaction` and scale by `strikeFrac`, so a 0 or NaN here is not a
@@ -79,6 +84,7 @@ export const AIProfiles = new Registry<AIProfileDef>('AIProfiles', (p) => {
   if (!(p.reaction > 0)) return `reaction must be > 0 — brains compute 1/reaction (got ${p.reaction})`;
   if (!(p.strikeFrac > 0 && p.strikeFrac <= 1)) return `strikeFrac must be in (0, 1] (got ${p.strikeFrac})`;
   if (p.fleeBelowHp !== undefined && (p.fleeBelowHp < 0 || p.fleeBelowHp > 1)) return `fleeBelowHp must be in [0, 1] (got ${p.fleeBelowHp})`;
+  if (p.betrayHpFrac < 0 || p.betrayHpFrac > 1) return `betrayHpFrac must be in [0, 1] (got ${p.betrayHpFrac})`;
   return null;
 });
 

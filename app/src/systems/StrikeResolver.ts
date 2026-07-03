@@ -1,6 +1,8 @@
 import type { AbilityDef } from '../combat/Ability';
 import { COMBO_CAP, COMBO_WINDOW, FX_COLOR } from '../config/constants';
 import { events } from '../core/EventBus';
+import { factions } from '../defs/factions';
+import { grudges } from '../combat/targeting';
 import type { Entity } from '../ecs/components';
 import type { Damage } from './Damage';
 
@@ -50,7 +52,28 @@ export class StrikeResolver {
       bb.perceivedY = bb.lastSeenY = e.transform.y;
       bb.lostT = 0;
       bb.alertT = bb.profile.alertDur; // its own awareness trait (default lives in aiProfiles BASE, never here)
+      if (landed) this.formGrudge(e, o); // friendly fire past tolerance → a permanent grudge (a whiffed/i-framed swing isn't a betrayal)
     }
     return true;
+  }
+
+  /**
+   * Friendly fire → betrayal. If `attacker` was an ALLY of the just-hit `victim` (a real enemy's blow isn't a
+   * betrayal) and the hit left the victim at/below its `betrayHpFrac`, the victim forms a PERMANENT personal
+   * grudge — from now the pair is mutually hostile (combat/targeting.entityHostile), so the victim fights back
+   * and the attacker can keep hitting it with the friendly-fire toggle OFF. Per-individual: the victim's
+   * faction is untouched, so its allies stay friendly.
+   */
+  private formGrudge(attacker: Entity, victim: Entity): void {
+    const bb = victim.ai!.bb;
+    const h = victim.health;
+    if (bb.betrayHpFrac === undefined || !h || !attacker.faction || !victim.faction) return;
+    if (!factions.isAlly(attacker.faction.id, victim.faction.id)) return; // only an ally can betray
+    if (grudges(victim, attacker)) return; // already turned
+    const frac = h.maxHp > 0 ? h.hp / h.maxHp : 0;
+    if (frac > bb.betrayHpFrac) return; // still within tolerance
+    (victim.grudge ??= { ids: new Set<number>() }).ids.add(attacker.id);
+    events.emit('fx:burst', { x: victim.transform!.x, y: victim.transform!.y, color: FX_COLOR.spark, n: 10, speed: 150 });
+    if (attacker.control) events.emit('notify', { msg: `${victim.identity?.name ?? 'An ally'} turns on you!` });
   }
 }

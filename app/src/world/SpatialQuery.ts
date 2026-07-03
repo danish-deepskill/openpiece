@@ -1,5 +1,5 @@
+import { entityHostile } from '../combat/targeting';
 import { dist2 } from '../core/math';
-import { factions, type FactionId } from '../defs/factions';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 
@@ -35,13 +35,17 @@ export class SpatialQuery {
     return out;
   }
 
-  /** Nearest living, hostile *combatant* — excludes ships (those are for naval combat, not melee). */
-  nearestHostile(x: number, y: number, range: number, self: FactionId): Entity | undefined {
+  /** Nearest living combatant hostile to `self` — faction-matrix hostiles AND anyone `self` has a personal
+   *  grudge with (entityHostile), so a betrayed ally becomes a valid target. Excludes ships (naval, not melee).
+   *  Search origin defaults to self's position; a caller (squad focus-fire) can override it (e.g. the
+   *  squad centroid) while keeping self's hostility perspective. */
+  nearestHostile(self: Entity, range: number, atX?: number, atY?: number): Entity | undefined {
+    const t = self.transform!;
     return this.nearest(
-      x,
-      y,
+      atX ?? t.x,
+      atY ?? t.y,
       range,
-      (e) => !e.ship && !!e.faction && !!e.health && !e.health.dead && factions.isHostile(self, e.faction.id),
+      (e) => !e.ship && !!e.faction && !!e.health && !e.health.dead && entityHostile(self, e),
     );
   }
 }

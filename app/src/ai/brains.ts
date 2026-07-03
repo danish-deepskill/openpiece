@@ -58,7 +58,7 @@ function separation(e: Entity, ctx: AIContext): [number, number] {
 function spot(e: Entity, ctx: AIContext): Entity | undefined {
   const t = e.transform!;
   const p = profileOf(e);
-  const foe = ctx.query.nearestHostile(t.x, t.y, p.sight, e.faction!.id);
+  const foe = ctx.query.nearestHostile(e, p.sight);
   if (!foe || !perceives(e, foe, p)) return undefined;
   return ctx.pathfinder.lineOfSight(t.x, t.y, foe.transform!.x, foe.transform!.y, e.mover!.mode) ? foe : undefined;
 }

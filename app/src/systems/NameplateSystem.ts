@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { tierColor } from '../combat/PowerTier';
+import { entityHostile } from '../combat/targeting';
 import { Depth } from '../config/constants';
-import { factions } from '../defs/factions';
 import type { World } from '../ecs/World';
 
 const COLOR_SELF = '#ffd24a'; // the body you control
@@ -27,7 +27,6 @@ export class NameplateSystem {
     let n = 0;
     let ti = 0;
     const me = this.world.first('control');
-    const myFaction = me?.faction?.id;
     for (const e of this.world.with('transform', 'render')) {
       const idn = e.identity;
       if (!idn?.name || e.health?.dead) continue;
@@ -36,7 +35,7 @@ export class NameplateSystem {
       const nameColor =
         e === me
           ? COLOR_SELF
-          : myFaction && e.faction && factions.isHostile(myFaction, e.faction.id)
+          : me && entityHostile(me, e) // faction-hostile OR a personal grudge either way (a betrayed ally reads red)
             ? COLOR_HOSTILE
             : COLOR_NEUTRAL;
 
