@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Accessories } from '../defs/accessories';
+import { Weapons } from '../defs/layers';
 import { accessoryDraws } from '../draw/accessoryDraws';
 
 /** Bundled URL for every art asset, keyed by its src/art-relative path. Vite-only machinery lives HERE
@@ -27,6 +28,12 @@ export class BootScene extends Phaser.Scene {
       } else if (v.kind === 'procedural' && !accessoryDraws[v.draw]) {
         throw new Error(`Accessory draw key not found: '${v.draw}' (${d.id}) — add it to draw/accessoryDraws`);
       }
+    }
+    for (const w of Weapons.all()) {
+      if (w.visual?.kind !== 'sprite') continue;
+      const url = ART_URLS[`../art/${w.visual.art}`];
+      if (!url) throw new Error(`Weapon art not found: ${w.visual.art} (${w.id})`); // fail loud at boot
+      this.load.image(w.id, url); // texture key = def id (the convention every sprite consumer uses)
     }
   }
 

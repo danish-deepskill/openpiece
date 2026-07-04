@@ -61,7 +61,8 @@ export const Units = new Registry<UnitDef>('Units', (u) => {
 
 Units.registerAll([
   // the player's body — same data path as everyone else; what makes it "the player" is the control tag
-  { id: 'unit.hero', name: 'Captain', body: 'hero', tier: 'D-', statTier: 'E-', faction: 'straw_hat', aiProfile: 'ai.rusher', attackAbility: 'ability.punch', accessories: ['accessory.strawHat'] },
+  // spawns BARE-HEADED — the straw hat is found in the cutlass house (WorldGen pickups), not worn from birth
+  { id: 'unit.hero', name: 'Captain', body: 'hero', tier: 'D-', statTier: 'E-', faction: 'straw_hat', aiProfile: 'ai.rusher', attackAbility: 'ability.punch' },
   // bandit fodder: ranked E-/E/E+ (combatants who sprint), but kept at their original F-tier stats
   { id: 'unit.thug', name: 'Thug', body: 'grunt', tier: 'E-', statTier: 'F-', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.banditStrike', gold: 8 },
   { id: 'unit.bandit', name: 'Bandit', body: 'grunt', tier: 'E', statTier: 'F', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.banditStrike', gold: 12, weapon: 'weapon.knife', accessories: ['accessory.banditHat'] },

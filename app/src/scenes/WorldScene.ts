@@ -26,6 +26,7 @@ import { InteractionSystem } from '../systems/InteractionSystem';
 import { DialogueSystem } from '../systems/DialogueSystem';
 import { NameplateSystem } from '../systems/NameplateSystem';
 import { RenderSystem } from '../systems/RenderSystem';
+import { WeaponSpriteSystem } from '../systems/WeaponSpriteSystem';
 import { ShipSystem } from '../systems/ShipSystem';
 import { StrikeResolver } from '../systems/StrikeResolver';
 import { SquadSystem } from '../systems/SquadSystem';
@@ -51,6 +52,7 @@ export class WorldScene extends Phaser.Scene {
   private meleeSys!: MeleeSystem;
   private combatantSys!: CombatantSystem;
   private renderSys!: RenderSystem;
+  private weaponSpriteSys!: WeaponSpriteSystem;
   private nameplateSys!: NameplateSystem;
   private accessorySys!: AccessorySystem;
   private abilitySys!: AbilitySystem;
@@ -100,7 +102,7 @@ export class WorldScene extends Phaser.Scene {
 
     const hero = spawner.spawnHero(level.playerSpawn.x, level.playerSpawn.y);
     // loot stashed in the village houses — walk in and press E (a Cutlass in one, the Gomu fruit in another)
-    for (const pk of level.pickups) spawner.spawnPickup(pk.kind, pk.defId, pk.x, pk.y);
+    for (const pk of level.pickups) spawner.spawnPickup(pk.item, pk.x, pk.y);
     // townsfolk — FULL units (same stack as everyone): they wander, can be Talked to (E), can be attacked, and
     // self-defend. Allied to the player; hostile to bandits (factions). Lead a bandit into town to see them fight.
     // the other villager is now an ALLIED Brute instead (faction override → straw_hat): friendly to you and the
@@ -145,6 +147,7 @@ export class WorldScene extends Phaser.Scene {
     this.moveSys = new MovementSystem(world, collision);
     this.bodySys = new BodyCollisionSystem(world, query, collision);
     this.renderSys = new RenderSystem(this, world, level.grid);
+    this.weaponSpriteSys = new WeaponSpriteSystem(this, world, this.renderSys);
     this.nameplateSys = new NameplateSystem(this, world);
     this.accessorySys = new AccessorySystem(this, world, this.renderSys);
 
@@ -185,6 +188,7 @@ export class WorldScene extends Phaser.Scene {
     this.sea.update(dt); // the sea drifts even while paused/dead
     this.fx.update(dt);
     this.renderSys.update(dt);
+    this.weaponSpriteSys.update(); // sprite weapons pin to the same grip anchor the body draw just used
     this.accessorySys.update();
     this.nameplateSys.update();
     this.inspectSys.update(); // publish the inspected unit's plate + selection ring (presentation-only)

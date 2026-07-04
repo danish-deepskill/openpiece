@@ -79,9 +79,10 @@ ballpiece/
         components.ts           # Component data interfaces (plain, serializable) + Components union
         Spawner.ts              # sim-side factory: spawnHero/spawnUnit/spawnPickup/spawnShip from Defs
       defs/                     # content rows: units, bodies, factions, aiProfiles, layers, ships,
-        ...                     #   accessories, visual (BASE_KIT lives in units.ts) — data only, no bundler imports
+        ...                     #   accessories, visual, items (ItemRef spine; BASE_KIT lives in units.ts) — data only
       combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier,
-        ...                     #   swing (motion registry + shared geom), equip, stamina, targeting, apparel
+        ...                     #   swing (motion registry + shared geom), hitVolume (timed strike volumes),
+        ...                     #   phases (windup/active/recover clock), equip, stamina, targeting, apparel, attributes
       ai/
         Brain.ts                # Brain interface { think(e, ctx, dt) } + minimal AIContext
         FsmBrain.ts             # generic finite-state-machine brain
@@ -106,9 +107,10 @@ ballpiece/
         InteractionSystem.ts    # generic verb engine (talk/take/board/disembark)
         GameDirector.ts         # game state, objectives, death cleanup, possession
         RenderSystem.ts         # (presentation) OWNS the Graphics side-table; render components are data
-        FxSystem.ts / NameplateSystem.ts / AccessorySystem.ts / DebugOverlay.ts   # (presentation)
+        FxSystem.ts / NameplateSystem.ts / AccessorySystem.ts / WeaponSpriteSystem.ts / InspectSystem.ts / DebugOverlay.ts   # (presentation)
       draw/                     # (presentation) procedural draw fns + DrawFn type + world renderers
         actorDraws.ts / accessoryDraws.ts / shipDraws.ts / TerrainRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
+      scripts/                  # dev tools run via vite-node (art:template — the artist mannequin SVG)
       scenes/
         BootScene.ts            # asset manifest (import.meta.glob) -> launch World + Hud
         WorldScene.ts           # composition root; fixed-timestep sim loop (stepSim); publishes registry

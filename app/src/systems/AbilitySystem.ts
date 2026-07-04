@@ -1,4 +1,5 @@
 import { Abilities, abilityRange, type AbilityDef } from '../combat/Ability';
+import { resolvePhases } from '../combat/phases';
 import { spendStamina } from '../combat/stamina';
 import { harmableBy } from '../combat/targeting';
 import { FX_COLOR } from '../config/constants';
@@ -26,14 +27,20 @@ export class AbilitySystem {
     private readonly rng: Rng, // the seeded `combat` stream: scatter / motion picks (determinism)
   ) {}
 
-  /** Decrement every loadout's ability cooldowns. (Combatant resource upkeep lives in CombatantSystem.) */
+  /** Decrement every loadout's ability cooldowns + combo-chain windows. (Combatant resource upkeep lives
+   *  in CombatantSystem.) */
   update(dt: number): void {
     for (const e of this.world.with('loadout')) {
-      const cd = e.loadout!.cd;
+      const lo = e.loadout!;
+      const cd = lo.cd;
       for (const [k, v] of cd) {
         const n = v - dt;
         if (n <= 0) cd.delete(k);
         else cd.set(k, n);
+      }
+      if (lo.chain) {
+        lo.chain.until -= dt;
+        if (lo.chain.until <= 0) delete lo.chain; // window closed — the next press restarts the chain
       }
     }
     // deferred launches (Gomu Rocket): fire the body-impulse once the grab-arm has reached forward
@@ -85,19 +92,45 @@ export class AbilitySystem {
 
   activate(e: Entity, id: string): boolean {
     if ((e.combatant?.stunT ?? 0) > 0) return false; // staggered (hitstun) — can't act
-    if (!this.ready(e, id)) return false;
-    const d = Abilities.get(id);
+    const lo = e.loadout;
+    // combo chain: a repeat press of the same slot inside the window fires the NEXT step instead of
+    // restarting — gates (cooldown/cost/granted) are checked against the step that actually fires
+    let actual = id;
+    if (lo?.chain && lo.chain.root === id) {
+      if (lo.granted.has(lo.chain.next)) actual = lo.chain.next;
+      else delete lo.chain; // stale chain (weapon swapped mid-combo) — fall back to the pressed ability
+    }
+    if (!this.ready(e, actual)) return false;
+    const d = Abilities.get(actual);
+    // a swing is a COMMITMENT: no new melee swing (or chain step) starts while one is in flight. LMB is
+    // level-sampled per sim step — without this gate one held click would machine-gun a whole combo chain,
+    // each step bypassing the previous one's cooldown (steps are distinct abilities with cold cooldowns).
+    if (d.shape && d.shape.swing !== 'pistol' && e.melee) return false;
     if (d.costStam && e.combatant) spendStamina(e.combatant, d.costStam); // spend + regen pause, one rule
     // attack speed is a tier stat: effective recovery = base cooldown / atkSpeed (default 1)
     const atkSpeed = Math.max(0.1, e.attributes?.get('atkSpeed') ?? 1);
-    e.loadout!.cd.set(id, d.cooldown / atkSpeed);
-    if (d.grantEffect) this.effects.apply(e, d.grantEffect, id);
+    lo!.cd.set(actual, d.cooldown / atkSpeed); // `!` safe: ready() above returns false when loadout is absent
+    // chain bookkeeping: arm the next step — or, on a chain's FINAL step, lock the ROOT for this step's
+    // cooldown too (the post-combo recovery; without it the chain would restart the instant it finishes)
+    if (lo) {
+      if (d.comboNext) lo.chain = { root: id, next: d.comboNext, until: d.comboWindow ?? 0.9 };
+      else {
+        if (actual !== id) lo.cd.set(id, d.cooldown / atkSpeed);
+        if (lo.chain?.root === id) delete lo.chain;
+      }
+    }
+    if (d.grantEffect) this.effects.apply(e, d.grantEffect, actual);
     if (d.shape) {
       if (d.shape.swing === 'pistol') this.resolveHit(e, d); // ranged: instant shot
-      else this.startSwing(e, id, d); // melee: a moving hitbox MeleeSystem resolves on contact
+      else this.startSwing(e, actual, d); // melee: a moving hitbox MeleeSystem resolves on contact
     }
     // immediate dash (dodge/flash); a launchAt ability defers its impulse until mid-swing (grab → THEN rocket)
-    if (d.selfImpulse && d.launchAt === undefined) this.impulse(e, d.selfImpulse, d.impulseDur ?? 0.16);
+    if (d.selfImpulse && d.launchAt === undefined) {
+      // a dodge BUYS OUT of a swing in flight: the attack is forfeited for the escape (without this, the
+      // hitbox would slide along with the dash — a free drive-by; commitment must be escapable, not portable)
+      if (e.melee) delete e.melee;
+      this.impulse(e, d.selfImpulse, d.impulseDur ?? 0.16);
+    }
     return true;
   }
 
@@ -120,7 +153,7 @@ export class AbilitySystem {
       e.combatant.kickSide = -(e.combatant.kickSide ?? -1);
       side = e.combatant.kickSide;
     } else if (!stretch && e.equipment?.weapon) {
-      side = 1; // armed hand swings use the weapon hand
+      side = shape.mirror ? -1 : 1; // the weapon hand — a mirrored combo step cuts back from the off side
     } else if (e.combatant) {
       // alternate throwing hands like the feet above (right → left → right …) — a random pick reads as a
       // stutter whenever two swings happen to land on the same side back-to-back
@@ -134,10 +167,10 @@ export class AbilitySystem {
       t: 0,
       dur: shape.swingTime ?? 0.18,
       motion,
+      phases: { ...resolvePhases(e, d) }, // resolved ONCE here (like `motion`), COPIED so a stray mutation through the swing can never corrupt the def (defs are shared by every future cast)
       side,
       angle: this.scatter(e.transform!.angle), // committed aim + natural scatter — moving still makes it whiff
-      hit: [],
-      lastJab: stretch ? -1 : undefined,
+      hitByVolume: [],
     };
   }
 

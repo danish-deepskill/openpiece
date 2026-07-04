@@ -1,20 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import type { AbilityShape } from '../src/combat/Ability';
-import { activeSide, restHand, swingPose, type SwingGeom } from '../src/combat/swing';
+import { activeSide, guardHand, swingPose, type SwingGeom } from '../src/combat/swing';
 import type { MeleeSwing } from '../src/ecs/components';
 
 const GEOM: SwingGeom = { r: 12, reach: 34, weaponLen: 0 };
 
+/** Timing-neutral phases (all-active) — pose SHAPE tests that don't care about the clock use these. */
+const ALL_ACTIVE = { windup: 0, active: 1, recover: 0 } as const;
+/** The Gomu Pistol's authored profile — the stretch timeline tests assert against this clock. */
+const PISTOL = { windup: 0.36, active: 0.22, recover: 0.42 } as const;
+
 /** Build a swing instance + look up the pose for a given motion/shape/geometry. */
 function pose(motion: string, swing: Partial<MeleeSwing>, shape: Partial<AbilityShape> = {}, geom: Partial<SwingGeom> = {}) {
-  const s: MeleeSwing = { ability: 'ability.x', t: 0.5, dur: 1, motion, side: 1, angle: 0, hit: [], ...swing };
+  const s: MeleeSwing = { ability: 'ability.x', t: 0.5, dur: 1, motion, phases: ALL_ACTIVE, side: 1, angle: 0, hitByVolume: [], ...swing };
   const sh: AbilityShape = { range: 0, arc: 0.5, swing: 'melee', ...shape };
   return swingPose(s, sh, { ...GEOM, ...geom });
 }
 
-/** A stretch swing instance for activeSide tests. */
+/** A stretch swing instance for activeSide tests (all-active clock: jab index maps 1:1 onto progress). */
 const sw = (over: Partial<MeleeSwing>): MeleeSwing => ({
-  ability: 'ability.x', t: 0, dur: 1, motion: 'stretch', side: 1, angle: 0, hit: [], ...over,
+  ability: 'ability.x', t: 0, dur: 1, motion: 'stretch', phases: ALL_ACTIVE, side: 1, angle: 0, hitByVolume: [], ...over,
 });
 
 describe('swingPose — the drawn fist/blade/limb is the hitbox', () => {
@@ -37,23 +42,24 @@ describe('swingPose — the drawn fist/blade/limb is the hitbox', () => {
   });
 });
 
-describe('swingPose — Gomu rubber-arm stretch', () => {
-  const [bx] = restHand(0, 1, 12); // the acting hand's resting (shoulder) x
+describe('swingPose — Gomu rubber-arm stretch (on the Pistol\'s authored phase clock)', () => {
+  const [bx] = guardHand(0, 1, 12); // the acting hand's GUARD (combat root) x — motions never start from idle
+  const P = { phases: PISTOL };
 
   it('cocks the fist BACK during the windup', () => {
-    expect(pose('stretch', { t: 0.1 }, { range: 200 }).tx).toBeLessThan(bx); // behind the shoulder
+    expect(pose('stretch', { t: 0.1, ...P }, { range: 200 }).tx).toBeLessThan(bx); // behind the shoulder
   });
 
   it('snaps the fist out to its full reach at the punch peak, then retracts home', () => {
-    let maxTx = -Infinity; // robust to the exact windup/punch timing constants
-    for (let p = 0; p <= 1.0001; p += 0.02) maxTx = Math.max(maxTx, pose('stretch', { t: p }, { range: 200 }).tx);
-    expect(maxTx).toBeCloseTo(bx + 200, 0); // reaches full extension somewhere in the punch
-    expect(pose('stretch', { t: 1 }, { range: 200 }).tx).toBeCloseTo(bx, 1); // back to rest at the end
+    let maxTx = -Infinity; // robust to the exact windup/punch timing
+    for (let p = 0; p <= 1.0001; p += 0.02) maxTx = Math.max(maxTx, pose('stretch', { t: p, ...P }, { range: 200 }).tx);
+    expect(maxTx).toBeCloseTo(bx + 200, 0); // reaches full extension at the end of the active phase
+    expect(pose('stretch', { t: 1, ...P }, { range: 200 }).tx).toBeCloseTo(bx, 1); // back to rest at the end
   });
 
   it('a grab reaches forward with no wind-up (Gomu Rocket), unlike the punch', () => {
-    expect(pose('stretch', { t: 0.2 }, { range: 200, stretchMode: 'grab' }).tx).toBeGreaterThan(bx); // already forward
-    expect(pose('stretch', { t: 0.2 }, { range: 200 }).tx).toBeLessThan(bx); // punch is still mid wind-up
+    expect(pose('stretch', { t: 0.2, ...P }, { range: 200, stretchMode: 'grab' }).tx).toBeGreaterThan(bx); // already forward
+    expect(pose('stretch', { t: 0.2, ...P }, { range: 200 }).tx).toBeLessThan(bx); // punch is still mid wind-up
   });
 });
 

@@ -1,8 +1,13 @@
 import type { ContentId } from '../core/Registry';
 import type { Entity } from '../ecs/components';
+import { Accessories } from '../defs/accessories';
+import type { ItemRef } from '../defs/items';
+import { itemSlot } from '../defs/items';
 import { Fruits, Potentials, Styles, Weapons, type LayerDef } from '../defs/layers';
 import { BASE_KIT } from '../defs/units';
+import { removeAccessory, wearAccessory } from './apparel';
 import { syncDerivedResources } from './attributes';
+import { weaponKit } from './phases';
 
 export type LayerKind = 'weapon' | 'fruit' | 'style' | 'potential';
 
@@ -17,7 +22,7 @@ export function giveWeapon(e: Entity, weaponId: ContentId): void {
   e.attributes?.addAll(d.modifiers);
   if (e.tags) for (const t of d.tags) e.tags.add(t);
   if (e.loadout) {
-    e.loadout.granted.add(d.primary);
+    for (const a of weaponKit(d)) e.loadout.granted.add(a); // the primary AND its combo steps (the Moat: AI combos too)
     e.loadout.primary = d.primary;
   }
   syncDerivedResources(e); // every modifier write path re-syncs the maxHp/maxStam pools (combat/attributes)
@@ -91,7 +96,9 @@ export function refreshLoadout(e: Entity): void {
 
   if (eq.weapon) {
     const d = Weapons.get(eq.weapon);
-    granted.add(d.primary);
+    // the ONE kit walker (combat/phases.weaponKit) — if granting used a second walk, "granted" and
+    // "in kit" (phases/volumes resolution) could disagree mid-combo
+    for (const a of weaponKit(d)) granted.add(a);
     primary = d.primary;
   }
   if (eq.style) {
@@ -114,6 +121,36 @@ export function refreshLoadout(e: Entity): void {
   lo.heavy = heavy;
   lo.dash = dash;
   lo.slots = slots;
+}
+
+/**
+ * What ItemRef currently occupies the equip slot `ref` targets — so auto-equip can DISPLACE it back to the
+ * bag before equipping the new one. Undefined if the slot is empty. Reads the existing equipment/accessories
+ * components; the slot mapping is the single source (itemSlot).
+ */
+export function equippedIn(e: Entity, ref: ItemRef): ItemRef | undefined {
+  const slot = itemSlot(ref);
+  if (slot === 'weapon') return e.equipment?.weapon ? { cat: 'weapon', id: e.equipment.weapon } : undefined;
+  if (slot === 'fruit') return e.equipment?.fruit ? { cat: 'fruit', id: e.equipment.fruit } : undefined;
+  const worn = e.accessories?.slots[slot]; // an accessory body slot ('head'/'chest'/…)
+  return worn ? { cat: 'accessory', id: worn } : undefined;
+}
+
+/** Equip any ItemRef by dispatching to the right existing path (weapon/fruit → equip(); accessory →
+ *  wearAccessory). The ONE generic entry point pickups + a future inventory-equip verb call. */
+export function equipItem(e: Entity, ref: ItemRef): void {
+  if (ref.cat === 'accessory') wearAccessory(e, ref.id);
+  else equip(e, ref.cat, ref.id); // 'weapon' | 'fruit'
+}
+
+/** Unequip whatever holds the slot `ref` targets, returning it as an ItemRef (for the bag) or undefined.
+ *  Mirror of equipItem — the reverse dispatch. */
+export function unequipToBag(e: Entity, ref: ItemRef): ItemRef | undefined {
+  const cur = equippedIn(e, ref);
+  if (!cur) return undefined;
+  if (cur.cat === 'accessory') removeAccessory(e, Accessories.get(cur.id).slot);
+  else unequip(e, cur.cat, cur.id);
+  return cur;
 }
 
 /** Player toggle: switch fighting stance between BARE (Punch + Kick) and FRUIT (its light + heavy). No-op unarmed. */

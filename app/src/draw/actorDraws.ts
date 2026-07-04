@@ -1,9 +1,13 @@
 import type Phaser from 'phaser';
 import { Abilities } from '../combat/Ability';
-import { HAND_R_FRAC, activeSide, restHand, swingGeomOf, swingPose } from '../combat/swing';
+import { HAND_R_FRAC, activeSide, guardHand, restHand, swingGeomOf, swingPose } from '../combat/swing';
 import { clamp } from '../core/math';
-import { Weapons } from '../defs/layers';
+import type { AccessorySlot } from '../defs/accessories';
+import { Weapons, type WeaponVisual } from '../defs/layers';
 import type { Entity } from '../ecs/components';
+
+/** The procedurally-drawn weapon kinds — 'sprite' visuals render via WeaponSpriteSystem instead. */
+type ProceduralWeaponVisual = Exclude<WeaponVisual, { kind: 'sprite' }>;
 
 /** A procedural draw function: paint the entity into its Graphics in LOCAL space (presentation-owned). */
 export type DrawFn = (g: Phaser.GameObjects.Graphics, e: Entity) => void;
@@ -11,16 +15,55 @@ export type DrawFn = (g: Phaser.GameObjects.Graphics, e: Entity) => void;
 const OUTLINE = 0x4d4a45; // charcoal gray (lighter than near-black), 1px solid on body + hands
 const HP_BAR_COLOR = 0x5ec85e; // green; health reads the same for everyone — friend/foe is the NAME color, not the bar
 
-interface WeaponVisual {
-  kind: 'blade' | 'dagger' | 'club';
-  length: number;
-  width: number;
-  color: number;
+/**
+ * Humanoid anatomy proportions (× body radius r) — the SINGLE contract between the procedural body
+ * (drawActor), accessory anchoring (AccessorySystem's slot anchors), and future wearable-sprite authoring.
+ * Everything drawn or pinned on a body derives from THESE numbers, so paint and sprites can't drift apart.
+ * Budget (locked by anatomy.test): widest extent ≤ 1.2·r and the head stays inside the collision circle —
+ * the silhouette must not lie about the circle players actually fight (the hitbox IS just r).
+ */
+/** Orientation model (the developer's call): the TOP-DOWN PERSPECTIVE CHEAT — you see a unit's FRONT as it
+ *  walks toward you. So the head sits AWAY from facing (top of the figure on a south-facing unit) and the
+ *  torso crescent / shoulder slabs / resting arms show on the FACING side. The base sketch IS the
+ *  south-facing pose. */
+export const ANATOMY = {
+  headR: 0.72, // head radius — the hat/face canvas
+  headBack: 0.12, // head center AWAY from the AIM. The head does NOT twist with swings (hats track aim only)
+  torsoFwd: 0.3, // torso center TOWARD facing — makes the crescent peeking out on the facing side
+  torsoHalfL: 0.62, // torso semi-axis along facing
+  torsoHalfW: 0.72, // torso semi-axis across facing — narrow: the crescent peeks out FRONT, shoulders own the sides
+  shoulderOut: 0.86, // shoulder-slab center sideways — with shoulderHalfW this is the widest point (1.08·r)
+  shoulderFwd: 0.08, // shoulder-slab center toward facing
+  shoulderHalfW: 0.22, // slab semi-axis across facing — tall slabs flanking the head (the pauldron mounts)
+  shoulderHalfL: 0.42, // slab semi-axis along facing
+  armW: 0.3, // sleeve (upper-arm) thickness, shoulder → fist — keeps the hitbox-sized fist proportionate
+} as const;
+
+/** Each slot's anchor along the AIM axis (×r) — where an 'item'-frame accessory pins. Lives HERE beside
+ *  ANATOMY (its source) so the renderer (AccessorySystem) and the artist template (scripts/unitTemplate)
+ *  read ONE object and can never disagree about where a hat sits. */
+export const SLOT_ANCHOR: Record<AccessorySlot, number> = {
+  head: -ANATOMY.headBack,
+  face: -ANATOMY.headBack + ANATOMY.headR * 0.55, // the facing half of the head
+  chest: ANATOMY.torsoFwd,
+  back: -(ANATOMY.headBack + ANATOMY.headR * 0.5), // away from facing, over the head's far half (capes)
+};
+
+/** The registered AUTHORING frame half-extent (×r): a `frame: 'body'` sprite's square canvas spans ±this
+ *  around the body center, forward = up. Artists draw wearables directly on the generated template
+ *  (docs/art/unit-template.svg — `npm run art:template`), so fit is by construction, not by math.
+ *  Covers the full silhouette (1.12·r) with margin for capes/brims (anatomy.test locks the coverage). */
+export const BODY_FRAME_R = 1.5;
+
+/** Darken an 0xRRGGBB color (×f per channel) — the garb fallback for a body def without an explicit `garb`. */
+function darken(c: number, f = 0.72): number {
+  const ch = (x: number): number => Math.floor(x * f);
+  return (ch((c >> 16) & 0xff) << 16) | (ch((c >> 8) & 0xff) << 8) | ch(c & 0xff);
 }
 
 /** A held weapon, drawn from the hand outward along the aim angle `a` (LOCAL space). `kind` picks the look:
  *  a plain 'blade' (line + rounded tip), a 'dagger' (grip + crossguard + tapered point), or a 'club'. */
-function drawWeapon(g: Phaser.GameObjects.Graphics, hx: number, hy: number, a: number, v: WeaponVisual): void {
+function drawWeapon(g: Phaser.GameObjects.Graphics, hx: number, hy: number, a: number, v: ProceduralWeaponVisual): void {
   const fx = Math.cos(a);
   const fy = Math.sin(a);
   const px = -Math.sin(a); // perpendicular to the aim
@@ -129,9 +172,29 @@ function drawStretchLimb(g: Phaser.GameObjects.Graphics, ax: number, ay: number,
 }
 
 /**
- * Shared moomoo.io-style actor: a skin-toned body circle with a thin outline, two hands behind it (one
- * sweeps/lunges on attack), and — if armed — the weapon held in the lead hand, rotated to aim. Hats/helmets
- * are overlaid separately by AccessorySystem; nameplates by NameplateSystem.
+ * World-space grip anchor + angle of the HELD weapon: the acting hand's swing pose mid-attack, the lead
+ * rest hand otherwise; undefined while a rubber ARM replaces the hand (Gomu stretch — the weapon reads as
+ * stowed). ONE home for this math — drawActor (procedural weapons) and WeaponSpriteSystem (sprite weapons)
+ * both call it, so the drawn grip can never drift between the two substrates.
+ */
+export function weaponAnchor(e: Entity): { x: number; y: number; angle: number } | undefined {
+  const t = e.transform;
+  if (!t) return undefined;
+  const m = e.melee;
+  const shape = m ? Abilities.get(m.ability).shape : undefined;
+  if (m && shape && m.motion === 'stretch' && shape.limb !== 'foot') return undefined; // rubber arms out — weapon stowed
+  const pose = m && shape ? swingPose(m, shape, swingGeomOf(e)) : undefined;
+  const drawA = pose ? pose.drawAngle : t.angle;
+  if (pose && shape!.limb !== 'foot') return { x: t.x + pose.hx, y: t.y + pose.hy, angle: drawA }; // swinging: the acting hand (`!` safe: pose exists only when shape did)
+  const [hx, hy] = restHand(drawA, 1, t.r); // idle (or kicking): held at the lead rest hand
+  return { x: t.x + hx, y: t.y + hy, angle: drawA };
+}
+
+/**
+ * Shared humanoid actor: a garb-colored torso + shoulder nubs (they twist with swings) under a skin-toned
+ * head that stays on the aim, two hands behind the body (one sweeps/lunges on attack), and — if armed —
+ * the weapon held in the lead hand. All proportions come from ANATOMY (the shared anchor contract).
+ * Hats/armor sprites are overlaid separately by AccessorySystem; nameplates by NameplateSystem.
  */
 export const drawActor: DrawFn = (g, e) => {
   const t = e.transform!;
@@ -140,9 +203,9 @@ export const drawActor: DrawFn = (g, e) => {
   const a = t.angle;
   const flashing = !!e.health && e.health.hitFlash > 0;
 
-  // contact shadow
+  // contact shadow — sized to the shoulder-wide anatomy, not just the head
   g.fillStyle(0x000000, 0.22);
-  g.fillEllipse(0, r * 0.7, r * 1.8, r * 0.9);
+  g.fillEllipse(0, r * 0.7, r * 2.1, r * 0.95);
 
   // Logia intangibility aura
   if (e.tags?.has('state.logia.intangible')) {
@@ -155,7 +218,8 @@ export const drawActor: DrawFn = (g, e) => {
   // hand follows the shared swing pose, so the drawn fist/blade IS the hitbox.
   const handR = r * HAND_R_FRAC; // shared with the hitbox (combat/swing) — what you see is what hits
   const wid = e.equipment?.weapon;
-  const wv = wid ? Weapons.get(wid).visual : undefined;
+  const wDef = wid ? Weapons.get(wid) : undefined;
+  const wv = wDef?.visual;
   const m = e.melee;
   const shape = m ? Abilities.get(m.ability).shape : undefined; // the swing TYPE's params (data) drive the pose
   const pose = m && shape ? swingPose(m, shape, swingGeomOf(e)) : undefined;
@@ -166,9 +230,24 @@ export const drawActor: DrawFn = (g, e) => {
   const footKick = !!pose && footLimb && m!.motion !== 'stretch';
   const footStretch = !!pose && footLimb && m!.motion === 'stretch';
   const actSide = pose && !footLimb && shape ? activeSide(m!, shape.jabs ?? 1) : 0; // which HAND throws (flurry alternates)
-  let weaponHx = 0;
-  let weaponHy = 0;
-  for (const side of [-1, 1] as const) {
+  // anatomy + garb (clothing color, the second channel chest armor will later cover) — used by the sleeves
+  // in the hand loop below AND the torso/shoulder block after it
+  const A = ANATOMY;
+  const garb = flashing ? 0xffffff : rd.garbColor ?? darken(rd.baseColor);
+
+  // held weapon FIRST — under every fist and under the body: the gripping hand(s) cover the hilt, the body
+  // covers the inner span, and the blade reads where it extends past the silhouette. Procedural kinds draw
+  // here; a 'sprite' visual is rendered by WeaponSpriteSystem from the SAME weaponAnchor (one grip, two substrates).
+  if (wv && wv.kind !== 'sprite') {
+    const wa = weaponAnchor(e);
+    if (wa) drawWeapon(g, wa.x - t.x, wa.y - t.y, wa.angle, wv);
+  }
+
+  // lead (weapon) hand first so a two-handed grip can place the off-hand on the handle above it
+  let leadX = 0;
+  let leadY = 0;
+  let leadSet = false;
+  for (const side of [1, -1] as const) {
     const acting = !!pose && actSide === side;
     // Gomu rubber arm(s): the acting hand becomes a thick limb out to a far fist (Pistol/Gatling); a Rocket
     // grab throws BOTH arms. (Foot stretches — Gomu Stamp — are drawn separately below, hands untouched.)
@@ -183,12 +262,8 @@ export const drawActor: DrawFn = (g, e) => {
       };
       arm(pose!.hx, pose!.hy, pose!.tx, pose!.ty);
       if (shape?.bothHands) {
-        const [sx, sy] = restHand(drawA, -m!.side, r); // the OTHER shoulder, reaching the same way forward
+        const [sx, sy] = guardHand(drawA, -m!.side, r); // the OTHER guard hand, reaching the same way forward
         arm(sx, sy, sx + (pose!.tx - pose!.hx), sy + (pose!.ty - pose!.hy));
-      }
-      if (side === 1) {
-        weaponHx = pose!.hx;
-        weaponHy = pose!.hy;
       }
       continue;
     }
@@ -197,16 +272,33 @@ export const drawActor: DrawFn = (g, e) => {
     if (acting) {
       hx = pose!.hx;
       hy = pose!.hy;
+    } else if (side === -1 && leadSet && wDef?.grip?.hands === 2) {
+      // two-handed grip: the off-hand joins the HANDLE just above the lead hand instead of resting
+      const sp = wDef.grip.spacing ?? r * 0.5;
+      hx = leadX + Math.cos(drawA) * sp;
+      hy = leadY + Math.sin(drawA) * sp;
     } else {
       [hx, hy] = restHand(drawA, side, r);
+    }
+    // sleeve: a garb-colored upper-arm from the shoulder slab to the fist — RESTING hands only (the
+    // sketch's hanging arms). A swinging hand flies as the bare fist, like the kick's detached foot —
+    // a sleeve stretching with the thrust would read as a rubber arm and steal Gomu's visual identity.
+    if (!acting) {
+      const shx = Math.cos(drawA) * (A.shoulderFwd * r) - Math.sin(drawA) * (side * A.shoulderOut * r);
+      const shy = Math.sin(drawA) * (A.shoulderFwd * r) + Math.cos(drawA) * (side * A.shoulderOut * r);
+      g.lineStyle(A.armW * r + 4, OUTLINE, 1);
+      g.lineBetween(shx, shy, hx, hy);
+      g.lineStyle(A.armW * r, garb, 1);
+      g.lineBetween(shx, shy, hx, hy);
     }
     g.fillStyle(flashing ? 0xffffff : rd.baseColor, 1);
     g.fillCircle(hx, hy, handR);
     g.lineStyle(2, OUTLINE, 1);
     g.strokeCircle(hx, hy, handR);
     if (side === 1) {
-      weaponHx = hx;
-      weaponHy = hy;
+      leadX = hx;
+      leadY = hy;
+      leadSet = true;
     }
   }
   // plain kick (the SIDE KICK): a foot emerges from the limb spot and swings forward
@@ -222,22 +314,39 @@ export const drawActor: DrawFn = (g, e) => {
     drawStretchLimb(g, hox, hoy, tx, ty, handR, c); // outlined leg-tube + a clean cap at the hip
     drawFoot(g, tx, ty, drawA, handR, c, m!.side ?? 1);
   }
-  const weaponAngle = drawA;
 
-  // body + thin outline — ON TOP of the hands
+  // body anatomy — ON TOP of the hands/sleeves. Torso + shoulder slabs twist with the SWING (drawA) so an
+  // arc cut visibly turns the shoulder line; the head stays on the raw AIM (a) so hat/face sprites — which
+  // only know the aim — can never slide off it mid-swing. Each part carries its OWN outline so the anatomy
+  // reads as SEGMENTS (head / slabs / crescent, per the base-art sketch), not one fused garment.
+  g.save();
+  g.rotateCanvas(drawA);
+  g.fillStyle(garb, 1);
+  g.fillEllipse(A.torsoFwd * r, 0, A.torsoHalfL * r * 2, A.torsoHalfW * r * 2);
+  g.lineStyle(2, OUTLINE, 1);
+  g.strokeEllipse(A.torsoFwd * r, 0, A.torsoHalfL * r * 2, A.torsoHalfW * r * 2);
+  for (const s of [-1, 1] as const) {
+    g.fillStyle(garb, 1);
+    g.fillEllipse(A.shoulderFwd * r, s * A.shoulderOut * r, A.shoulderHalfL * r * 2, A.shoulderHalfW * r * 2);
+    g.lineStyle(2, OUTLINE, 1);
+    g.strokeEllipse(A.shoulderFwd * r, s * A.shoulderOut * r, A.shoulderHalfL * r * 2, A.shoulderHalfW * r * 2);
+  }
+  g.restore();
+  // head — skin, offset AWAY from the aim (the perspective model; same anchor AccessorySystem hangs hats from)
+  const headX = -Math.cos(a) * A.headBack * r;
+  const headY = -Math.sin(a) * A.headBack * r;
   g.fillStyle(flashing ? 0xffffff : rd.baseColor, 1);
-  g.fillCircle(0, 0, r);
+  g.fillCircle(headX, headY, A.headR * r);
   g.lineStyle(2, OUTLINE, 1); // thin solid outline, identical to the hands
-  g.strokeCircle(0, 0, r);
+  g.strokeCircle(headX, headY, A.headR * r);
 
-  // Armament Haki coating ring while active
+  // Armament Haki coating ring while active — sized to wrap the full (shoulder-wide) silhouette
   if (e.tags?.has('haki.armament.active')) {
     g.lineStyle(3, 0x0a0a12, 0.92);
-    g.strokeCircle(0, 0, r + 1);
+    g.strokeCircle(0, 0, (A.shoulderOut + A.shoulderHalfW) * r + 2);
   }
 
-  // held weapon drawn last so it reads as held out in front of the body, from the lead hand
-  if (wv) drawWeapon(g, weaponHx, weaponHy, weaponAngle, wv);
+  // (the held weapon is drawn earlier, behind the body + under its own gripping fist — see the hand loop)
 
   // health bar (+ a thinner stamina bar directly beneath it)
   if (rd.showHpBar && e.health) {
@@ -262,15 +371,15 @@ export const drawActor: DrawFn = (g, e) => {
   }
 };
 
-/** A ground pickup (weapon/fruit) with a glow so it reads as collectible. */
+/** A ground pickup with a glow so it reads as collectible — a per-category glyph (blade / fruit / hat). */
 export const drawPickup: DrawFn = (g, e) => {
-  const kind = e.pickup!.kind;
+  const cat = e.pickup!.item.cat;
   const r = e.transform!.r;
   g.fillStyle(0x000000, 0.18);
   g.fillEllipse(0, r * 0.6, r * 1.6, r * 0.8);
   g.fillStyle(0xf0d060, 0.18);
   g.fillCircle(0, 0, r + 6);
-  if (kind === 'weapon') {
+  if (cat === 'weapon') {
     g.lineStyle(6, OUTLINE, 0.9);
     g.lineBetween(-r, r * 0.7, r, -r * 0.9);
     g.lineStyle(4, 0xcdd3da, 1);
@@ -278,6 +387,8 @@ export const drawPickup: DrawFn = (g, e) => {
     g.fillStyle(0x6b4a2a, 1);
     g.fillCircle(-r, r * 0.7, 3);
   } else {
+    // fruit (and any category without its own sprite): the collectible orb. Sprite-backed items (accessories
+    // with art) never reach here — they render their own texture via Render.sprite (see Spawner.spawnPickup).
     g.fillStyle(0x7a3da8, 1);
     g.fillCircle(0, 0, r);
     g.lineStyle(2, OUTLINE, 0.9);

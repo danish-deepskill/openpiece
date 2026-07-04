@@ -1,8 +1,13 @@
 import Phaser from 'phaser';
-import { Accessories } from '../defs/accessories';
+import { Accessories, type AccessorySlot } from '../defs/accessories';
 import { accessoryDraws } from '../draw/accessoryDraws';
+import { ANATOMY, BODY_FRAME_R, SLOT_ANCHOR } from '../draw/actorDraws';
 import type { World } from '../ecs/World';
 import type { RenderSystem } from './RenderSystem';
+
+/** Per-slot depth ladder over the body (an 'under' item drops below it instead). Distinct rungs per slot —
+ *  two same-depth sprites would z-fight by POOL order, which reshuffles as units enter/leave view. */
+const SLOT_DEPTH: Record<AccessorySlot, number> = { back: 0.35, chest: 0.45, face: 0.55, head: 0.6 };
 
 /** Placeholder palette for `kind: 'auto'` visuals — hash-picked per def id, so two prototyped items read
  *  as distinct at a glance without any art decision having been made. */
@@ -42,11 +47,14 @@ export class AccessorySystem {
         if (!id) continue;
         const d = Accessories.get(id);
         const v = d.visual;
-        const off = d.offset ?? 0;
+        // a 'body'-frame sprite is REGISTERED to the mannequin (canvas center = body center) — its content
+        // is already positioned by the artist on the template, so it takes no slot-anchor offset
+        const registered = v.kind === 'sprite' && v.frame === 'body';
+        const off = (registered ? 0 : SLOT_ANCHOR[d.slot] * t.r) + (d.offset ?? 0);
         const x = t.x + Math.cos(a) * off;
         const y = t.y + Math.sin(a) * off;
         const alpha = this.renderSys.alphaById.get(e.id) ?? 1;
-        const depth = t.y + (d.layer === 'under' ? -0.6 : 0.6); // just over/under the actor's y-sorted body
+        const depth = t.y + (d.layer === 'under' ? -0.6 : SLOT_DEPTH[d.slot]); // slot ladder over the y-sorted body
 
         if (v.kind === 'sprite') {
           let img = this.images[usedImg];
@@ -57,7 +65,11 @@ export class AccessorySystem {
             img.setTexture(id);
           }
           usedImg++;
-          const dia = t.r * 2 * v.scale;
+          // item-frame size basis is the slot's CANVAS: head/face sprites scale against the HEAD diameter
+          // (scale 1.6 = 1.6 heads — a hat keeps fitting if the anatomy retunes), other slots against the
+          // body diameter. body frame: the canvas spans the full ±BODY_FRAME_R·r regardless of slot.
+          const basis = d.slot === 'head' || d.slot === 'face' ? ANATOMY.headR * 2 * t.r : 2 * t.r;
+          const dia = registered ? BODY_FRAME_R * 2 * t.r * v.scale : basis * v.scale;
           img
             .setPosition(x, y)
             .setRotation(d.rotates === false ? 0 : a + Math.PI / 2)

@@ -58,7 +58,7 @@ export const SPRINT_DRAIN = 24;
 /** Stamina regen pauses this long after ANY spend (attack/ability/sprint), then resumes — so it never refills mid-fight. */
 export const STAM_REGEN_DELAY = 1.0;
 /** Stamina per second once regen kicks in (gated by STAM_REGEN_DELAY — the two halves of one mechanic). */
-export const STAM_REGEN = 12;
+export const STAM_REGEN = 24;
 /** Baseline stamina pool — seeds every tier's `endurance` attribute, which `maxStam` derives from
  *  (combat/attributes.ts); a unit's def can override its endurance to differ from this. */
 export const MAX_STAM = 100;

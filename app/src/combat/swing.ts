@@ -2,25 +2,44 @@ import { clamp } from '../core/math';
 import { Weapons } from '../defs/layers';
 import type { Entity, MeleeSwing } from '../ecs/components';
 import type { AbilityShape } from './Ability';
+import type { AttackPhases } from './phases';
 
-const HAND_SPREAD = 0.95; // each hand's angle off the aim axis
-const HAND_BASE = 0.95; // ×r resting hand distance from center
-const HAND_FWD = 0.25; // ×r forward nudge
+const HAND_SPREAD = 1.09; // IDLE hand angle off the aim axis (rad) — the EXACT MIRROR of the old hanging
+//                           stance (π − 2.05): arms rest on the FACING side per the perspective model,
+//                           same distance and spread as the approved sketch pose, just flipped.
+const HAND_BASE = 0.95; // ×r hand distance from center (idle and guard alike)
+const HAND_FWD = -0.1; // ×r idle nudge — mirrored with the stance (slightly back toward the body center)
+const GUARD_SPREAD = 0.95; // COMBAT hand angle (rad) — fists up, forward; every swing motion works from here
+const GUARD_FWD = 0.25; // ×r guard forward nudge
+
+/** Forward component of the guard hand (×r) — DERIVED so the stab thrust always reaches `reach` from
+ *  wherever the guard sits (was a hardcoded 0.95 that silently assumed the guard's old numbers). */
+const GUARD_FWD_FRAC = Math.cos(GUARD_SPREAD) * HAND_BASE + GUARD_FWD;
 const ARMED_POKE = 0.7; // ×r forward poke for an armed stab (a weapon's length does the long reaching)
 const TWIST_MIN = 0.7; // rad — minimum body-twist amplitude for an arc swing
 const TWIST_GAIN = 1.4; // twist amplitude grows with the ability's arc half-angle
-const WIND = 0.15; // arc-swing phases (fractions of the swing): load 0→WIND, cut WIND→CUT, recover CUT→1
-const CUT = 0.6;
-const STRETCH_WIND = 0.36; // stretch phases: cock back 0→WIND (a long wind-up), punch WIND→PUNCH, retract PUNCH→1
-const STRETCH_PUNCH = 0.58;
 const STRETCH_BACK = 0.35; // how far (×reach) the fist cocks behind its rest spot before the punch (a big pull)
-const STRETCH_GRAB = 0.4; // grab phase: reach forward 0→GRAB, then retract GRAB→1 (Gomu Rocket)
+// NOTE: every motion's sub-timeline (load/cut/recover, cock/punch/retract) derives from the SWING'S RESOLVED
+// PHASES (MeleeSwing.phases — windup/active/recover). There is ONE attack clock; the old WIND/CUT/STRETCH_*
+// constants were a second, disagreeing timeline and are gone. Hits land while the motion travels: the
+// windup is the visible tell, the active phase is the strike, the recovery is the follow-through.
 
-/** Resting local position of a hand (side -1/+1) for a body oriented at `angle`. */
+/** IDLE local position of a hand (side -1/+1) for a body oriented at `angle` — arms hanging at the sides.
+ *  Purely how a non-swinging hand is DRAWN; no hit geometry derives from it. */
 export function restHand(angle: number, side: number, r: number): [number, number] {
   return [
     Math.cos(angle + side * HAND_SPREAD) * r * HAND_BASE + Math.cos(angle) * r * HAND_FWD,
     Math.sin(angle + side * HAND_SPREAD) * r * HAND_BASE + Math.sin(angle) * r * HAND_FWD,
+  ];
+}
+
+/** COMBAT (guard) position of a hand — every swing MOTION operates from here (fists up, forward), so all
+ *  reach/tip geometry is guard-derived. Splitting idle (restHand) from guard lets art move the resting
+ *  stance freely without shifting a single hitbox. */
+export function guardHand(angle: number, side: number, r: number): [number, number] {
+  return [
+    Math.cos(angle + side * GUARD_SPREAD) * r * HAND_BASE + Math.cos(angle) * r * GUARD_FWD,
+    Math.sin(angle + side * GUARD_SPREAD) * r * HAND_BASE + Math.sin(angle) * r * GUARD_FWD,
   ];
 }
 
@@ -50,44 +69,58 @@ export function swingGeomOf(e: Entity): SwingGeom {
   return { r: e.transform!.r, reach: e.attributes?.get('reach') ?? 0, weaponLen: wv?.length ?? 0 };
 }
 
-/** Body twist for an arc swing: ease to one side, sweep across to the other, then recover to neutral. */
-function twist(p: number, half: number): number {
+/** Body twist for an arc swing, phase-driven: LOAD to one side through the windup (the visible rear-back —
+ *  a heavy's long windup reads as a long, dodgeable telegraph), CUT across through the active phase, then
+ *  ease back to neutral through the recovery. */
+function twist(p: number, half: number, ph: AttackPhases): number {
   const amp = Math.max(TWIST_MIN, half * TWIST_GAIN);
-  if (p < WIND) return amp * (p / WIND); // 0 → +amp  (quick load, not a telegraph)
-  if (p < CUT) return amp - 2 * amp * ((p - WIND) / (CUT - WIND)); // +amp → −amp  (the cut across)
-  return -amp * (1 - (p - CUT) / (1 - CUT)); // −amp → 0  (recover to normal)
+  const w = ph.windup;
+  const aEnd = ph.windup + ph.active;
+  if (p < w) return amp * (p / Math.max(0.0001, w)); // 0 → +amp  (the load = the tell)
+  if (p < aEnd) return amp - 2 * amp * ((p - w) / Math.max(0.0001, aEnd - w)); // +amp → −amp  (the cut)
+  return -amp * (1 - (p - aEnd) / Math.max(0.0001, 1 - aEnd)); // −amp → 0  (the follow-through)
 }
 
 /**
- * Gomu rubber-arm reach along the aim, as a fraction of the swing.
- *  - flurry (jabs > 1): rapid out-and-back jabs (Gomu Gatling).
- *  - grab: shoots FORWARD with no wind-up, then retracts as the body launches up to it (Gomu Rocket).
- *  - punch (default): cocks the fist BACK, snaps it out to full length, then retracts (Gomu Pistol).
+ * Gomu rubber-arm reach along the aim, phase-driven (ONE clock with the hitbox):
+ *  - flurry (jabs > 1): pumps its out-and-back jabs through the ACTIVE phase only — exactly the span the
+ *    synthesized per-jab hit windows cover, so the arms and the damage can't desync.
+ *  - grab: shoots forward through windup+active (full reach at the moment launchAt fires), then retracts.
+ *  - punch (default): cocks BACK through the windup, snaps out through the active, retracts through recovery.
  */
-function stretchLen(p: number, len: number, jabs: number, grab: boolean): number {
-  if (jabs > 1) return len * Math.sin(((p * jabs) % 1) * Math.PI); // rapid out→back jabs
+function stretchLen(p: number, len: number, jabs: number, grab: boolean, ph: AttackPhases): number {
+  const w = ph.windup;
+  const aEnd = ph.windup + ph.active;
+  if (jabs > 1) {
+    const local = clamp((p - w) / Math.max(0.0001, aEnd - w), 0, 1);
+    return len * Math.sin(((local * jabs) % 1) * Math.PI); // still at rest through windup; ends retracted
+  }
   if (grab) {
-    if (p < STRETCH_GRAB) {
-      const q = p / STRETCH_GRAB;
+    if (p < aEnd) {
+      const q = p / Math.max(0.0001, aEnd);
       return len * (1 - (1 - q) * (1 - q)); // shoot the arm forward to full reach (the grab)
     }
-    return len * (1 - (p - STRETCH_GRAB) / (1 - STRETCH_GRAB)); // retract as the body rockets up to the anchor
+    return len * (1 - (p - aEnd) / Math.max(0.0001, 1 - aEnd)); // retract as the body rockets up to the anchor
   }
   const back = len * STRETCH_BACK;
-  if (p < STRETCH_WIND) return -back * (p / STRETCH_WIND); // cock back
-  if (p < STRETCH_PUNCH) {
-    const q = (p - STRETCH_WIND) / (STRETCH_PUNCH - STRETCH_WIND);
+  if (p < w) return -back * (p / Math.max(0.0001, w)); // cock back — the rubber telegraph
+  if (p < aEnd) {
+    const q = (p - w) / Math.max(0.0001, aEnd - w);
     return -back + (len + back) * (1 - (1 - q) * (1 - q)); // snap out to full reach (ease-out)
   }
-  const q = (p - STRETCH_PUNCH) / (1 - STRETCH_PUNCH);
+  const q = (p - aEnd) / Math.max(0.0001, 1 - aEnd);
   return len * (1 - q * q); // retract
 }
 
-/** Which hand is acting THIS frame: a flurry (Gomu Gatling) alternates hands jab-by-jab; otherwise it's fixed. */
+/** Which hand is acting THIS frame: a flurry (Gomu Gatling) alternates hands jab-by-jab (over the ACTIVE
+ *  phase, matching the jab hit windows); otherwise it's fixed. */
 export function activeSide(s: MeleeSwing, jabs: number): number {
   if (jabs <= 1) return s.side;
   const p = clamp(s.dur > 0 ? s.t / s.dur : 1, 0, 1);
-  const jab = Math.min(jabs - 1, Math.floor(p * jabs));
+  const w = s.phases.windup;
+  const aEnd = s.phases.windup + s.phases.active;
+  const local = clamp((p - w) / Math.max(0.0001, aEnd - w), 0, 1);
+  const jab = Math.min(jabs - 1, Math.floor(local * jabs));
   return jab % 2 === 0 ? s.side : -s.side; // L → R → L → R …
 }
 
@@ -97,11 +130,21 @@ export function activeSide(s: MeleeSwing, jabs: number): number {
  */
 type Motion = (s: MeleeSwing, shape: AbilityShape, g: SwingGeom, p: number) => SwingPose;
 
-/** STAB: a forward poke from the acting hand's own (side-offset) rest spot — short with a weapon, a full jab bare. */
+/** STAB: a forward poke from the acting hand's guard spot — short with a weapon, a full jab bare. Poised
+ *  through the windup (the tell), thrusts OUT through the active phase, pulls back through the recovery. */
 const stab: Motion = (s, _shape, g, p) => {
-  const [bx, by] = restHand(s.angle, s.side, g.r);
-  const thrustDist = g.weaponLen > 0 ? g.r * ARMED_POKE : Math.max(0, g.reach - g.r * 0.95);
-  const thrust = thrustDist * Math.sin(p * Math.PI); // out → back
+  const [bx, by] = guardHand(s.angle, s.side, g.r);
+  // bare thrust = whatever closes the gap from the guard to just inside `reach` (+0.15r margin — the
+  // fist's own radius covers the rest), so the drawn fist reaches the sim range wherever the guard sits
+  const thrustDist = g.weaponLen > 0 ? g.r * ARMED_POKE : Math.max(0, g.reach - g.r * (GUARD_FWD_FRAC + 0.15));
+  const w = s.phases.windup;
+  const aEnd = s.phases.windup + s.phases.active;
+  const thrust =
+    p <= w
+      ? 0
+      : p <= aEnd
+        ? thrustDist * Math.sin(((p - w) / Math.max(0.0001, aEnd - w)) * (Math.PI / 2)) // out through active
+        : thrustDist * Math.cos(((p - aEnd) / Math.max(0.0001, 1 - aEnd)) * (Math.PI / 2)); // back through recovery
   const hx = bx + Math.cos(s.angle) * thrust;
   const hy = by + Math.sin(s.angle) * thrust;
   return { drawAngle: s.angle, hx, hy, tx: hx + Math.cos(s.angle) * g.weaponLen, ty: hy + Math.sin(s.angle) * g.weaponLen };
@@ -109,9 +152,9 @@ const stab: Motion = (s, _shape, g, p) => {
 
 /** ARC: the body twists and the swing sweeps. Armed → hand stays home, blade reaches; bare → arm extends to reach. */
 const arc: Motion = (s, shape, g, p) => {
-  const ang = s.angle + twist(p, shape.arc);
+  const ang = s.angle + twist(p, shape.arc, s.phases);
   if (g.weaponLen > 0) {
-    const [hx, hy] = restHand(ang, s.side, g.r); // hand held at the body; the blade does the reaching
+    const [hx, hy] = guardHand(ang, s.side, g.r); // hand held up at guard; the blade does the reaching
     return { drawAngle: ang, hx, hy, tx: hx + Math.cos(ang) * g.weaponLen, ty: hy + Math.sin(ang) * g.weaponLen };
   }
   const dist = Math.max(g.r * 0.95, g.reach); // bare fist swings out to arm's length
@@ -122,8 +165,8 @@ const arc: Motion = (s, shape, g, p) => {
 
 /** STRETCH: the Gomu rubber arm — shoulder (hx) → fist (tx) IS the hitbox. punch/grab/flurry come from the def. */
 const stretch: Motion = (s, shape, g, p) => {
-  const [bx, by] = restHand(s.angle, activeSide(s, shape.jabs ?? 1), g.r); // a flurry alternates which hand throws
-  const reach = stretchLen(p, shape.range, shape.jabs ?? 1, shape.stretchMode === 'grab');
+  const [bx, by] = guardHand(s.angle, activeSide(s, shape.jabs ?? 1), g.r); // a flurry alternates which hand throws
+  const reach = stretchLen(p, shape.range, shape.jabs ?? 1, shape.stretchMode === 'grab', s.phases);
   return { drawAngle: s.angle, hx: bx, hy: by, tx: bx + Math.cos(s.angle) * reach, ty: by + Math.sin(s.angle) * reach };
 };
 

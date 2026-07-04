@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { STAM_REGEN } from '../src/config/constants';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
 import { CombatantSystem } from '../src/systems/CombatantSystem';
@@ -16,11 +17,11 @@ describe('CombatantSystem — delayed stamina regen + hitstun decay', () => {
     expect(e.combatant!.regenT).toBeCloseTo(0.5, 5);
   });
 
-  it('regens once the delay has elapsed (12/s)', () => {
+  it('regens once the delay has elapsed (STAM_REGEN/s)', () => {
     const world = new World();
     const e = fighter(world, { stam: 50, regenT: 0 });
     new CombatantSystem(world).update(1);
-    expect(e.combatant!.stam).toBeCloseTo(62, 5);
+    expect(e.combatant!.stam).toBeCloseTo(50 + STAM_REGEN, 5); // one second of regen at the tuned rate
   });
 
   it('caps stamina at max', () => {

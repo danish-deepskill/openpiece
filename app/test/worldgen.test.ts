@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ENEMY, HOME, TILE, Tile } from '../src/config/constants';
 import { Rng } from '../src/core/Rng';
+import { itemProblem } from '../src/defs/items';
 import { generateLevel } from '../src/world/WorldGen';
 import { TileGrid } from '../src/world/TileGrid';
 
@@ -63,6 +64,13 @@ describe('WorldGen — walls & groves never seal a required path', () => {
         }
       }
     }
+  });
+
+  it('every stashed pickup is a resolvable ItemRef (no dangling loot ids)', () => {
+    const level = generateLevel(new Rng(1));
+    for (const pk of level.pickups) expect(itemProblem(pk.item)).toBeNull();
+    // the straw hat is loot now, not spawn-worn
+    expect(level.pickups.some((p) => p.item.id === 'accessory.strawHat')).toBe(true);
   });
 
   it('actually places a gapped stone ring and some trees', () => {

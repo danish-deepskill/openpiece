@@ -1,6 +1,7 @@
-import { equip } from '../combat/equip';
+import { equipItem, unequipToBag } from '../combat/equip';
 import { events } from '../core/EventBus';
 import { dist2 } from '../core/math';
+import { itemName } from '../defs/items';
 import { ShipHulls } from '../defs/ships';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
@@ -32,15 +33,20 @@ export interface VerbDef {
   run: (actor: Entity, target: Entity | undefined, ctx: VerbCtx) => void;
 }
 
+/**
+ * Take any world item: it enters the actor's BAG, then auto-equips. If its slot is already occupied the
+ * displaced item stays in the bag (a pickup always swaps you into the newer gear — the "good UX" rule).
+ * One generic path for weapon/fruit/accessory — no per-kind branch (itemName/equipItem do the dispatch).
+ */
 function takePickup(actor: Entity, target: Entity | undefined, ctx: VerbCtx): void {
-  const pk = target!.pickup!;
-  if (pk.kind === 'weapon') {
-    equip(actor, 'weapon', pk.defId);
-    events.emit('notify', { msg: `Equipped ${pk.label}.` });
-  } else {
-    equip(actor, 'fruit', pk.defId);
-    events.emit('notify', { msg: `Ate the ${pk.label}!` });
-  }
+  const ref = target!.pickup!.item;
+  const bag = (actor.inventory ??= { items: [] }); // any actor can own a bag (the Moat)
+  const displaced = unequipToBag(actor, ref); // vacate the target slot; returns the old occupant (or undefined)
+  if (displaced) bag.items.push(displaced); // the swapped-out item drops into the bag
+  equipItem(actor, ref); // wear the new one (equip's own displace path sees an already-empty slot now)
+  const eaten = ref.cat === 'fruit';
+  events.emit('notify', { msg: `${eaten ? 'Ate the' : 'Equipped'} ${itemName(ref)}${eaten ? '!' : '.'}` });
+  if (displaced) events.emit('notify', { msg: `${itemName(displaced)} → bag.` });
   ctx.world.destroy(target!); // RenderSystem's orphan sweep destroys the gfx
 }
 
@@ -63,7 +69,7 @@ export const Verbs: VerbDef[] = [
   {
     id: 'verb.take',
     reach: 20,
-    label: (_a, t) => `${t!.pickup!.kind === 'weapon' ? 'Equip' : 'Take'} ${t!.pickup!.label}`,
+    label: (_a, t) => `${t!.pickup!.item.cat === 'fruit' ? 'Eat' : 'Take'} ${itemName(t!.pickup!.item)}`,
     can: (a, t) => !a.riding && !!t?.pickup,
     run: takePickup,
   },

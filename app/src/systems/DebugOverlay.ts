@@ -3,8 +3,14 @@ import { visionOf } from '../ai/perception';
 import { GAME_W, TILE, Tile } from '../config/constants';
 import { Debug } from '../core/Debug';
 import { Abilities, abilityRange } from '../combat/Ability';
+import { strikeFrameOf, strikeVolumes } from '../combat/hitVolume';
+import { phaseAt } from '../combat/phases';
+import { swingGeomOf, swingPose } from '../combat/swing';
 import type { World } from '../ecs/World';
 import type { TileGrid } from '../world/TileGrid';
+
+/** Phase → debug tint: the tell reads warning-yellow, the live strike red, the punishable tail gray. */
+const PHASE_COLORS = { windup: '#ffd24a', active: '#ff5a5a', recover: '#9aa6b2' } as const;
 
 const DEPTH = 1_000_000;
 const SQUAD_COLORS = [0xff5a5a, 0x5aa0ff, 0x7fd17f, 0xf0b429, 0xc97fff, 0xff9f43];
@@ -86,6 +92,55 @@ export class DebugOverlay {
         const ab = Abilities.get(e.loadout!.primary);
         const range = abilityRange(ab, e.attributes?.get('reach') ?? 0);
         if (range > 0) g.strokeCircle(e.transform!.x, e.transform!.y, range);
+      }
+    }
+
+    // Combat: LIVE strike volumes of every swing in flight — the actual hitboxes (weapon segments incl.
+    // dead zones, slash arcs), colored by phase: dim while the volume's window is closed, red while it can
+    // hit. This is the ground truth the reach circle only approximates.
+    if (Debug.on('combat.hitbox')) {
+      for (const e of this.world.with('melee', 'transform')) {
+        const m = e.melee!;
+        const t = e.transform!;
+        const d = Abilities.get(m.ability);
+        const shape = d.shape;
+        if (!shape || shape.noHit) continue;
+        const w0 = m.phases.windup;
+        const aEnd = w0 + m.phases.active;
+        const volumes = strikeVolumes(e, d, [w0, aEnd]);
+        if (volumes.length === 0) continue;
+        const p = m.dur > 0 ? Math.min(1, m.t / m.dur) : 1;
+        const pose = swingPose(m, shape, swingGeomOf(e));
+        const f = strikeFrameOf(e, m, d, pose); // the EXACT frame MeleeSystem tests — ground truth by construction
+        for (const v of volumes) {
+          const live = p >= (v.active ? v.active[0] : w0) && p <= (v.active ? v.active[1] : aEnd);
+          const color = live ? 0xff5a5a : 0x8899aa;
+          const alpha = live ? 0.5 : 0.15;
+          if (v.kind === 'weaponSegment') {
+            const ax = f.handX + (f.tipX - f.handX) * (v.from ?? 0);
+            const ay = f.handY + (f.tipY - f.handY) * (v.from ?? 0);
+            const bx = f.handX + (f.tipX - f.handX) * (v.to ?? 1);
+            const by = f.handY + (f.tipY - f.handY) * (v.to ?? 1);
+            const halfW = v.width !== undefined ? v.width / 2 : f.segmentHalfW;
+            g.lineStyle(halfW * 2, color, alpha);
+            g.lineBetween(ax, ay, bx, by);
+            g.fillStyle(color, alpha); // rounded caps → the capsule MeleeSystem actually tests
+            g.fillCircle(ax, ay, halfW);
+            g.fillCircle(bx, by, halfW);
+          } else {
+            const dir = v.follow === 'swing' ? f.swingAngle : f.aim;
+            g.beginPath();
+            g.arc(f.x, f.y, v.radius, dir - v.halfAngle, dir + v.halfAngle, false);
+            g.arc(f.x, f.y, Math.max(1, v.radius - v.thickness), dir + v.halfAngle, dir - v.halfAngle, true);
+            g.closePath();
+            g.fillStyle(color, alpha * 0.6);
+            g.fillPath();
+            g.lineStyle(1.5, color, Math.min(1, alpha * 2));
+            g.strokePath();
+          }
+        }
+        const phase = phaseAt(m.phases, p);
+        this.label(t.x, t.y - t.r - 44, `${phase} ${(p * 100).toFixed(0)}%`, PHASE_COLORS[phase]);
       }
     }
 

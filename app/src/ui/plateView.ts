@@ -1,6 +1,7 @@
 import { ATTRIBUTE_IDS, type AttributeId } from '../combat/attributes';
 import { tierColor } from '../combat/PowerTier';
 import { FactionDefs } from '../defs/factions';
+import { equippedLabels, inventoryLabels } from '../defs/items';
 import type { Entity } from '../ecs/components';
 
 /**
@@ -31,6 +32,11 @@ export interface UnitPlateView {
   def: number;
   atkSpeed: number;
   reach: number;
+  /** Worn equipment, one label per named slot ("Hat: Straw Hat" / "Armor: —") — shown on EVERY plate, so
+   *  V+click reads a bandit's gear the same way the HUD reads yours. */
+  equipped: string[];
+  /** Owned-unequipped items (the bag); empty for most units. */
+  inventory: string[];
 }
 
 /** Project any unit to its plate view; null for non-units (pickups, bare ships — no identity/health). */
@@ -57,5 +63,7 @@ export function unitPlateView(e: Entity): UnitPlateView | null {
     def: sb?.get('def') ?? 0,
     atkSpeed: sb?.get('atkSpeed') ?? 0,
     reach: sb?.get('reach') ?? 0,
+    equipped: equippedLabels(e),
+    inventory: inventoryLabels(e),
   };
 }

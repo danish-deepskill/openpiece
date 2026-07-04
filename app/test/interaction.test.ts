@@ -17,14 +17,14 @@ describe('InteractionSystem — generic verbs (the Moat for interaction)', () =>
   it('offers Equip/Take for a nearby pickup, by its components alone', () => {
     const world = new World();
     const a = actorAt(world, 0, 0);
-    world.create({ transform: { x: 10, y: 0, angle: 0, r: 10 }, pickup: { kind: 'weapon', defId: 'weapon.cutlass', label: 'Cutlass' } });
-    expect(sysFor(world).prompt(a)).toBe('[E] Equip Cutlass');
+    world.create({ transform: { x: 10, y: 0, angle: 0, r: 10 }, pickup: { item: { cat: 'weapon', id: 'weapon.cutlass' }, label: 'Cutlass' } });
+    expect(sysFor(world).prompt(a)).toBe('[E] Take Cutlass'); // generic take label (only a fruit reads 'Eat')
   });
 
   it('offers nothing when the pickup is out of reach', () => {
     const world = new World();
     const a = actorAt(world, 0, 0);
-    world.create({ transform: { x: 200, y: 0, angle: 0, r: 10 }, pickup: { kind: 'fruit', defId: 'fruit.gomu', label: 'Gomu Gomu no Mi' } });
+    world.create({ transform: { x: 200, y: 0, angle: 0, r: 10 }, pickup: { item: { cat: 'fruit', id: 'fruit.gomu' }, label: 'Gomu Gomu no Mi' } });
     expect(sysFor(world).prompt(a)).toBe('');
   });
 
@@ -32,7 +32,7 @@ describe('InteractionSystem — generic verbs (the Moat for interaction)', () =>
     const world = new World();
     const a = actorAt(world, 0, 0);
     a.riding = { ship: world.create({ transform: { x: 0, y: 0, angle: 0, r: 30 } }) };
-    world.create({ transform: { x: 5, y: 0, angle: 0, r: 10 }, pickup: { kind: 'weapon', defId: 'weapon.cutlass', label: 'Cutlass' } });
+    world.create({ transform: { x: 5, y: 0, angle: 0, r: 10 }, pickup: { item: { cat: 'weapon', id: 'weapon.cutlass' }, label: 'Cutlass' } });
     expect(sysFor(world).prompt(a)).toBe('[E] Disembark');
   });
 
@@ -66,7 +66,7 @@ describe('InteractionSystem — generic verbs (the Moat for interaction)', () =>
     const world = new World();
     const a = actorAt(world, 0, 0);
     a.riding = { ship: world.create({ transform: { x: 999, y: 999, angle: 0, r: 30 } }) };
-    world.create({ transform: { x: 5, y: 0, angle: 0, r: 10 }, pickup: { kind: 'weapon', defId: 'weapon.cutlass', label: 'Cutlass' } });
+    world.create({ transform: { x: 5, y: 0, angle: 0, r: 10 }, pickup: { item: { cat: 'weapon', id: 'weapon.cutlass' }, label: 'Cutlass' } });
     expect(sysFor(world).prompt(a)).toBe('[E] Disembark'); // disembark (self) wins; Take is gated out anyway
   });
 });

@@ -16,8 +16,15 @@ export type Visual =
   | { kind: 'auto' }
   /** Procedural draw: `draw` keys into the render site's draw registry (e.g. draw/accessoryDraws). */
   | { kind: 'procedural'; draw: string; color?: number }
-  /** Hand-crafted texture. `art` is a path under src/art; display size = body diameter × `scale`. */
-  | { kind: 'sprite'; art: string; scale: number };
+  /** Hand-crafted texture. `art` is a path under src/art (square canvas — display sizing is uniform).
+   *  `frame` picks the authoring convention:
+   *   - 'item' (default): the canvas is just the item; it anchors at its SLOT point, display size =
+   *     `scale` × the slot's basis (head/face slots: the HEAD diameter, so scale 1.6 = 1.6 heads;
+   *     other slots: the body diameter) — see AccessorySystem.
+   *   - 'body': the canvas is the WHOLE registered mannequin frame (±BODY_FRAME_R·r, body center =
+   *     canvas center, forward = up) — author on docs/art/unit-template.svg and the item lands exactly
+   *     where it was drawn (chest armor with its head cutout, capes). `scale` stays a multiplier (use 1). */
+  | { kind: 'sprite'; art: string; scale: number; frame?: 'item' | 'body' };
 
 /** Shared def-validator fragment (fail loud at boot). A procedural `draw` KEY's EXISTENCE is checked by the
  *  boot sweep instead (the registry lives presentation-side; defs stay importable headless). */

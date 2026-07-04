@@ -1,18 +1,18 @@
 import { Abilities } from '../combat/Ability';
-import { HAND_R_FRAC, swingGeomOf, swingPose } from '../combat/swing';
+import { strikeFrameOf, strikeVolumes, volumeHits } from '../combat/hitVolume';
+import { swingGeomOf, swingPose } from '../combat/swing';
 import { harmableBy } from '../combat/targeting';
-import { segDist } from '../core/math';
-import { Weapons } from '../defs/layers';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { StrikeResolver } from './StrikeResolver';
 
 /**
- * Resolves melee by CONTACT. While a `melee` swing is active, the user's fist/blade segment is a moving
- * hitbox; the frame it overlaps a hostile, the hit lands (each target struck once per swing). The same
- * swing drives the animation (drawActor → swingPose), so the visible weapon is the hitbox — a swing the
- * target steps out of simply whiffs. One engine: player and AI both attack this way. The hit itself is
- * delegated to StrikeResolver; this system owns only the moving-hitbox geometry.
+ * Resolves melee by CONTACT. While a `melee` swing is active, its resolved strike volumes
+ * (combat/hitVolume — the weapon span, a free slash-arc, …) are moving hitboxes, each live only within its
+ * `active` window of the swing; the frame one overlaps a hostile, the hit lands (once per volume — two
+ * volumes may deliberately both connect). The same swing drives the animation (drawActor → swingPose), so
+ * what you see drives what hits — a swing the target steps out of simply whiffs. One engine: player and AI
+ * both attack this way. The hit itself is delegated to StrikeResolver; this system owns only the geometry.
  */
 export class MeleeSystem {
   constructor(
@@ -34,28 +34,20 @@ export class MeleeSystem {
 
   private resolve(e: Entity): void {
     const m = e.melee!;
-    const t = e.transform!;
     const d = Abilities.get(m.ability);
     const shape = d.shape!;
     if (shape.noHit) return; // visual-only swing (Gomu Rocket's grab) — its damage is the landing AoE, not contact
 
-    // flurry (Gomu Gatling): each jab is a fresh strike, so a target can be hit once PER jab (not once per swing)
-    const jabs = shape.jabs ?? 1;
-    if (m.motion === 'stretch' && jabs > 1) {
-      const jab = Math.min(jabs - 1, Math.floor((m.t / Math.max(0.0001, m.dur)) * jabs));
-      if (jab !== m.lastJab) {
-        m.hit.length = 0;
-        m.lastJab = jab;
-      }
-    }
-    const wv = e.equipment?.weapon ? Weapons.get(e.equipment.weapon).visual : undefined;
-    const hitR = wv ? wv.width / 2 + 3 : t.r * HAND_R_FRAC; // blade half-width, or the fist radius (shared w/ render)
+    // the swing's ACTIVE phase (resolved at cast): windowless volumes are live exactly here — an attack
+    // deals no damage during its windup (the tell) or its recovery (the punish window)
+    const phaseStart = m.phases.windup;
+    const phaseEnd = m.phases.windup + m.phases.active;
+    const volumes = strikeVolumes(e, d, [phaseStart, phaseEnd]); // ability ?? kit weapon ?? synthesized (memoized — no alloc)
+    if (volumes.length === 0) return; // authored visual-only ([]) — nothing to test
+    const p = m.dur > 0 ? Math.min(1, m.t / m.dur) : 1; // swing progress gates each volume's active window
 
-    const pose = swingPose(m, shape, swingGeomOf(e)); // the SAME geom the renderer uses — drawn fist IS the hitbox
-    const ax = t.x + pose.hx; // blade/fist segment in world space
-    const ay = t.y + pose.hy;
-    const bx = t.x + pose.tx;
-    const by = t.y + pose.ty;
+    const pose = swingPose(m, shape, swingGeomOf(e)); // the SAME geom the renderer uses — you see what hits
+    const frame = strikeFrameOf(e, m, d, pose); // shared with DebugOverlay — the overlay IS this geometry
 
     const canHit = harmableBy(e);
     const base = this.strikes.baseDamage(e, d);
@@ -63,13 +55,20 @@ export class MeleeSystem {
     const kx = Math.cos(m.angle) * kb; // knock targets along the attack direction (forward)
     const ky = Math.sin(m.angle) * kb;
 
-    for (const o of this.world.with('transform', 'health', 'faction')) {
-      if (!canHit(o) || m.hit.includes(o.id)) continue; // shared harm predicate (enemies + huntable wildlife)
-      const ot = o.transform!;
-      if (segDist(ot.x, ot.y, ax, ay, bx, by) > ot.r + hitR) continue; // steel hasn't reached them yet
-      m.hit.push(o.id); // count the contact even if it phases, so it isn't re-tested every frame
-      this.strikes.hit(e, o, base, kx, ky, d.shake ?? 0, d.stun ?? 0);
-      if (shape.single) break;
+    for (let vi = 0; vi < volumes.length; vi++) {
+      const v = volumes[vi];
+      const a0 = v.active ? v.active[0] : phaseStart; // authored windows stay ABSOLUTE (whole-swing fractions);
+      const a1 = v.active ? v.active[1] : phaseEnd; //   windowless volumes inherit the active phase
+      if (p < a0 || p > a1) continue; // this volume isn't live yet / anymore (p is monotonic — no reset needed)
+      const hits = (m.hitByVolume[vi] ??= []); // per-volume once-only set (volumes may deliberately double-dip)
+      for (const o of this.world.with('transform', 'health', 'faction')) {
+        if (!canHit(o) || hits.includes(o.id)) continue; // shared harm predicate (enemies + huntable wildlife)
+        const ot = o.transform!;
+        if (!volumeHits(v, frame, ot.x, ot.y, ot.r)) continue; // steel/slash hasn't reached them yet
+        hits.push(o.id); // count the contact even if it phases (Logia), so it isn't re-tested every frame
+        this.strikes.hit(e, o, base, kx, ky, d.shake ?? 0, d.stun ?? 0);
+        if (shape.single) return; // one landed hit per frame — same behavior the single-volume model had
+      }
     }
   }
 }

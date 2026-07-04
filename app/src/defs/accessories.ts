@@ -2,8 +2,11 @@ import { modifierProblem, type Modifier } from '../combat/Modifier';
 import { Registry, type Def } from '../core/Registry';
 import { visualProblem, type Visual } from './visual';
 
-/** Where an accessory sits on the body. Add a slot here to support a new wear location. */
-export type AccessorySlot = 'head' | 'face' | 'back';
+/** Where an accessory sits on the body. Add a slot here to support a new wear location; each slot gets an
+ *  anchor + depth in AccessorySystem (derived from draw/actorDraws.ANATOMY, the shared body contract).
+ *  `chest` = the torso/shoulder armor canvas — author its sprites with a transparent head cutout at the
+ *  head anchor (top-down: your head occludes your chest, and it renders ABOVE the chest layer). */
+export type AccessorySlot = 'head' | 'face' | 'back' | 'chest';
 
 /**
  * A wearable cosmetic. Content is data: the look is a `Visual` descriptor (auto placeholder / procedural
@@ -33,7 +36,7 @@ export const Accessories = new Registry<AccessoryDef>('Accessories', (a) => {
 });
 
 Accessories.registerAll([
-  // the hero's icon — worn from frame one (id grammar: accessory.<camelCase>, DESIGN_PATTERNS §3)
+  // the hero's icon — FOUND in the cutlass house (WorldGen loot), not spawn-worn (id grammar: accessory.<camelCase>)
   { id: 'accessory.strawHat', name: 'Straw Hat', slot: 'head', visual: { kind: 'sprite', art: 'accessories/examples/straw_hat.png', scale: 1.6 } },
   // the Brute's helmet — marks the F+ fodder variant at a glance
   { id: 'accessory.soldierHelmet', name: 'Soldier Helmet', slot: 'head', visual: { kind: 'sprite', art: 'accessories/examples/soldier_helmet.png', scale: 1.6 } },

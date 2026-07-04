@@ -1,10 +1,11 @@
 import { ENEMY, HOME, TILE, Tile } from '../config/constants';
 import type { Rng } from '../core/Rng';
+import type { ItemRef } from '../defs/items';
 import { TileGrid } from './TileGrid';
 
 export interface EnemySpawn { x: number; y: number; boss: boolean; unit: string }
 
-export interface PickupSpawn { kind: 'weapon' | 'fruit'; defId: string; x: number; y: number }
+export interface PickupSpawn { item: ItemRef; x: number; y: number }
 
 export interface LevelLayout {
   grid: TileGrid;
@@ -176,10 +177,14 @@ export function generateLevel(rng: Rng): LevelLayout {
   // interior-center pixel of a house — where stashed loot sits (walk in through the door, press E)
   const inside = (h: (typeof houses)[number]) => ({ x: px(h.tx) + px(h.tw) / 2, y: px(h.ty) + px(h.th) / 2 });
 
-  // loot stashed inside two of the village houses
+  // loot stashed inside the village houses (walk in + E to take). The straw hat shares the cutlass house —
+  // the hero now spawns bare-headed (defs/units unit.hero), so the hat is FOUND, not worn from birth.
+  const cutlassHouse = inside(houses[0]);
   const pickups: PickupSpawn[] = [
-    { kind: 'weapon', defId: 'weapon.cutlass', ...inside(houses[0]) },
-    { kind: 'fruit', defId: 'fruit.gomu', ...inside(houses[2]) },
+    { item: { cat: 'weapon', id: 'weapon.cutlass' }, ...cutlassHouse },
+    { item: { cat: 'weapon', id: 'weapon.sword' }, x: cutlassHouse.x - 22, y: cutlassHouse.y }, // the 2H combo blade, left of the cutlass
+    { item: { cat: 'accessory', id: 'accessory.strawHat' }, x: cutlassHouse.x + 22, y: cutlassHouse.y }, // beside the cutlass
+    { item: { cat: 'fruit', id: 'fruit.gomu' }, ...inside(houses[2]) },
   ];
 
   // enemy-isle stone ring (the assault funnels through its gaps) — placed on the enemy island's grass

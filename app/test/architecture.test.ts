@@ -23,6 +23,7 @@ const PRESENTATION_SYSTEMS = new Set([
   'InspectSystem.ts',
   'NameplateSystem.ts',
   'RenderSystem.ts',
+  'WeaponSpriteSystem.ts',
 ]);
 
 function tsFiles(dir: string): string[] {

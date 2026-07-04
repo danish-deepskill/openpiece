@@ -1,5 +1,7 @@
 import type { Brain } from '../ai/Brain';
+import type { AttackPhases } from '../combat/phases';
 import type { AccessorySlot } from '../defs/accessories';
+import type { ItemRef } from '../defs/items';
 import type { FactionId } from '../defs/factions';
 import type { StatBlock } from '../combat/StatBlock';
 import type { TagSet } from '../combat/TagSet';
@@ -88,7 +90,13 @@ export interface AI {
  *  `draw` is a string key into the presentation draw registry; RenderSystem owns the actual Graphics. */
 export interface Render {
   draw: string; // draw-registry key: a BodyKey ('hero', 'cow', ...), 'pickup', or 'ship'
+  /** Texture key to render as an IMAGE instead of running `draw` (a loaded sprite, e.g. an item's own art).
+   *  When set, RenderSystem blits this texture; `draw` is ignored. Display diameter = 2·r·(spriteScale ?? 1). */
+  sprite?: string;
+  spriteScale?: number;
   baseColor: number;
+  /** Torso/shoulder (clothing) fill for the humanoid anatomy; absent ⇒ derived from baseColor. */
+  garbColor?: number;
   hatColor?: number;
   bob: number;
   showHpBar?: boolean;
@@ -106,20 +114,25 @@ export interface Identity {
 
 /**
  * An in-progress melee strike — the INSTANCE. It carries only per-swing runtime STATE; the strike TYPE (its
- * motion archetype + params: reach, arc, jabs, stretch length, …) is DATA on `AbilityDef.shape`, looked up via
- * `ability`. So 1000 strike types are 1000 data rows, not 1000 fields here. The moving fist/blade/limb IS the
- * hitbox: MeleeSystem lands a hit on contact (each target once per swing, or per jab in a flurry) and drawActor
- * reads the SAME pose to animate it — what you see is what hits. Replaced on a new attack; cleared when it ends.
+ * motion archetype + params: reach, arc, jabs, stretch length, …) is DATA on `AbilityDef.shape`, looked up
+ * via `ability`, and its damaging geometry is the strike's HitVolumes (combat/hitVolume). So 1000 strike
+ * types are 1000 data rows, not 1000 fields here. MeleeSystem resolves each live volume against targets and
+ * drawActor reads the SAME pose to animate the swing — what you see drives what hits. Replaced on a new
+ * attack; cleared when it ends.
  */
 export interface MeleeSwing {
   ability: ContentId;
   t: number; // elapsed seconds (0 → dur)
   dur: number;
   motion: string; // resolved motion archetype ('stab' | 'arc' | 'stretch' | …) — keys combat/swing.ts MOTIONS
+  /** windup/active/recover split, RESOLVED at cast (like `motion`) — hitbox gating, the motion timelines,
+   *  and a future parry all read this one copy, so they can never disagree about the attack's clock. */
+  phases: AttackPhases;
   side: number; // acting limb: -1 left, +1 right
   angle: number; // aim direction, locked at swing start
-  hit: number[]; // entity ids already struck this swing (reset per jab for a flurry)
-  lastJab?: number; // flurry: last jab index resolved, so the per-jab hit set resets on a new jab
+  /** Per-VOLUME ids already struck (index-aligned with the swing's resolved strike volumes): one volume hits
+   *  a target once within its window; two overlapping volumes may BOTH land (per-volume hits, deliberate). */
+  hitByVolume: number[][];
   launched?: boolean; // grab-launch (Gomu Rocket): the body-impulse has fired (latches to fire once)
   landed?: boolean; // grab-launch: the landing AoE has fired (latches to fire once, when the leap stops)
 }
@@ -190,11 +203,18 @@ export interface Squad {
   name: string;
 }
 
-/** A pickup-able item lying in the world (walk up + E to take it). */
+/** A pickup-able item lying in the world (walk up + E to take it) — any ItemRef category (weapon/fruit/
+ *  accessory), so a hat on the floor is the same generic pickup as a cutlass. `label` is cached for the FX
+ *  text; the verb reads the live name off the ref. */
 export interface Pickup {
-  kind: 'weapon' | 'fruit';
-  defId: ContentId;
+  item: ItemRef;
   label: string;
+}
+
+/** Owned-but-not-necessarily-equipped items — the bag. Plain ItemRef list (ids at rest, any actor may hold
+ *  one: the Moat). Grows to stacking/weight/sorting later as list ops, with no change to its consumers. */
+export interface Inventory {
+  items: ItemRef[];
 }
 
 /** Granted abilities + per-ability cooldowns + the keybound routing (primary / dash / extra slots). */
@@ -206,6 +226,9 @@ export interface Loadout {
   dash: ContentId; // Shift
   slots: ContentId[]; // K, L
   utility?: ContentId; // C — a buff/self ability (e.g. Armament, once the Haki layer grants it)
+  /** Live combo-chain state: pressing `root`'s slot again while `until` > 0 fires `next` instead of
+   *  restarting. Set/expired by AbilitySystem; plain ids + a timer, so it serializes like everything else. */
+  chain?: { root: ContentId; next: ContentId; until: number };
 }
 
 export interface ActiveEffect {
@@ -253,6 +276,7 @@ export interface Components {
   loot: Loot;
   squad: Squad;
   pickup: Pickup;
+  inventory: Inventory;
   // combat engine (GAS-lite)
   attributes: StatBlock;
   tags: TagSet;

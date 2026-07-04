@@ -1,4 +1,5 @@
 import { Registry, type ContentId, type Def, type Validator } from '../core/Registry';
+import type { HitVolume } from '../combat/hitVolume';
 import { modifierProblem, type Modifier } from '../combat/Modifier';
 
 /**
@@ -11,10 +12,31 @@ export interface LayerDef extends Def {
   modifiers: Modifier[];
   tags: string[];
 }
+/** A weapon's in-hand look. `length` is SIM data either way (reach + hitbox span, measured hand→tip); the
+ *  substrate is per-item: procedural kinds draw primitives, 'sprite' renders the weapon's own texture
+ *  pinned to the grip (WeaponSpriteSystem). Sprite orientation is DATA, not a convention artists must obey:
+ *  `tipAt` says which canvas end is the striking tip (default 'top'); `gripAt` is where the hand holds, as
+ *  a fraction of the art from the POMMEL end (0 = the very end; the pommel overhangs behind the hand). */
+export type WeaponVisual =
+  | { kind: 'blade' | 'dagger' | 'club'; length: number; width: number; color: number }
+  | { kind: 'sprite'; art: string; length: number; width: number; tipAt?: 'top' | 'bottom'; gripAt?: number };
+
+/** Weapon weight/archetype tier — drives the phase ladder (combat/phases.WEIGHT_PHASES: heavier = longer
+ *  windup) and, later, posture damage. The unarmed kit's tier ('unarmed') lives beside this in CombatWeight
+ *  — deliberately not here, since no weapon is unarmed. */
+export type WeaponClass = 'light' | 'medium' | 'heavy' | 'ranged';
+
 export interface WeaponDef extends LayerDef {
-  weaponClass: 'light' | 'medium' | 'heavy' | 'ranged';
+  weaponClass: WeaponClass;
   primary: ContentId; // basic-attack ability
-  visual?: { kind: 'blade' | 'dagger' | 'club'; length: number; width: number; color: number }; // drawn in-hand
+  visual?: WeaponVisual; // drawn in-hand
+  /** How the weapon is HELD — per-weapon, so every weapon's hold can differ. `hands: 2` puts the off-hand on
+   *  the handle `spacing` px above the lead hand (a two-handed grip) instead of at its rest position. */
+  grip?: { hands: 1 | 2; spacing?: number };
+  /** The weapon's default damaging volumes (combat/hitVolume) — e.g. a hammer that only hurts with its head:
+   *  [{ kind: 'weaponSegment', from: 0.85 }]. An ability's own hitVolumes overrides this wholesale.
+   *  Unset ⇒ the whole drawn weapon damages (a blade). */
+  hitVolumes?: HitVolume[];
 }
 export interface FruitDef extends LayerDef {
   fruitType: 'paramecia' | 'zoan' | 'logia';
@@ -44,6 +66,20 @@ Weapons.register({
   visual: { kind: 'blade', length: 30, width: 5, color: 0xcdd3da },
   modifiers: [{ stat: 'atk', op: 'flat', value: 6, source: 'weapon:weapon.cutlass' }],
   tags: ['weapon.class.medium'],
+});
+
+Weapons.register({
+  id: 'weapon.sword',
+  name: 'Sword',
+  weaponClass: 'heavy', // the committed blade: longest windup (a readable rear-back) + punishable tail
+  primary: 'ability.swordSlash1', // entry of the 3-hit chain (slash1 → slash2 → finisher, then lockout)
+  visual: { kind: 'sprite', art: 'weapon/sword_1.png', length: 38, width: 6, tipAt: 'bottom', gripAt: 0.27 }, // art points DOWN; hand holds mid-handle
+  grip: { hands: 2, spacing: 7 }, // a two-handed hold — the off-hand joins the handle above the lead hand
+  // DEAD ZONE: the inner 30% of the blade doesn't cut — stand chest-to-chest and the sword whiffs OVER you.
+  // This is what makes reach two-sided: the blade owns the mid-range, fists own the inside.
+  hitVolumes: [{ kind: 'weaponSegment', from: 0.3 }],
+  modifiers: [{ stat: 'atk', op: 'flat', value: 9, source: 'weapon:weapon.sword' }], // heavier steel than the cutlass (+6)
+  tags: ['weapon.class.heavy'],
 });
 
 Weapons.register({

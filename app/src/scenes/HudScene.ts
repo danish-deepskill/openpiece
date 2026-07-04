@@ -25,7 +25,7 @@ export class HudScene extends Phaser.Scene {
 
   /** Bottom-left player card: THE shared unit readout (UnitPlate) + a player-only ability-bar row below
    *  the content block — extras go OUTSIDE the readout so every unit's plate stays identical. */
-  private readonly panel = { x: 12, y: GAME_H - 168, w: 290, h: 156 };
+  private readonly panel = { x: 12, y: GAME_H - 202, w: 290, h: 190 };
   private readonly barX = 24; // panel.x + inner pad
   private barY = 0; // ability-row top (set in create)
 

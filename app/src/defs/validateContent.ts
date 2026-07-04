@@ -1,5 +1,6 @@
 import { Abilities } from '../combat/Ability';
 import { Effects } from '../combat/Effect';
+import { hitVolumeProblem } from '../combat/hitVolume';
 import { Registry, type ContentId } from '../core/Registry';
 import { Accessories } from './accessories';
 import { AIProfiles } from './aiProfiles';
@@ -51,8 +52,23 @@ export function validateAllContent(): void {
     check(u.id, 'weapon', u.weapon, Weapons);
     for (const a of u.accessories ?? []) check(u.id, 'accessories', a, Accessories);
   }
-  for (const a of Abilities.all()) check(a.id, 'grantEffect', a.grantEffect, Effects);
-  for (const w of Weapons.all()) check(w.id, 'primary', w.primary, Abilities);
+  for (const a of Abilities.all()) {
+    check(a.id, 'grantEffect', a.grantEffect, Effects);
+    check(a.id, 'comboNext', a.comboNext, Abilities); // a broken chain link would dead-end a combo mid-fight
+    const hv = hitVolumeProblem(a.shape?.hitVolumes); // a typo'd window/span = a swing that silently never hits
+    if (hv) problems.push(`${a.id}: ${hv}`);
+  }
+  for (const w of Weapons.all()) {
+    check(w.id, 'primary', w.primary, Abilities);
+    const hv = hitVolumeProblem(w.hitVolumes);
+    if (hv) problems.push(`${w.id}: ${hv}`);
+    if (w.grip && !((w.grip.spacing ?? 0) >= 0)) problems.push(`${w.id}: grip.spacing must be ≥ 0`);
+    if (w.visual?.kind === 'sprite') {
+      if (!(w.visual.length > 0)) problems.push(`${w.id}: visual.length must be > 0`);
+      const gripAt = w.visual.gripAt ?? 0;
+      if (!(gripAt >= 0 && gripAt < 1)) problems.push(`${w.id}: visual.gripAt must be in [0, 1) — 1 would put the hand at the tip`);
+    }
+  }
   for (const f of Fruits.all()) {
     check(f.id, 'primary', f.primary, Abilities);
     check(f.id, 'heavy', f.heavy, Abilities);

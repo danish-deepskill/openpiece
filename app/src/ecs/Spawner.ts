@@ -11,7 +11,9 @@ import { Bodies } from '../defs/bodies';
 import { AIProfiles } from '../defs/aiProfiles';
 import { ShipHulls } from '../defs/ships';
 import type { FactionId } from '../defs/factions';
-import { Fruits, Weapons } from '../defs/layers';
+import { Accessories } from '../defs/accessories';
+import { itemName, type ItemRef } from '../defs/items';
+import { Weapons } from '../defs/layers';
 import { DASH_MIN_TIER, SPRINT_MIN_TIER, Units } from '../defs/units';
 import type { Combatant, Entity } from './components';
 import type { World } from './World';
@@ -85,7 +87,7 @@ export class Spawner {
       loadout: { granted, cd: new Map(), primary: u.attackAbility, heavy: '', dash: canDash ? 'ability.dodge' : '', slots: [] },
       effects: { active: [], seq: 0 }, // EVERY actor can carry effects (dodge i-frames…) — the Moat, not hero-only
       ai: { brain: actorBrain, bb: { state: 'wander', home: { x, y }, wanderT: this.rng.range(0, 2), boss: !!u.boss, profile, canSprint, betrayHpFrac: u.betrayHpFrac ?? profile.betrayHpFrac, lastSeenX: x, lastSeenY: y, lostT: 0 } },
-      render: { draw: b.draw, baseColor: b.baseColor, hatColor: b.hatColor, bob: 0, showHpBar: true },
+      render: { draw: b.draw, baseColor: b.baseColor, garbColor: b.garb, hatColor: b.hatColor, bob: 0, showHpBar: true },
       identity: { name: u.name, tier: u.tier },
     });
     if (u.gold != null) e.loot = { gold: u.gold }; // only lootable units carry gold (townsfolk don't)
@@ -97,12 +99,18 @@ export class Spawner {
     return e;
   }
 
-  spawnPickup(kind: 'weapon' | 'fruit', defId: string, x: number, y: number): Entity {
-    const label = kind === 'weapon' ? Weapons.get(defId).name : Fruits.get(defId).name;
+  spawnPickup(item: ItemRef, x: number, y: number): Entity {
+    // an item with real sprite art (a sprite-visual accessory OR weapon) shows THAT sprite on the ground —
+    // its texture is loaded by id in BootScene. Procedural items fall back to the pickup glyph.
+    const acc = item.cat === 'accessory' ? Accessories.get(item.id) : undefined;
+    const wpn = item.cat === 'weapon' ? Weapons.get(item.id) : undefined;
+    const sprite = acc?.visual.kind === 'sprite' || wpn?.visual?.kind === 'sprite' ? item.id : undefined;
     return this.world.create({
-      transform: { x, y, angle: 0, r: 10 },
-      pickup: { kind, defId, label },
-      render: { draw: 'pickup', baseColor: 0xffffff, bob: 0 },
+      transform: { x, y, angle: 0, r: 12 },
+      pickup: { item, label: itemName(item) },
+      render: sprite
+        ? { draw: 'pickup', sprite, spriteScale: 1.5, baseColor: 0xffffff, bob: 0 }
+        : { draw: 'pickup', baseColor: 0xffffff, bob: 0 },
     });
   }
 

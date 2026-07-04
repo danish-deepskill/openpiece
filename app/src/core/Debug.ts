@@ -14,6 +14,7 @@ const DEFS: DebugFlagDef[] = [
   { key: 'ai.focus', label: 'Focus-target lines', group: 'AI', default: false },
   { key: 'ai.sight', label: 'Sight radius', group: 'AI', default: false },
   { key: 'combat.reach', label: 'Attack reach', group: 'Combat', default: false },
+  { key: 'combat.hitbox', label: 'Attack hitboxes (live volumes)', group: 'Combat', default: false },
   { key: 'world.collision', label: 'Wall collision', group: 'World', default: false },
   { key: 'perf.hud', label: 'FPS + entity count', group: 'Perf', default: false },
 ];
