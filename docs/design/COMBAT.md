@@ -83,3 +83,41 @@ bosses** (multiple enemies combine into a giant) emerge in War events.
   stuns). Stackable, source-tracked.
 - **Tags**: `state.logia.intangible`, `haki.armament.active`, `cc.feared`, `fruit.type.zoan`, … drive
   immunities, counters, and conditions (Armament tag lets a hit bypass `state.logia.intangible`).
+
+## Architecture decision — everything is an Ability; "fundamental" = which grant list
+
+Two ORTHOGONAL questions people conflate (settled 2026-07):
+
+1. **Structure — is it an Ability?** = a row in the `Abilities` registry with a cost/cooldown/trigger/effect.
+   The base kit is MADE of abilities: `punch`, `kick`, `dodge` are all `AbilityDef` rows. So are (structurally)
+   **block and parry** — parry has a cooldown + tap window, block is a held state. They ARE abilities.
+2. **Distribution — fundamental or content?** = whose grant list is it on. **Fundamental** = granted to
+   (almost) everyone by default — the universal combat grammar: move, sprint, dodge, basic attack, **block,
+   **parry, feint, stamina, posture. **Content** = a *distinguishing* grant most units lack: Devil Fruit
+   powers, Haki, fighting styles (Black Leg/Rokushiki), weapon-specific combos.
+
+These are independent: `ability.dodge` is BOTH an ability AND fundamental. Being an ability doesn't make
+something "content" — the base kit is abilities everyone is granted. **The test for a NEW mechanic:**
+near-universal + units-vary-by-SKILL ⇒ fundamental (goes in `BASE_KIT`); distinguishing + vary-by-HAVING-IT
+⇒ content (granted by a layer). Guard is Deepwoken-universal → fundamental; units differ in *how well* they
+guard (stats/attributes + AI policy), not *whether* they can. The rare non-guarder is a NEGATIVE exception
+(`state.disarmed`, an arm-less beast body), never a missing positive grant.
+
+### Ability `trigger` (input shape is DATA, not a category)
+An ability carries HOW it's invoked — `tap` (punch, parry, light attack), `hold` (block, sprint, charge),
+`combo` (the sword's 3-hit chain), `charge` (hold-to-charge → release). Block and parry are NOT different
+categories: both are guard abilities differing only by `trigger` (block = hold, parry = tap). The InputSystem
+reads `trigger` and wires the control generically; the AI reads it to know "hold this up" vs "fire once".
+
+### Planned refactor — promote block/parry to base-kit abilities (NOT yet built)
+Today block/parry are HARDCODED into `Combatant` (`blocking`/`parryT`/`parryCd`) + `InputSystem` + a bespoke
+`combat/guard.ts` — the odd ones out vs the "one combat engine, everything is Abilities" canon. The target:
+- `ability.block` (`trigger: hold`) + `ability.parry` (`trigger: tap`, cooldown) as registry rows in `BASE_KIT`
+  alongside `punch`/`kick`/`dodge`, granted to every combatant.
+- The `Combatant.blocking`/`parryT` fields become the RUNTIME STATE those abilities drive (like `melee` is the
+  runtime state a swing ability drives) — not bespoke hardcoded flags.
+- `InputSystem` wires F via the ability's `trigger` (hold), the same generic path Q→dodge uses.
+- AI `blockChance`/`parryChance` stay as POLICY (how often it activates an ability it HAS).
+- Guard SKILL (window size, success, posture) moves toward ATTRIBUTE-derived (willpower/technique) so it scales
+  per-unit and per-tier like everything else, instead of a flat profile chance.
+Do this as a standalone piece on a clean (committed) base — it's foundational surgery, well-shaped but meaty.

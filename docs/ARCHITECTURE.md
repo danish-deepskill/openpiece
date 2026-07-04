@@ -82,7 +82,8 @@ ballpiece/
         ...                     #   accessories, visual, items (ItemRef spine; BASE_KIT lives in units.ts) — data only
       combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier,
         ...                     #   swing (motion registry + shared geom), hitVolume (timed strike volumes),
-        ...                     #   phases (windup/active/recover clock), equip, stamina, targeting, apparel, attributes
+        ...                     #   phases (windup/active/recover clock), guard (block/parry/feint + posture),
+        ...                     #   equip, stamina, targeting, apparel, attributes
       ai/
         Brain.ts                # Brain interface { think(e, ctx, dt) } + minimal AIContext
         FsmBrain.ts             # generic finite-state-machine brain
