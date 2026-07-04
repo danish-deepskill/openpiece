@@ -467,3 +467,57 @@ The Alliance mechanic **minimizes** friendly-fire damage rather than granting fu
 - Taunting/spitting on passive NPCs angers them — but with at least **55 Charisma**, they thank you instead.
 - The highest flat posture (with shields, equipment, and talents) as of 2/21/2025 is **70**.
 - Some players call Ragdoll Cancelling **Teching**, after the fighting-game mechanic where inputting block/parry before hitting a surface cancels your launch and lets you act again.
+
+## Weapons
+### Light Weapons — Fighting Styles
+
+| Name | Requirements | Base Damage | Scaling | Armor Penetration | Chip Damage | Posture Damage | Range | Swing Speed | Endlag | Scaled Damage |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Fang and Coil | Fang and Coil Talent | 12 | LHT: 7 | - | - | 3 | 6 | 1.13x | - | 18.3 |
+| Jus Karita | Jus Karita Talent | 14 | LHT: 9 | 20% | - | 3 | 6.5 | 1.14x | - | 23.5 |
+| Imperium Kata | Imperium Kata Talent | 12 | LHT: 7 | - | - | 3 | 6 | 1.13x | - | 18.3 |
+
+## Bloodfouler
+**FOULEDBLOOD**
+
+| Type | Damage Type |
+|---|---|
+| Greatsword | Slash Resistance / Slash |
+
+### Requirements
+50 HVY, LVL 10, 75 BLD
+
+**Cannot be equipped on:** Silentheart
+
+### Statistics
+
+| Damage | Scaling |
+|---|---|
+| 19 + 2.85 BLD | HVY: 5, BLD: 4 |
+
+| Posture Damage | Range |
+|---|---|
+| 8.5 | 9.5 Sweep |
+
+| Swing Speed | Attack Duration | Endlag |
+|---|---|---|
+| 0.86x | 0.9s | 0.1s |
+
+| Armor PEN |
+|---|
+| 20% |
+
+### Special Effect
+Restores a percentage of the user's blood upon landing m1
+
+### Miscellaneous
+
+**Stances:** 2 Handed, 1 Handed (≥40 HVY)
+
+| Rarity | Selling Price | Carry Weight |
+|---|---|---|
+| Unique | 100 Notes | 2 |
+
+| Bankable? | Droppable? | Enchantable? |
+|---|---|---|
+| Yes | Yes | No |
