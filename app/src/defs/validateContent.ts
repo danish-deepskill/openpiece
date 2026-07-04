@@ -6,10 +6,13 @@ import { Accessories } from './accessories';
 import { AIProfiles } from './aiProfiles';
 import { Fruits, Styles, Weapons } from './layers';
 import { BASE_KIT, Units } from './units';
-// side-effect import: ShipHulls has no cross-ref fields, so nothing above pulls its module in — without
-// this line the family is INVISIBLE to Registry.instances when the sweep runs standalone (CI). A new def
-// module either gets imported for phase 2 or listed here; content.test.ts machine-checks completeness.
+// side-effect imports: these families have no cross-ref fields pulled in above, so without these lines
+// they're INVISIBLE to Registry.instances when the sweep runs standalone (CI). A new def module either
+// gets imported for phase 2 or listed here; content.test.ts machine-checks completeness.
 import './ships';
+import './bodies';
+import './races';
+import './sizes';
 
 /** The minimal registry surface a cross-ref check needs (any Registry<T> satisfies it structurally). */
 interface AnyRegistry {
@@ -23,7 +26,7 @@ interface AnyRegistry {
  *     resolution can't defer a bad def to its first mid-game lookup.
  *  2. Check every cross-registry ContentId field points at a real def, so a typo'd id fails at BOOT with
  *     every problem listed — not at first spawn/equip (the fail-loud-at-boot canon, made a runtime fact).
- * unit.faction / unit.body are compile-time unions (FactionId/BodyKey) — tsc already guards those; bare
+ * unit.faction / unit.race / unit.size are compile-time unions — tsc already guards those; bare
  * ContentId strings are what this sweep exists for, and it becomes the ONLY net once defs move to external
  * JSON (ARCHITECTURE_SCALE §11 pillar 1). Call once at world start; the content sweep test runs it in CI.
  */

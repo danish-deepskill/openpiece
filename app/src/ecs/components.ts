@@ -79,6 +79,10 @@ export interface Blackboard {
   attackOk?: boolean; // holds an attack token
   broken?: boolean; // squad morale broke → flee
   lane?: number; // approach lane (-1..1)
+  // guard (block/parry) — the AI face of combat/guard, driven by profile blockChance/parryChance
+  guardT?: number; // guard hold remaining (s): while > 0 the brain stands its ground blocking
+  guardCd?: number; // guard re-roll cooldown (s): one guard decision per enemy swing, not per tick
+  regrouping?: boolean; // tactical stamina retreat (combatStance hysteresis): backing off to regen, not attacking
 }
 
 export interface AI {
@@ -89,7 +93,7 @@ export interface AI {
 /** PURE DATA — no Graphics object, no function pointer (serializable + headless-safe; DESIGN_PATTERNS §9).
  *  `draw` is a string key into the presentation draw registry; RenderSystem owns the actual Graphics. */
 export interface Render {
-  draw: string; // draw-registry key: a BodyKey ('hero', 'cow', ...), 'pickup', or 'ship'
+  draw: string; // draw-registry key: a RaceDef.draw ('actor', 'cow', 'pig'), 'pickup', or 'ship'
   /** Texture key to render as an IMAGE instead of running `draw` (a loaded sprite, e.g. an item's own art).
    *  When set, RenderSystem blits this texture; `draw` is ignored. Display diameter = 2·r·(spriteScale ?? 1). */
   sprite?: string;
@@ -164,6 +168,13 @@ export interface Combatant {
   maxStam: number;
   combo: number;
   comboT: number;
+  /** Guard strain, 0 → `maxPosture` (INVERSE pool: full = broken). Blocked hits add to it by the attacker's
+   *  combat WEIGHT; overflow = guard break (combat/guard). Regens only while the guard is DOWN. */
+  posture: number;
+  maxPosture: number; // derived from the willpower attribute at spawn (combat/attributes)
+  blocking?: boolean; // guard held (F / AI hold): frontal hits reroute HP → posture; move slowed; no regen
+  parryT?: number; // parry window remaining (s): a frontal hit landing now is negated outright
+  parryCd?: number; // parry re-arm remaining (s): only a WHIFFED window pays this (success resets it)
   kickSide?: number; // last kicking foot (±1); alternated each kick so left/right kicks mirror
   handSide?: number; // last throwing hand (±1); alternated each bare/stretch swing (R → L → R, never random)
   regenT?: number; // stamina-regen delay remaining (s): set on every spend, ticks down; regen only at 0

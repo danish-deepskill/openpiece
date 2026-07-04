@@ -20,8 +20,8 @@ const R = SIZE / (2 * BODY_FRAME_R); // body collision radius in template px
 
 const hex = (c: number): string => '#' + c.toString(16).padStart(6, '0');
 const OUTLINE = hex(0x4d4a45);
-const SKIN = hex(Bodies.grunt.baseColor);
-const GARB = hex(Bodies.grunt.garb ?? 0x6b4a3a);
+const SKIN = hex(Bodies.get('body.humanoid').skin); // the reference humanoid skin
+const GARB = hex(0x6b4a3a); // a neutral placeholder garb for the artist template (outfit is per-unit now)
 
 // facing UP: forward f (×r) → −y; sideways s (×r) → +x
 const px = (s: number): number => C + s * R;

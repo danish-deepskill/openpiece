@@ -17,10 +17,10 @@ describe('unified combat — AI fights via attribute-scaled abilities', () => {
   it('hero and enemy basic attacks share one resolution contract (damage from atk)', () => {
     const heroPunch = Abilities.get('ability.punch');
     const gruntStrike = Abilities.get('ability.banditStrike');
-    const captainCleave = Abilities.get('ability.captainCleave');
+    const bossStrike = Abilities.get('ability.brawlerStrike');
     expect(heroPunch.damageStat).toBe('atk');
     expect(gruntStrike.damageStat).toBe('atk');
-    expect(captainCleave.damageStat).toBe('atk');
+    expect(bossStrike.damageStat).toBe('atk');
     // all are melee cone attacks resolved by the same AbilitySystem.resolveHit path
     expect(heroPunch.shape?.swing).toBe('melee');
     expect(gruntStrike.shape?.swing).toBe('melee');

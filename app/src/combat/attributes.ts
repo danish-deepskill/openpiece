@@ -1,5 +1,5 @@
 import { MAX_STAM } from '../config/constants';
-import { tierStats, type PowerTier } from './PowerTier';
+import { tierIndex, tierStats, type PowerTier } from './PowerTier';
 import type { Modifier } from './Modifier';
 import type { StatBlock } from './StatBlock';
 import type { Entity } from '../ecs/components';
@@ -26,6 +26,9 @@ export const HP_PER_HEALTH = 1;
 export const STAM_PER_ENDURANCE = 1;
 /** Flat damage reduction (`def`) per point of `defense` — same identity-factor reasoning. */
 export const DEF_PER_DEFENSE = 1;
+/** maxPosture (guard capacity, combat/guard) per point of `willpower`. 0.5 = a guard breaks in ~half the
+ *  blocked hits; the per-unit spread is preserved (each role's cap still scales from its own willpower). */
+export const POSTURE_PER_WILLPOWER = 0.5;
 
 /** One source for every attribute-derived modifier so a re-derive can wipe-and-replace them wholesale. */
 const DERIVED_SOURCE = 'derived:attributes';
@@ -33,13 +36,14 @@ const DERIVED_SOURCE = 'derived:attributes';
 /**
  * Tier → attribute seed for spawns: the tier curve (PowerTier.tierStats) restated in attribute language.
  * `health`/`defense` carry the hp/def curves; `endurance` is FLAT across tiers (stamina is fitness, not
- * rank — a brute doesn't sprint longer than a thug). willpower/luck/spiritual seed 0: their consumers
- * (posture/CC resist, crit/drop rolls, the haki pool) don't exist yet, and curving an unread stat is fake
- * balancing — they gain tier curves when their systems land.
+ * rank — a brute doesn't sprint longer than a thug). `willpower` seeds the POSTURE pool (combat/guard):
+ * a gentle linear climb, so higher ranks take a couple more blocked hits to break but never turtle forever.
+ * luck/spiritual still seed 0: their consumers (crit/drop rolls, the haki pool) don't exist yet, and
+ * curving an unread stat is fake balancing — they gain tier curves when their systems land.
  */
 export function tierAttributes(t: PowerTier): Record<AttributeId, number> {
   const ts = tierStats(t);
-  return { health: ts.hp, endurance: MAX_STAM, defense: ts.def, willpower: 0, luck: 0, spiritual: 0 };
+  return { health: ts.hp, endurance: MAX_STAM, defense: ts.def, willpower: 20 + 2 * tierIndex(t), luck: 0, spiritual: 0 };
 }
 
 /**
@@ -55,6 +59,7 @@ export function deriveAttributeStats(sb: StatBlock): void {
     { stat: 'maxHp', op: 'flat', value: sb.get('health') * HP_PER_HEALTH, source: DERIVED_SOURCE },
     { stat: 'maxStam', op: 'flat', value: sb.get('endurance') * STAM_PER_ENDURANCE, source: DERIVED_SOURCE },
     { stat: 'def', op: 'flat', value: sb.get('defense') * DEF_PER_DEFENSE, source: DERIVED_SOURCE },
+    { stat: 'maxPosture', op: 'flat', value: sb.get('willpower') * POSTURE_PER_WILLPOWER, source: DERIVED_SOURCE },
   ];
   sb.addAll(derived);
 }
@@ -80,5 +85,7 @@ export function syncDerivedResources(e: Entity): void {
   if (e.combatant) {
     e.combatant.maxStam = Math.round(sb.get('maxStam'));
     if (e.combatant.stam > e.combatant.maxStam) e.combatant.stam = e.combatant.maxStam;
+    e.combatant.maxPosture = Math.round(sb.get('maxPosture'));
+    if (e.combatant.posture > e.combatant.maxPosture) e.combatant.posture = e.combatant.maxPosture;
   }
 }

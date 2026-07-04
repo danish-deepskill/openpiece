@@ -75,7 +75,7 @@ export class AbilitySystem {
       const gap = Math.hypot(dx, dy); // NOT `dist` — that would shadow the core/math import used below
       if (gap > radius + ot.r) continue;
       const inv = gap > 0.01 ? 1 / gap : 0; // knock each target radially outward from the impact
-      this.strikes.hit(e, o, base, dx * inv * kb, dy * inv * kb, 0, d.stun ?? 0); // no per-target shake; the slam shook once above
+      this.strikes.hit(e, o, d, base, dx * inv * kb, dy * inv * kb, 0, d.stun ?? 0); // no per-target shake; the slam shook once above
     }
   }
 
@@ -106,6 +106,12 @@ export class AbilitySystem {
     // level-sampled per sim step — without this gate one held click would machine-gun a whole combo chain,
     // each step bypassing the previous one's cooldown (steps are distinct abilities with cold cooldowns).
     if (d.shape && d.shape.swing !== 'pistol' && e.melee) return false;
+    // attacking DROPS the guard (the mirror of the feint: you can't cut and cover at once) — the parry
+    // window dies with it, so guard-then-swing can't smuggle a free deflection into an attack
+    if (e.combatant?.blocking) {
+      e.combatant.blocking = false;
+      e.combatant.parryT = 0;
+    }
     if (d.costStam && e.combatant) spendStamina(e.combatant, d.costStam); // spend + regen pause, one rule
     // attack speed is a tier stat: effective recovery = base cooldown / atkSpeed (default 1)
     const atkSpeed = Math.max(0.1, e.attributes?.get('atkSpeed') ?? 1);
@@ -222,7 +228,7 @@ export class AbilitySystem {
       if (dist(t.x, t.y, ot.x, ot.y) > range + ot.r) continue;
       if (Math.abs(angleDiff(Math.atan2(ry, rx), aim)) >= shape.arc) continue;
       const [nx, ny] = norm(rx, ry);
-      this.strikes.hit(e, o, base, nx * kb, ny * kb, d.shake ?? 0, d.stun ?? 0);
+      this.strikes.hit(e, o, d, base, nx * kb, ny * kb, d.shake ?? 0, d.stun ?? 0);
       if (shape.single) break; // single-target shot stops at the nearest in the cone (hit or phased)
     }
   }

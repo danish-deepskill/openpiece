@@ -8,6 +8,8 @@ import { wearAccessory } from '../combat/apparel';
 import { giveWeapon, refreshLoadout } from '../combat/equip';
 import type { Rng } from '../core/Rng';
 import { Bodies } from '../defs/bodies';
+import { Races } from '../defs/races';
+import { DEFAULT_SIZE, Sizes } from '../defs/sizes';
 import { AIProfiles } from '../defs/aiProfiles';
 import { ShipHulls } from '../defs/ships';
 import type { FactionId } from '../defs/factions';
@@ -18,10 +20,14 @@ import { DASH_MIN_TIER, SPRINT_MIN_TIER, Units } from '../defs/units';
 import type { Combatant, Entity } from './components';
 import type { World } from './World';
 
+/** Guard capacity for attribute-less combatants (no willpower to derive from) — matches the F- seed. */
+export const BASE_POSTURE = 20;
+
 /** The shared per-fight resource block — one literal, no drift. Spawns pass the endurance-derived
- *  `maxStam` attribute; the MAX_STAM default covers attribute-less targets (possessing a prop/ship). */
-export function defaultCombatant(maxStam: number = MAX_STAM): Combatant {
-  return { stam: maxStam, maxStam, combo: 0, comboT: 0 };
+ *  `maxStam` / willpower-derived `maxPosture` attributes; the defaults cover attribute-less targets
+ *  (possessing a prop/ship). */
+export function defaultCombatant(maxStam: number = MAX_STAM, maxPosture: number = BASE_POSTURE): Combatant {
+  return { stam: maxStam, maxStam, combo: 0, comboT: 0, posture: 0, maxPosture };
 }
 
 /**
@@ -58,11 +64,20 @@ export class Spawner {
   spawnUnit(unitId: string, x: number, y: number, squad?: { id: number; name: string }, weapon?: string, factionOverride?: FactionId): Entity {
     const u = Units.get(unitId);
     const faction = factionOverride ?? u.faction; // faction is data — any unit can be spawned under any banner (allies, defectors, tests)
-    const b = Bodies[u.body];
+    // PHYSICAL build = BODY baseline × RACE multiplier × SIZE band (the RimWorld split): body is the rig
+    // (draw + baseline numbers + skin), race scales it (Giant 1.5×), size is individual stature. Size/reach/
+    // mass all take race×size; walk SPEED is a race trait, not a stature one (a tall human isn't slower).
+    const body = Bodies.get(u.body ?? 'body.humanoid'); // the rig + baseline
+    const race = Races.get(u.race ?? 'race.human'); // the stat multiplier
+    const stature = Sizes.get(u.size ?? DEFAULT_SIZE).mult;
+    const bodyR = body.r * race.sizeMul * stature;
+    const bodyReach = body.reach * race.reachMul * stature;
+    const bodySpeed = body.speed * race.speedMul;
+    const bodyMass = body.mass * race.massMul * stature;
     const seedTier = u.statTier ?? u.tier; // stats from statTier (else rank tier)
     const ts = tierStats(seedTier); // atk/atkSpeed magnitudes; hp/def flow through the attribute seed below
     // Six attributes (tier seed, then the def's per-unit spread wins) + the non-attribute combat stats.
-    const base: Record<string, number> = { ...tierAttributes(seedTier), atk: ts.atk, atkSpeed: ts.atkSpeed, reach: b.reach };
+    const base: Record<string, number> = { ...tierAttributes(seedTier), atk: ts.atk, atkSpeed: ts.atkSpeed, reach: bodyReach };
     for (const [k, v] of Object.entries(u.attributes ?? {})) if (v !== undefined) base[k] = v;
     const attributes = new StatBlock(base);
     deriveAttributeStats(attributes); // maxHp/maxStam/def derive from health/endurance/defense
@@ -77,17 +92,19 @@ export class Spawner {
     const granted = new Set([u.attackAbility]);
     if (canDash) granted.add('ability.dodge');
     const e = this.world.create({
-      transform: { x, y, angle: 0, r: b.r },
-      mover: { vx: 0, vy: 0, speed: b.speed, mass: b.mass, mode: 'foot', dodgeT: 0, dvx: 0, dvy: 0 },
+      transform: { x, y, angle: 0, r: bodyR },
+      mover: { vx: 0, vy: 0, speed: bodySpeed, mass: bodyMass, mode: 'foot', dodgeT: 0, dvx: 0, dvy: 0 },
       health: { hp, maxHp: hp, dead: false, hitFlash: 0, iframes: 0 },
       faction: { id: faction },
-      combatant: defaultCombatant(maxStam),
+      combatant: defaultCombatant(maxStam, Math.round(attributes.get('maxPosture'))),
       attributes,
       tags: new TagSet(),
       loadout: { granted, cd: new Map(), primary: u.attackAbility, heavy: '', dash: canDash ? 'ability.dodge' : '', slots: [] },
       effects: { active: [], seq: 0 }, // EVERY actor can carry effects (dodge i-frames…) — the Moat, not hero-only
       ai: { brain: actorBrain, bb: { state: 'wander', home: { x, y }, wanderT: this.rng.range(0, 2), boss: !!u.boss, profile, canSprint, betrayHpFrac: u.betrayHpFrac ?? profile.betrayHpFrac, lastSeenX: x, lastSeenY: y, lostT: 0 } },
-      render: { draw: b.draw, baseColor: b.baseColor, garbColor: b.garb, hatColor: b.hatColor, bob: 0, showHpBar: true },
+      // look = the BODY's rig (draw) + skin, with the unit's OUTFIT (garb) layered on; garb omitted ⇒ the
+      // draw darkens the skin as a fallback (see actorDraws). hatColor is a per-unit accent (dialogue ring).
+      render: { draw: body.draw, baseColor: body.skin, garbColor: u.garb, hatColor: u.hatColor, bob: 0, showHpBar: true },
       identity: { name: u.name, tier: u.tier },
     });
     if (u.gold != null) e.loot = { gold: u.gold }; // only lootable units carry gold (townsfolk don't)

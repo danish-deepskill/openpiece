@@ -56,6 +56,8 @@ export class UnitPlate {
     this.card(g);
     this.bar(g, this.x + 12, this.y + 30, this.w - 114, 12, v.hp, v.maxHp, 0xd4483b);
     if (v.stam !== null && v.maxStam !== null) this.bar(g, this.x + 12, this.y + 48, this.w - 114, 6, v.stam, v.maxStam, 0x5ea0d8);
+    // posture is an INVERSE bar: it FILLS amber toward the guard break (empty = composed) — combat/guard
+    if (v.posture !== null && v.maxPosture !== null && v.maxPosture > 0) this.bar(g, this.x + 12, this.y + 57, this.w - 114, 3, v.posture, v.maxPosture, 0xe8a33d);
 
     this.name.setText(v.name);
     this.tier.setText(v.tier).setColor(v.tierColor).setPosition(this.name.x + this.name.width + 8, this.tier.y);

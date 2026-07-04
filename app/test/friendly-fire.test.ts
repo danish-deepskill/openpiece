@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Abilities } from '../src/combat/Ability';
 import { FRIENDLY_FIRE_TAG, entityHostile, grudges, harmableBy } from '../src/combat/targeting';
 import { TagSet } from '../src/combat/TagSet';
 import { Rng } from '../src/core/Rng';
@@ -42,6 +43,7 @@ describe('friendly-fire relations — grudge sits on top of the faction matrix',
 
 describe('friendly-fire provocation — an ally beaten past tolerance turns permanently', () => {
   const strikes = new StrikeResolver(new Damage());
+  const PUNCH = Abilities.get('ability.punch'); // hit() resolves guard/posture by the ability — bare fist here
 
   it('forms a grudge only once HP crosses betrayHpFrac, and it is per-individual', () => {
     const w = new World();
@@ -50,10 +52,10 @@ describe('friendly-fire provocation — an ally beaten past tolerance turns perm
     const villager = sp.spawnUnit('unit.villager', 40, 0); // civilians (ally), profile default betrayHpFrac 0.8
 
     villager.health!.hp = villager.health!.maxHp; // full → a 10% tap stays within tolerance
-    strikes.hit(me, villager, villager.health!.maxHp * 0.1, 0, 0);
+    strikes.hit(me, villager, PUNCH, villager.health!.maxHp * 0.1, 0, 0);
     expect(grudges(villager, me)).toBe(false);
 
-    strikes.hit(me, villager, villager.health!.maxHp * 0.3, 0, 0); // now down past 80%
+    strikes.hit(me, villager, PUNCH, villager.health!.maxHp * 0.3, 0, 0); // now down past 80%
     expect(grudges(villager, me)).toBe(true);
     expect(entityHostile(me, villager)).toBe(true); // mutual now — I can fight back toggle-off
     expect(harmableBy(me)(villager)).toBe(true);
@@ -64,7 +66,7 @@ describe('friendly-fire provocation — an ally beaten past tolerance turns perm
     const sp = new Spawner(w, new Rng(2));
     const villager = sp.spawnUnit('unit.villager', 0, 0);
     const bandit = sp.spawnUnit('unit.bandit', 40, 0); // hostile to civilians
-    strikes.hit(bandit, villager, villager.health!.maxHp * 0.9, 0, 0); // hammer it
+    strikes.hit(bandit, villager, PUNCH, villager.health!.maxHp * 0.9, 0, 0); // hammer it
     expect(villager.grudge?.ids.has(bandit.id) ?? false).toBe(false); // no grudge entry — it was already war
   });
 
@@ -72,7 +74,7 @@ describe('friendly-fire provocation — an ally beaten past tolerance turns perm
     Units.register({
       id: 'unit.testLoyalGuard',
       name: 'Loyal Guard',
-      body: 'grunt',
+      body: 'body.humanoid',
       tier: 'E',
       faction: 'civilians', // ally of the player
       aiProfile: 'ai.guard',
@@ -85,9 +87,9 @@ describe('friendly-fire provocation — an ally beaten past tolerance turns perm
     const guard = sp.spawnUnit('unit.testLoyalGuard', 40, 0);
 
     guard.health!.hp = guard.health!.maxHp;
-    strikes.hit(me, guard, guard.health!.maxHp * 0.5, 0, 0); // down to ~50% — a jumpy unit would have turned
+    strikes.hit(me, guard, PUNCH, guard.health!.maxHp * 0.5, 0, 0); // down to ~50% — a jumpy unit would have turned
     expect(grudges(guard, me)).toBe(false);
-    strikes.hit(me, guard, guard.health!.maxHp * 0.3, 0, 0); // now ~20% ≤ 0.3
+    strikes.hit(me, guard, PUNCH, guard.health!.maxHp * 0.3, 0, 0); // now ~20% ≤ 0.3
     expect(grudges(guard, me)).toBe(true);
   });
 });

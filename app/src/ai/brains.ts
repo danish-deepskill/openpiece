@@ -1,9 +1,13 @@
 import { Abilities, abilityRange } from '../combat/Ability';
 import { TILE } from '../config/constants';
+import { endGuard, PARRY_WINDOW, tryGuard } from '../combat/guard';
+import { phaseAt } from '../combat/phases';
 import { trySprint } from '../combat/stamina';
 import { angleDiff, dist, norm, smoothFactor } from '../core/math';
 import { combatStance, type AIProfileDef } from '../defs/aiProfiles';
 import { Bodies } from '../defs/bodies';
+import { Races } from '../defs/races';
+import { Sizes } from '../defs/sizes';
 import { factions } from '../defs/factions';
 import { ShipHulls } from '../defs/ships';
 import type { Entity } from '../ecs/components';
@@ -17,10 +21,13 @@ const profileOf = (e: Entity): AIProfileDef => e.ai!.bb.profile;
 /** Daylight (px) beyond touching within which the separation push applies — ONE const shared by the
  *  prefilter and the per-pair test, so the two can never drift apart. */
 const SEPARATION_GAP = 6;
-/** Widest transform.r any ally can have — bodies AND ship hulls (allied ships are transform+faction
- *  entities too, and the old full scan pushed away from them; the prefilter must not silently stop).
- *  Bounds the separation() prefilter radius from DATA, not a magic number. */
-const MAX_NEIGHBOR_R = Math.max(...Object.values(Bodies).map((b) => b.r), ...ShipHulls.all().map((s) => s.r));
+/** Widest transform.r any ally can have — the biggest BODY baseline × biggest race mult × biggest size band,
+ *  AND ship hulls (allied ships are transform+faction entities too, and the old full scan pushed away from
+ *  them; the prefilter must not silently stop). Bounds the separation() prefilter from DATA — all finite. */
+const MAX_UNIT_R = Math.max(...Bodies.all().map((b) => b.r))
+  * Math.max(...Races.all().map((r) => r.sizeMul))
+  * Math.max(...Sizes.all().map((s) => s.mult));
+const MAX_NEIGHBOR_R = Math.max(MAX_UNIT_R, ...ShipHulls.all().map((s) => s.r));
 
 /** Turn `t.angle` toward `want` at up to `rate` rad/s (a heavy body can't snap its heading), then return the
  *  resulting FACING unit vector. Moving along this — instead of straight at the goal — makes a low-turn-rate
@@ -228,6 +235,40 @@ const chase: FsmState = {
       return 'wander';
     }
 
+    // GUARD: read the foe's windup and answer with a block or a parry — the SAME tryGuard the player's
+    // F key calls (the Moat); skill is the profile's blockChance/parryChance, not privileged timing.
+    bb.guardCd = Math.max(0, (bb.guardCd ?? 0) - dt);
+    if ((bb.guardT ?? 0) > 0) {
+      bb.guardT = (bb.guardT ?? 0) - dt;
+      if ((bb.guardT ?? 0) > 0 && foe) {
+        // square up and stand ground — the guard is an ARC of facing, so turning to the attacker IS the block
+        t.angle = Math.atan2(foe.transform!.y - t.y, foe.transform!.x - t.x);
+        m.vx = 0;
+        m.vy = 0;
+        bb.path = null;
+        return;
+      }
+      endGuard(e); // hold expired (or the foe vanished mid-guard) — arms down, back to the fight
+      bb.guardT = 0;
+    } else if (foe?.melee && !e.melee && (p.blockChance > 0 || p.parryChance > 0) && (bb.guardCd ?? 0) <= 0) {
+      const fm = foe.melee;
+      const fp = fm.dur > 0 ? Math.min(1, fm.t / fm.dur) : 1;
+      const windupLeft = (fm.phases.windup - fp) * fm.dur; // seconds until his strike goes LIVE
+      const fd = Abilities.get(fm.ability);
+      const threat = abilityRange(fd, foe.attributes?.get('reach') ?? 0) + t.r + 20; // his steel can actually reach us (+ a step)
+      // decide at the END of his windup (once the parry window can cover his active phase) — one roll per
+      // swing (guardCd), so a low chance means "usually doesn't", never "re-rolls until it does"
+      if (phaseAt(fm.phases, fp) === 'windup' && windupLeft <= PARRY_WINDOW && dist(t.x, t.y, foe.transform!.x, foe.transform!.y) <= threat) {
+        bb.guardCd = 0.8;
+        const roll = ctx.rng.next();
+        if (roll < p.parryChance) {
+          if (tryGuard(e, true)) bb.guardT = PARRY_WINDOW; // PARRY: open the deflection window, ride it, arms down
+        } else if (roll < p.parryChance + p.blockChance) {
+          if (tryGuard(e, false)) bb.guardT = Math.max(0.3, fm.dur - fm.t + 0.15); // BLOCK: pure hold, NO parry window (rolled block ≠ a free parry)
+        }
+      }
+    }
+
     // out of sight: pursue the quarry's ACTUAL position. The pathfinder routes via where they vanished (the
     // block's corner) and on to them, so it reads as "went after you" AND actually rounds the block — rather
     // than looping at a last-seen point it can't stand on next to a wall. Last-seen is only the fallback for
@@ -269,7 +310,9 @@ const chase: FsmState = {
     const strike = reach * p.strikeFrac; // where it actually stops to attack — inside the edge so blows land
     const hpRatio = e.health ? e.health.hp / e.health.maxHp : 1;
     const broken = e.squad ? bb.broken === true : false;
-    let stance = combatStance(p, d, strike, hpRatio, dist(rx, ry, bb.home.x, bb.home.y));
+    const stamFrac = e.combatant && e.combatant.maxStam > 0 ? e.combatant.stam / e.combatant.maxStam : 1;
+    let stance = combatStance(p, d, strike, hpRatio, dist(rx, ry, bb.home.x, bb.home.y), stamFrac, bb.regrouping === true);
+    bb.regrouping = stance.regroup; // persist the stamina-hysteresis state (pure fn decides, brain remembers)
     // routing (squad morale broke, or a low-HP coward): flee — but a CORNERED animal turns and fights
     const fleeing = broken || (p.fleeBelowHp != null && hpRatio <= p.fleeBelowHp);
     const cornered = fleeing && !!foe && d <= strike;
@@ -379,9 +422,11 @@ const chase: FsmState = {
     }
     const [sx, sy] = separation(e, ctx);
     const [mx, my] = norm(wnx + sx * 0.5, wny + sy * 0.5); // final move direction (`fx` is reserved for FX)
-    // sprint (tier-gated): burn stamina to close a big gap (or flee fast), then recover by walking
+    // sprint (tier-gated): burn stamina to close a big gap (or flee fast), then recover by walking. NOT while
+    // regrouping — a tactical retreat exists to REGEN stamina, so it walks back; sprinting would drain the
+    // very bar it's trying to refill (the whole point of the regroup).
     let moveSpeed = m.speed;
-    if (bb.canSprint === true && (charging || d > reach * 2.2 || away)) {
+    if (bb.canSprint === true && bb.regrouping !== true && (charging || d > reach * 2.2 || away)) {
       moveSpeed = trySprint(e, moveSpeed, dt); // gate+drain+boost — the SAME rule the player's input uses
     }
     m.vx = mx * moveSpeed;

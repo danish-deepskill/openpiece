@@ -112,7 +112,7 @@ describe('MeleeSystem — timed volumes through a real swing', () => {
       transform: { x: 0, y: 0, angle: 0, r: 12 },
       faction: { id: 'bandits' },
       attributes: new StatBlock({ atk: 5, reach: 34 }),
-      combatant: { stam: 100, maxStam: 100, combo: 0, comboT: 0 },
+      combatant: { stam: 100, maxStam: 100, combo: 0, comboT: 0, posture: 0, maxPosture: 20 },
       melee: { ability, t: 0, dur: 0.4, motion: 'stab', phases: { windup: 0, active: 1, recover: 0 }, side: 1, angle: 0, hitByVolume: [] },
     });
     const target = world.create({

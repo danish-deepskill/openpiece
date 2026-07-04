@@ -24,7 +24,7 @@ function combatEntity(world: World, over: Partial<Entity> = {}): Entity {
     tags: new TagSet(),
     effects: { active: [], seq: 0 },
     health: { hp: 100, maxHp: 100, dead: false, hitFlash: 0, iframes: 0 },
-    combatant: { stam: 50, maxStam: 50, combo: 0, comboT: 0 },
+    combatant: { stam: 50, maxStam: 50, combo: 0, comboT: 0, posture: 0, maxPosture: 20 },
     ...over,
   });
 }
@@ -94,7 +94,7 @@ describe('derived resource sync (maxHp/maxStam ceilings follow the StatBlock)', 
       tags: new TagSet(),
       effects: { active: [], seq: 0 },
       health: { hp: 100, maxHp: 100, dead: false, hitFlash: 0, iframes: 0 },
-      combatant: { stam: 50, maxStam: 50, combo: 0, comboT: 0 },
+      combatant: { stam: 50, maxStam: 50, combo: 0, comboT: 0, posture: 0, maxPosture: 20 },
     });
     fx.apply(e, 'effect.testTonic', 'test'); // +20 health (the attribute, not maxHp directly)
     expect(e.health!.maxHp).toBe(120); // pre-fix: stayed 100 — the derive step never re-ran

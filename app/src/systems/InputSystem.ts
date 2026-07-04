@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { toggleAttackMode } from '../combat/equip';
+import { BLOCK_MOVE_MULT, endGuard, tryGuard } from '../combat/guard';
 import { trySprint } from '../combat/stamina';
 import { FRIENDLY_FIRE_TAG } from '../combat/targeting';
 import { events } from '../core/EventBus';
@@ -30,7 +31,7 @@ const AUTO_AIM_RANGE = 700;
  * Drives whichever entity holds the `control` tag. Movement sets `mover` intent; combat keys activate the
  * entity's loadout abilities through the AbilitySystem (so the four-layer build decides what each key does).
  */
-type TapKey = 'E' | 'T' | 'Q' | 'C' | 'R' | 'G';
+type TapKey = 'E' | 'T' | 'Q' | 'C' | 'R' | 'G' | 'F';
 
 export class InputSystem {
   private readonly keys: Keys;
@@ -64,7 +65,7 @@ export class InputSystem {
 
   /** Called once per RENDER frame (WorldScene), BEFORE the sim steps — latches edge-presses. */
   sample(): void {
-    for (const k of ['E', 'T', 'Q', 'C', 'R', 'G'] as const) {
+    for (const k of ['E', 'T', 'Q', 'C', 'R', 'G', 'F'] as const) {
       if (Phaser.Input.Keyboard.JustDown(this.keys[k])) this.tapped.add(k);
     }
   }
@@ -140,12 +141,19 @@ export class InputSystem {
       t.angle = Math.atan2(wp.y - t.y, wp.x - t.x);
     }
 
+    // guard (F): the TAP opens the parry window, the HOLD keeps blocking — one gesture, so a missed parry
+    // falls back to block automatically. Raising it during your own windup FEINTS the swing (combat/guard).
+    const c = e.combatant;
+    if (this.tap('F')) tryGuard(e);
+    if (c?.blocking && !this.down('F')) endGuard(e);
+
     // movement intent — hold SHIFT to sprint (drains the shared stamina pool for extra speed)
     const ix = (this.down('D') || this.down('RIGHT') ? 1 : 0) - (this.down('A') || this.down('LEFT') ? 1 : 0);
     const iy = (this.down('S') || this.down('DOWN') ? 1 : 0) - (this.down('W') || this.down('UP') ? 1 : 0);
     const moving = ix !== 0 || iy !== 0;
     let speed = m.speed;
-    if (this.down('SHIFT') && moving) speed = trySprint(e, speed, dt); // the SAME sprint rule the AI uses (the Moat)
+    if (c?.blocking) speed *= BLOCK_MOVE_MULT; // bracing is not a walk — and it forfeits the sprint
+    else if (this.down('SHIFT') && moving) speed = trySprint(e, speed, dt); // the SAME sprint rule the AI uses (the Moat)
     if (m.dodgeT > 0) {
       // velocity from the dash impulse (MovementSystem)
     } else if (moving) {

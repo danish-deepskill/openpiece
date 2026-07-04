@@ -10,7 +10,7 @@ function unit(world: World, over: Partial<Entity> = {}): Entity {
     identity: { name: 'Brute', tier: 'E+' },
     health: { hp: 40.4, maxHp: 78, dead: false, hitFlash: 0, iframes: 0 },
     faction: { id: 'bandits' },
-    combatant: { stam: 55, maxStam: 100, combo: 0, comboT: 0 },
+    combatant: { stam: 55, maxStam: 100, combo: 0, comboT: 0, posture: 5, maxPosture: 20 },
     attributes: new StatBlock({ health: 78, endurance: 100, defense: 2, willpower: 0, luck: 0, spiritual: 0, atk: 9, atkSpeed: 0.65, reach: 24 }),
     ...over,
   });

@@ -7,6 +7,7 @@ import type { Entity } from '../src/ecs/components';
 import { Spawner } from '../src/ecs/Spawner';
 import { World } from '../src/ecs/World';
 import { Weapons } from '../src/defs/layers';
+import { Units } from '../src/defs/units';
 import { AbilitySystem } from '../src/systems/AbilitySystem';
 import { Damage } from '../src/systems/Damage';
 import { EffectSystem } from '../src/systems/EffectSystem';
@@ -40,7 +41,9 @@ describe('resolvePhases — the kit rule (a sheathed sword cannot slow your kick
   });
 
   it('fruit abilities keep their AUTHORED clock regardless of what is sheathed', () => {
-    expect(resolvePhases(sworded, Abilities.get('ability.gomuPistol')).windup).toBeCloseTo(0.36);
+    // the authored windup survives the heavy sword being sheathed (the exact value tracks the Pistol def)
+    expect(resolvePhases(sworded, Abilities.get('ability.gomuPistol')).windup).toBe(Abilities.get('ability.gomuPistol').shape!.phases!.windup);
+    expect(resolvePhases(sworded, Abilities.get('ability.gomuPistol'))).not.toBe(WEIGHT_PHASES.heavy); // NOT the weapon's rung
   });
 
   it('weaponKit walks the combo chain', () => {
@@ -48,6 +51,19 @@ describe('resolvePhases — the kit rule (a sheathed sword cannot slow your kick
     expect(kit.has('ability.swordSlash1')).toBe(true);
     expect(kit.has('ability.swordFinisher')).toBe(true);
     expect(kit.has('ability.punch')).toBe(false);
+  });
+
+  it('every hostile unit\'s attack tell clears human reaction time (parry gameplay depends on it)', () => {
+    // data-driven: SPAWN each enemy and resolve its real attack clock (so a weapon attack gets its class
+    // rung via the kit, not the twitchy unarmed fallback). A new enemy with a sub-reaction windup fails here.
+    const world = new World();
+    const sp = new Spawner(world, new Rng(1));
+    for (const u of Units.all().filter((u) => u.faction === 'bandits')) {
+      const e = sp.spawnUnit(u.id, 0, 0);
+      const a = Abilities.get(u.attackAbility);
+      const windupSec = resolvePhases(e, a).windup * (a.shape?.swingTime ?? 0.18);
+      expect(windupSec, `${u.id} (${a.id}) tell is unreactable`).toBeGreaterThanOrEqual(0.2);
+    }
   });
 
   it('no authored hit window opens before its swing\'s windup ends (a telegraph must never damage)', () => {
@@ -91,7 +107,7 @@ describe('the hitbox is DEAD outside the active phase', () => {
       transform: { x: 0, y: 0, angle: 0, r: 12 },
       faction: { id: 'bandits' },
       attributes: new StatBlock({ atk: 5, reach: 34 }),
-      combatant: { stam: 100, maxStam: 100, combo: 0, comboT: 0 },
+      combatant: { stam: 100, maxStam: 100, combo: 0, comboT: 0, posture: 0, maxPosture: 20 },
       melee: { ability: 'ability.testPhased', t: 0, dur: 1, motion: 'stab', phases: { windup: 0.4, active: 0.2, recover: 0.4 }, side: 1, angle: 0, hitByVolume: [] },
     });
     world.create({

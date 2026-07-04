@@ -80,6 +80,7 @@ export const FX_COLOR = {
   spark: 0xffe08a, // a landed hit / the pistol beam
   blood: 0xc0303a,
   phase: 0x9fd0ff, // a strike phasing through Logia intangibility
+  parry: 0xf2f7ff, // the deflection flash — bright steel-white, unmistakable from a landed spark
 } as const;
 
 /** HUD view-model shapes shared by the WorldScene writer and HudScene reader (one type, both ends). */

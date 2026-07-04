@@ -1,17 +1,33 @@
 import { Registry, type ContentId, type Def } from '../core/Registry';
 import type { AttributeId } from '../combat/attributes';
 import type { PowerTier } from '../combat/PowerTier';
-import type { BodyKey } from './bodies';
+import type { BodyId } from './bodies';
+import type { RaceId } from './races';
+import type { SizeId } from './sizes';
 import type { FactionId } from './factions';
 
 /**
- * A spawnable unit = a body archetype (identity) + a PowerTier (combat magnitudes) + role wiring
- * (faction, AI profile, basic attack, loot). The same body appears at many tiers (a grunt body is a
- * thug at F-, a brute at F+), so "make a tougher enemy" is a data entry, not new code. Content is data.
+ * A spawnable unit (RimWorld's PawnKind) = a BODY (rig) + a RACE (stat mult) + a SIZE band + a PowerTier +
+ * OUTFIT colors + role wiring. Four orthogonal axes: the same body appears at many races/tiers/outfits (a
+ * brown human thug, a blue human soldier, a giant boss — all body.humanoid), so "make a bigger/tougher/
+ * differently-built enemy" is a data entry, not new code. A 4-arm fishman = a new BODY + race.fishman.
  */
 export interface UnitDef extends Def {
   name: string;
-  body: BodyKey;
+  /** The RIG — draw fn + baseline physique + skin (defs/bodies). Omitted ⇒ 'body.humanoid'. This is the
+   *  anatomy axis (2-arm vs 4-arm vs quadruped); race scales it, size scales again. */
+  body?: BodyId;
+  /** Species STAT multiplier on the body's baseline (size/reach/speed/mass — defs/races). Omitted ⇒ race.human. */
+  race?: RaceId;
+  /** INDIVIDUAL stature within the race — a named band (defs/sizes) that multiplies size/reach/mass (NOT
+   *  speed). Omitted ⇒ 'size.medium'. One Piece humans span average→admiral-tall; this is that variation
+   *  (a big human = race.human + size.large). Composes with race: a large fishman = race.fishman × size.large. */
+  size?: SizeId;
+  /** OUTFIT: torso/shoulder (clothing) fill — the per-unit look on top of the race's shape+skin. Omitted ⇒
+   *  a darkened skin. This is how same-race units differ (a brown bandit vs a blue soldier). */
+  garb?: number;
+  /** Dialogue-avatar ring / hat-band color. Omitted ⇒ a race/faction default in the draw. */
+  hatColor?: number;
   /** Rank tier — drives nameplate label/color, movement gates, and (future) bounty/region. */
   tier: PowerTier;
   /** Tier the combat stats (hp/atk/def/atkSpeed) are read from; defaults to `tier`. Lets a unit be ranked
@@ -59,22 +75,34 @@ export const Units = new Registry<UnitDef>('Units', (u) => {
   return null;
 });
 
+// outfit palette (torso/shoulder garb + dialogue-ring hat color) — the per-unit LOOK on top of the body's
+// rig+skin. Named so the roster reads by intent, not hex; same-body units differ only by which they wear.
+const GARB = { hero: 0xb5342a, bandit: 0x6b4a3a, boss: 0x3a2f4a, civilian: 0x4a6a8a, soldier: 0x2f4a6a } as const;
+const HAT = { hero: 0xf0c040, dark: 0x2a0d0d, civilian: 0x2e5a35 } as const;
+
 Units.registerAll([
-  // the player's body — same data path as everyone else; what makes it "the player" is the control tag
-  // spawns BARE-HEADED — the straw hat is found in the cutlass house (WorldGen pickups), not worn from birth
-  { id: 'unit.hero', name: 'Captain', body: 'hero', tier: 'D-', statTier: 'E-', faction: 'straw_hat', aiProfile: 'ai.rusher', attackAbility: 'ability.punch' },
-  // bandit fodder: ranked E-/E/E+ (combatants who sprint), but kept at their original F-tier stats
-  { id: 'unit.thug', name: 'Thug', body: 'grunt', tier: 'E-', statTier: 'F-', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.banditStrike', gold: 8 },
-  { id: 'unit.bandit', name: 'Bandit', body: 'grunt', tier: 'E', statTier: 'F', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.banditStrike', gold: 12, weapon: 'weapon.knife', accessories: ['accessory.banditHat'] },
-  { id: 'unit.brute', name: 'Brute', body: 'grunt', tier: 'E+', statTier: 'F+', faction: 'bandits', aiProfile: 'ai.flanker', attackAbility: 'ability.banditStrike', gold: 18, weapon: 'weapon.cutlass', accessories: ['accessory.soldierHelmet'] },
-  // mini-boss captain: ranked D- (dash-capable), HP-bloated, but at the original E- stat line
-  { id: 'unit.captain', name: 'Captain', body: 'captain', tier: 'D-', statTier: 'E-', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.captainCleave', gold: 80, hpMult: 2.4, boss: true },
-  // a townsperson: a FULL unit on the SAME stack as everyone (the Moat) — tier F, wanders, can be attacked,
-  // self-defends with fists. Allied to the player, hostile to bandits (see defs/factions).
+  // the player — same data path as everyone; what makes it "the player" is the control tag. Spawns
+  // BARE-HEADED (the straw hat is found in the cutlass house). Heroic human build, red-vest outfit.
+  { id: 'unit.hero', name: 'Captain', race: 'race.heroic', garb: GARB.hero, hatColor: HAT.hero, tier: 'D-', faction: 'straw_hat', aiProfile: 'ai.rusher', attackAbility: 'ability.punch' },
+  // bandit fodder: ranked E-/E/E+ and now fighting AT that rank (statTier = tier) — a raised floor, so even
+  // the weakest mook is a real E-tier combatant, not F-tier chaff. Plain human build, ragged browns.
+  { id: 'unit.thug', name: 'Thug', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E-', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.banditStrike', gold: 8 },
+  { id: 'unit.bandit', name: 'Bandit', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.banditStrike', gold: 12, weapon: 'weapon.knife', accessories: ['accessory.banditHat'] },
+  { id: 'unit.brute', name: 'Brute', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E+', faction: 'bandits', aiProfile: 'ai.flanker', attackAbility: 'ability.banditStrike', gold: 18, weapon: 'weapon.cutlass', accessories: ['accessory.bruteHelmet'] },
+  // the SOLDIER — the GUARD-MASTER test unit (sword + helmet, its own STEEL-BLUE uniform so it reads apart
+  // from the brown fodder). D- (a rank ABOVE the E+ Brute fodder — it's a trained fighter, not a mook).
+  // ai.master blocks + parries relentlessly — the counter is the FEINT.
+  { id: 'unit.soldier', name: 'Soldier', garb: GARB.soldier, hatColor: HAT.dark, tier: 'D-', faction: 'bandits', aiProfile: 'ai.master', attackAbility: 'ability.swordSlash1', gold: 30, weapon: 'weapon.sword', accessories: ['accessory.soldierHelmet'] },
+  // the BRAWLER — the island's D- boss: a BARE-FISTED, BARE-HEADED aggressor. humanoid body + GIANT race
+  // (renders large purely from race.giant's size mult — no special 'boss body'), HP-bloated, dash, dark coat.
+  { id: 'unit.brawler', name: 'Brawler', race: 'race.giant', garb: GARB.boss, hatColor: HAT.dark, tier: 'D-', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.brawlerStrike', gold: 80, hpMult: 2.4, boss: true },
+  // a townsperson: a FULL unit on the SAME stack as everyone (the Moat) — civilian build, work-shirt blue.
   {
     id: 'unit.villager',
     name: 'Villager',
-    body: 'villager',
+    race: 'race.civilian',
+    garb: GARB.civilian,
+    hatColor: HAT.civilian,
     tier: 'F',
     faction: 'civilians',
     aiProfile: 'ai.townsfolk',
@@ -85,8 +113,8 @@ Units.registerAll([
       'Word is a Devil Fruit washed ashore; someone stashed it in one of the houses.',
     ],
   },
-  // passive wildlife (moomoo-style critters): wander their patch, flee when struck, never fight. Neutral faction
-  // so no AI hunts them, but the player can — HP-bloated a little so a kill takes a few swings, not one.
-  { id: 'unit.cow', name: 'Cow', body: 'cow', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch', hpMult: 2.5 },
-  { id: 'unit.pig', name: 'Pig', body: 'pig', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch', hpMult: 3.5 },
+  // passive wildlife (moomoo-style critters): quadruped BODIES carry their own draw + hide + physique, so
+  // they need no outfit and default race.human (×1). HP-bloated a little so a kill takes a few swings, not one.
+  { id: 'unit.cow', name: 'Cow', body: 'body.cow', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch', hpMult: 2.5 },
+  { id: 'unit.pig', name: 'Pig', body: 'body.pig', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch', hpMult: 3.5 },
 ]);

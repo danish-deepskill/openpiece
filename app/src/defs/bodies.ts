@@ -1,38 +1,49 @@
-/** One key names both the body archetype and its draw fn (`draws` in draw/actorDraws keys off it).
- *  If a body ever reuses another's draw, split a DrawKey back out — until then one type, not two. */
-export type BodyKey = 'hero' | 'grunt' | 'captain' | 'villager' | 'cow' | 'pig';
+import { Registry, type Def } from '../core/Registry';
+
+/** Every registered body id — a template-literal union so unit defs get compile-time checking on `body`. */
+export type BodyId = `body.${string}`;
 
 /**
- * A body archetype: the physical/visual identity of a unit (race/build) — size, natural striking reach,
- * walk speed, colors, and which draw fn to use. Combat magnitudes (hp/atk/def/attack-speed) do NOT live
- * here; they come from the unit's PowerTier (see defs/units.ts + combat/PowerTier.tierStats).
+ * A BODY — the anatomical RIG of a creature (RimWorld's BodyDef): the part-plan that decides the DRAW fn
+ * (silhouette / limb count), the baseline PHYSIQUE, and the default skin/hide. This is the "2-arm vs 4-arm
+ * fishman" axis — same species (race), different body. It owns the ABSOLUTE baseline numbers; `race` then
+ * multiplies them (a Giant is race.giant × this body), and `size` multiplies again for individual stature.
+ *
+ * The four axes (RimWorld-proven, docs/references/rimworld-simple/03-pawn-anatomy):
+ *   body (this file) → RIG: draw fn + baseline size/reach/speed/mass + default skin. The VISUAL/anatomy.
+ *   race (defs/races)→ STAT multipliers on that baseline (Giant 1.5× size, Fishman +reach). No visual.
+ *   size (defs/sizes)→ individual stature multiplier within the race (S/M/L/Huge).
+ *   unit (defs/units)→ spawn preset: OUTFIT (garb/hat) + gear + AI + tier.
  */
-export interface BodyDef {
-  draw: BodyKey;
-  r: number; // collision radius
-  reach: number; // natural unarmed striking reach (weapons add length on top)
-  speed: number; // walk speed (px/s) — a build/race trait, roughly equal among humans
-  mass: number; // body weight for shove resolution — a heavy body shoves a light one and resists being pushed
-  baseColor: number;
-  /** Torso + shoulder (clothing) fill — the SECOND color channel of the humanoid anatomy, and the canvas
-   *  chest armor will later recolor/cover. Distinct from `hatColor` (the dialogue-avatar ring). Omitted ⇒
-   *  the draw falls back to a darkened baseColor. */
-  garb?: number;
-  hatColor?: number;
+export interface BodyDef extends Def {
+  name: string;
+  /** Draw-registry key (draw fns in actorDraws): the SILHOUETTE/rig — 'actor' (2-arm humanoid), 'cow', 'pig'.
+   *  A 4-arm rig would be a new body with its own draw fn; the race (stats) is unchanged. */
+  draw: string;
+  /** Default skin/hide tone (head + hands for humanoids, the whole hide for quadrupeds). */
+  skin: number;
+  r: number; // baseline collision radius (px) — race/size multiply this
+  reach: number; // baseline unarmed striking reach (px)
+  speed: number; // baseline walk speed (px/s)
+  mass: number; // baseline body mass for shove resolution
 }
 
-/** Human skin tone for the head/hands fill; faction identity is carried by the colored ring (hatColor). */
+/** Human skin tone (head/hands fill); faction identity rides the outfit + ring color, not the skin. */
 const SKIN = 0xe0a070;
 
-export const Bodies: Record<BodyKey, BodyDef> = {
-  // walk speeds are intentionally slow — a deliberate base pace, leaving headroom for fast late-game gear;
-  // sprint (×1.5) is the quick gait, not the default
-  hero: { draw: 'hero', r: 12, reach: 34, speed: 80, mass: 1.2, baseColor: SKIN, garb: 0xb5342a, hatColor: 0xf0c040 }, // red vest — the captain's icon
-  grunt: { draw: 'grunt', r: 11, reach: 34, speed: 76, mass: 1, baseColor: SKIN, garb: 0x6b4a3a, hatColor: 0x2a0d0d }, // ragged bandit browns
-  captain: { draw: 'captain', r: 16, reach: 46, speed: 66, mass: 3, baseColor: SKIN, garb: 0x3a2f4a, hatColor: 0x2a0d0d }, // dark boss coat
-  villager: { draw: 'villager', r: 11, reach: 30, speed: 62, mass: 0.9, baseColor: SKIN, garb: 0x4a6a8a, hatColor: 0x2e5a35 }, // plain work shirt
-  // passive wildlife — quadruped bodies (no garb: they use their own draw fns), no combat reach worth
-  // speaking of; heavy + slow, they graze and flee
-  cow: { draw: 'cow', r: 14, reach: 18, speed: 70, mass: 2.2, baseColor: 0xf2ece0 },
-  pig: { draw: 'pig', r: 12, reach: 16, speed: 60, mass: 1.8, baseColor: 0xe79aa2 },
-};
+// validated at boot: a non-positive physical baseline is a spawn-a-zero-size-corpse bug
+export const Bodies = new Registry<BodyDef>('Bodies', (b) => {
+  for (const k of ['r', 'reach', 'speed', 'mass'] as const) {
+    if (!(b[k] > 0)) return `${k} must be > 0 (got ${b[k]})`;
+  }
+  return null;
+});
+
+Bodies.registerAll([
+  // the standard 2-arm humanoid rig — the baseline every human/giant/fishman UNIT uses (differing by race)
+  { id: 'body.humanoid', name: 'Humanoid', draw: 'actor', skin: SKIN, r: 11, reach: 34, speed: 76, mass: 1 },
+  // quadruped rigs — their own draw fns + hide colors + grazer physique
+  { id: 'body.cow', name: 'Cattle', draw: 'cow', skin: 0xf2ece0, r: 14, reach: 18, speed: 70, mass: 2.2 },
+  { id: 'body.pig', name: 'Swine', draw: 'pig', skin: 0xe79aa2, r: 12, reach: 16, speed: 60, mass: 1.8 },
+  // NOTE: a future 4-ARM humanoid is just a new body row here (draw: 'actor4arm') — SAME races apply to it.
+]);

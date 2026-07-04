@@ -3,11 +3,12 @@ import {
   ATTRIBUTE_IDS,
   DEF_PER_DEFENSE,
   HP_PER_HEALTH,
+  POSTURE_PER_WILLPOWER,
   STAM_PER_ENDURANCE,
   deriveAttributeStats,
   tierAttributes,
 } from '../src/combat/attributes';
-import { tierStats } from '../src/combat/PowerTier';
+import { tierIndex, tierStats } from '../src/combat/PowerTier';
 import { StatBlock } from '../src/combat/StatBlock';
 import { MAX_STAM } from '../src/config/constants';
 import { Rng } from '../src/core/Rng';
@@ -23,7 +24,7 @@ describe('attributes — tier seeding', () => {
       expect(a.health).toBe(ts.hp);
       expect(a.defense).toBe(ts.def);
       expect(a.endurance).toBe(MAX_STAM); // fitness, not rank — flat across tiers
-      expect(a.willpower).toBe(0); // no consumer yet (posture/CC resist)
+      expect(a.willpower).toBe(20 + 2 * tierIndex(t)); // seeds the posture pool (combat/guard) — gentle rank climb
       expect(a.luck).toBe(0); // no consumer yet (crit/drops)
       expect(a.spiritual).toBe(0); // no consumer yet (haki pool)
     }
@@ -68,22 +69,23 @@ describe('attributes — derivation', () => {
 });
 
 describe('attributes — spawn integration', () => {
-  it('spawned units keep the pre-attribute tier numbers (no silent rebalance)', () => {
+  it('a unit seeds its stats from its TIER (statTier defaults to tier — the raised floor)', () => {
     const w = new World();
     const sp = new Spawner(w, new Rng(1));
-    const captain = sp.spawnUnit('unit.captain', 0, 0); // statTier E-, hpMult 2.4
-    const e = tierStats('E-');
-    expect(captain.health!.maxHp).toBe(Math.round(e.hp * 2.4)); // hpBloat rides the modifier pipeline now
-    expect(captain.attributes!.get('def')).toBe(e.def);
-    expect(captain.combatant!.maxStam).toBe(MAX_STAM); // endurance seed → derived maxStam → combatant pool
-    expect(captain.attributes!.get('atk')).toBe(e.atk); // non-attribute magnitudes untouched
+    const boss = sp.spawnUnit('unit.brawler', 0, 0); // D- boss, no statTier ⇒ seeds from D-, hpMult 2.4
+    const d = tierStats('D-'); // its rank tier IS its stat tier now
+    expect(boss.health!.maxHp).toBe(Math.round(d.hp * 2.4)); // hpBloat rides the modifier pipeline
+    expect(boss.attributes!.get('def')).toBe(d.def);
+    expect(boss.combatant!.maxStam).toBe(MAX_STAM); // endurance seed → derived maxStam → combatant pool
+    expect(boss.combatant!.maxPosture).toBe(Math.round((20 + 2 * tierIndex('D-')) * POSTURE_PER_WILLPOWER)); // willpower seed × conversion → maxPosture
+    expect(boss.attributes!.get('atk')).toBe(d.atk); // non-attribute magnitudes untouched
   });
 
   it("a def's per-unit attribute spread replaces its tier seed (and only its own)", () => {
     Units.register({
       id: 'unit.testGlassCannon',
       name: 'Glass Cannon',
-      body: 'grunt',
+      body: 'body.humanoid',
       tier: 'E-',
       faction: 'bandits',
       aiProfile: 'ai.rusher',
@@ -102,7 +104,7 @@ describe('attributes — spawn integration', () => {
     Units.register({
       id: 'unit.testBadSpread',
       name: 'Bad Spread',
-      body: 'grunt',
+      body: 'body.humanoid',
       tier: 'F',
       faction: 'bandits',
       aiProfile: 'ai.rusher',

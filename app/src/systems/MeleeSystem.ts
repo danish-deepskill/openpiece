@@ -66,7 +66,8 @@ export class MeleeSystem {
         const ot = o.transform!;
         if (!volumeHits(v, frame, ot.x, ot.y, ot.r)) continue; // steel/slash hasn't reached them yet
         hits.push(o.id); // count the contact even if it phases (Logia), so it isn't re-tested every frame
-        this.strikes.hit(e, o, base, kx, ky, d.shake ?? 0, d.stun ?? 0);
+        this.strikes.hit(e, o, d, base, kx, ky, d.shake ?? 0, d.stun ?? 0);
+        if (!e.melee) return; // a PARRY cancelled this swing mid-resolve — the deflected cut reaches nobody else
         if (shape.single) return; // one landed hit per frame — same behavior the single-volume model had
       }
     }

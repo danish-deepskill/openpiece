@@ -34,6 +34,19 @@ type Pt = { tx: number; ty: number };
 const WALL_RING = { radius: 10, thickness: 1.2, gaps: 3, gapWidth: 2 } as const;
 
 /**
+ * Enemy-isle interior division — radial SPOKE walls from the hub out to the perimeter ring, splitting the
+ * inside into `slices` equal wedges (the "pizza"). Each spoke carries ONE doorway gap so units still cross
+ * between wedges; the spokes sit HALFWAY between the ring's gaps (offset ½ a wedge) so every perimeter
+ * entrance opens into the MIDDLE of a slice, not onto a spoke. Knobs:
+ *  - `slices`   wedge count (3 = the requested pizza; also the spoke count)
+ *  - `inner`    tiles from center the spokes START (a small open hub around the captain, unwalled)
+ *  - `halfW`    spoke half-width in tiles (matches the ring's `thickness` for a connected 2-tile wall)
+ *  - `gapAt`    fraction along the spoke (inner→ring) where its crossing doorway sits
+ *  - `gapWidth` tiles of opening at that doorway
+ */
+const WALL_SPOKES = { slices: 3, inner: 2, halfW: 1.2, gapAt: 0.55, gapWidth: 2 } as const;
+
+/**
  * Tree groves (blocking cover) scattered on each island. A tree blocks ONLY its trunk tile; the leaf crown
  * overhangs ~1 tile all round (drawn above actors — TerrainRenderer's canopy pass). Knobs:
  *  - `home`/`enemy` grove COUNT per island
@@ -68,6 +81,36 @@ function stampWallRing(grid: TileGrid, cx: number, cy: number, cfg: typeof WALL_
         if (inGap) continue;
       }
       grid.tiles[ty][tx] = Tile.StoneWall;
+    }
+  }
+}
+
+/** Radial spoke walls dividing the ring's interior into `slices` wedges (the pizza). Each spoke runs from
+ *  `inner` out to the ring radius along one angle, with a doorway gap partway along so wedges connect.
+ *  Grass-only (never carves the ring's own gaps or any structure), so the perimeter stays as authored. */
+function stampWallSpokes(grid: TileGrid, cx: number, cy: number, ring: typeof WALL_RING, cfg: typeof WALL_SPOKES): void {
+  const angles: number[] = [];
+  for (let k = 0; k < cfg.slices; k++) {
+    // offset half a wedge off gap 0 (due west) so a spoke bisects the wall BETWEEN two entrances
+    angles.push(Math.PI + Math.PI / cfg.slices + (k * 2 * Math.PI) / cfg.slices);
+  }
+  const gapStart = cfg.inner + (ring.radius - cfg.inner) * cfg.gapAt; // radial start of the crossing doorway
+  const gapEnd = gapStart + cfg.gapWidth;
+  for (let ty = 0; ty < grid.h; ty++) {
+    for (let tx = 0; tx < grid.w; tx++) {
+      if (grid.tiles[ty][tx] !== Tile.Grass) continue;
+      const dx = tx - cx;
+      const dy = ty - cy;
+      const d = Math.hypot(dx, dy);
+      if (d < cfg.inner || d > ring.radius) continue; // stay between the open hub and the ring
+      const a = Math.atan2(dy, dx);
+      for (const sa of angles) {
+        const da = Math.abs(Math.atan2(Math.sin(a - sa), Math.cos(a - sa))); // wrapped angular offset from the spoke line
+        if (da * d >= cfg.halfW) continue; // perpendicular distance to the spoke line = da·d; outside the band
+        if (d >= gapStart && d <= gapEnd) break; // the crossing doorway — leave it open
+        grid.tiles[ty][tx] = Tile.StoneWall;
+        break;
+      }
     }
   }
 }
@@ -189,6 +232,9 @@ export function generateLevel(rng: Rng): LevelLayout {
 
   // enemy-isle stone ring (the assault funnels through its gaps) — placed on the enemy island's grass
   stampWallRing(grid, ENEMY.cx, ENEMY.cy, WALL_RING);
+  // …then divide the interior into 3 wedges (the pizza): radial spokes from the hub to the ring, each with a
+  // crossing doorway. Stamped AFTER the ring so a spoke meeting the ring just thickens the join, never a gap.
+  stampWallSpokes(grid, ENEMY.cx, ENEMY.cy, WALL_RING, WALL_SPOKES);
 
   // fodder scattered inside the ring; reject any roll that lands on a solid tile (the wall band), so no
   // enemy spawns embedded in stone. Falls back to the always-clear island center after the retry budget.
@@ -206,7 +252,16 @@ export function generateLevel(rng: Rng): LevelLayout {
     }
     enemies.push({ x, y, boss: false, unit: rng.pick(FODDER) });
   }
-  enemies.push({ x: px(ENEMY.cx), y: px(ENEMY.cy), boss: true, unit: 'unit.captain' });
+  // the Brawler — the island's boss (a bare-fisted aggressor), at the hub where the three wedges meet
+  enemies.push({ x: px(ENEMY.cx), y: px(ENEMY.cy), boss: true, unit: 'unit.brawler' });
+  // the Soldier — the guard-master test unit — posted in the SOUTH wedge (bottom of the island), placed
+  // deterministically so it always appears; nudged inward if it lands on the ring/spoke stone
+  {
+    const sx = px(ENEMY.cx);
+    let sy = px(ENEMY.cy + 6); // due south, inside the wall band
+    for (let d = 6; d >= 3 && solidPx(sx, sy); d--) sy = px(ENEMY.cy + d);
+    enemies.push({ x: sx, y: sy, boss: false, unit: 'unit.soldier' });
+  }
 
   // tree groves — placed LAST so they can dodge every spawn/dock/door and the wall band (kept off the ring
   // so gaps stay open). Only grass is overwritten; the reachability test guards against a grove sealing a path.

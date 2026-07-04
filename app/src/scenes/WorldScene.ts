@@ -118,12 +118,9 @@ export class WorldScene extends Phaser.Scene {
     // (EnemySpawn.unit, rolled from the seeded worldgen stream) — the scene just instantiates it.
     const isle = { id: 2, name: 'Isle Raiders' };
     for (const s of level.enemies) spawner.spawnUnit(s.unit, s.x, s.y, s.boss ? undefined : isle);
-    // a 3-Bandit squad on the home island (east of spawn) — watch them fan into lanes + coordinate
-    const gang = { id: 1, name: 'Dock Gang' };
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2;
-      spawner.spawnUnit('unit.bandit', level.playerSpawn.x + 500 + Math.cos(a) * 30, level.playerSpawn.y + Math.sin(a) * 30, { ...gang });
-    }
+    // TEST: 1 Soldier on the home island (east of spawn) — the guard-master brain (parry + tactical retreat)
+    // up close, without sailing. Swap back to the 3-Bandit Dock Gang once the AI experiment is dialed in.
+    spawner.spawnUnit('unit.soldier', level.playerSpawn.x + 500, level.playerSpawn.y, { id: 1, name: 'Dock Gang' });
     // an anchored Sloop at the home dock — board with E, sail east with W/S + A/D
     spawner.spawnShip('ship.sloop', level.boatSpawn.x, level.boatSpawn.y, 'straw_hat');
 

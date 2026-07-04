@@ -93,42 +93,49 @@ export const Abilities = new Registry<AbilityDef>('Abilities', (a) => {
 // NOTE: `cooldown` is the BASE recovery; effective recovery = cooldown / atkSpeed (a tier stat), so attack
 // speed is tier-driven, not a hardcoded player advantage. Stamina gates EVERY costed ability by AFFORDABILITY:
 // you can't use what you can't pay for — even the bare fist. Same kit, same rules for every actor.
+// SWING TIMES are tuned in ABSOLUTE reaction terms (windup fraction × swingTime vs human ~0.25s): the
+// unarmed/light tier stays deliberately UNREACTABLE (rhythm-parry only, the twitchy inside game); medium is
+// borderline; heavy/fruit telegraphs run ~0.23–0.33s of windup — the reaction-parry targets. Lengthening a
+// swingTime slows the WHOLE attack, so cooldowns rise with it where the old rhythm assumed cd ≥ swing.
 Abilities.registerAll([
-  // base kit (unarmed): a short, committed fist jab — the fist itself is the hitbox on contact
-  { id: 'ability.punch', name: 'Punch', cooldown: 0.5, shape: { range: 0, arc: 0.22, swing: 'melee', pattern: 'line', swingTime: 0.2, reachMul: 0.85 }, damageStat: 'atk', knockback: 165, costStam: 3, stun: 0.12 },
-  { id: 'ability.dodge', name: 'Dodge', cooldown: 0.55, costStam: 12, selfImpulse: 320, grantEffect: 'effect.invuln' },
+  // base kit (unarmed): a short, committed fist jab — the fist itself is the hitbox on contact (windup ~34ms)
+  { id: 'ability.punch', name: 'Punch', cooldown: 0.5, shape: { range: 0, arc: 0.22, swing: 'melee', pattern: 'line', swingTime: 0.28, reachMul: 0.85 }, damageStat: 'atk', knockback: 165, costStam: 3, stun: 0.12 },
+  { id: 'ability.dodge', name: 'Dodge', cooldown: 0.55, costStam: 6, selfImpulse: 320, grantEffect: 'effect.invuln' },
   // base kit HEAVY: a committed kick — slower + harder than the jab. The foot only appears for this swing (right-click).
-  { id: 'ability.kick', name: 'Kick', cooldown: 0.9, shape: { range: 0, arc: 0.3, swing: 'melee', pattern: 'line', swingTime: 0.32, limb: 'foot', reachMul: 1.45 }, damageStat: 'atk', damageFlat: 6, knockback: 320, costStam: 7, stun: 0.45 },
+  { id: 'ability.kick', name: 'Kick', cooldown: 0.9, shape: { range: 0, arc: 0.3, swing: 'melee', pattern: 'line', swingTime: 0.4, limb: 'foot', reachMul: 1.45 }, damageStat: 'atk', damageFlat: 6, knockback: 320, costStam: 7, stun: 0.45 },
   // Haki — Armament: a timed coating that counters Devil Fruits (bypasses Logia intangibility) + boosts damage
   { id: 'ability.armament', name: 'Armament', cooldown: 8, grantEffect: 'effect.armament' },
-  // weapon (cutlass) — the basic, deliberate sword move: a real swing/stab whose blade must connect
-  { id: 'ability.cut', name: 'Cut', cooldown: 0.55, shape: { range: 30, arc: 0.5, swing: 'melee', pattern: 'mixed', width: 12, swingTime: 0.34 }, damageStat: 'atk', damageFlat: 2, knockback: 170, costStam: 3, stun: 0.22 },
+  // weapon (cutlass) — the basic, deliberate sword move: a real swing/stab whose blade must connect (windup ~143ms)
+  { id: 'ability.cut', name: 'Cut', cooldown: 0.7, shape: { range: 30, arc: 0.5, swing: 'melee', pattern: 'mixed', width: 12, swingTime: 0.55 }, damageStat: 'atk', damageFlat: 2, knockback: 170, costStam: 3, stun: 0.22 },
   // RESERVED for a late-game / high-tier weapon: fast + powerful. Not granted by the starter cutlass.
-  { id: 'ability.slash', name: 'Slash', cooldown: 0.32, shape: { range: 30, arc: 0.5, swing: 'melee', pattern: 'mixed', width: 12, swingTime: 0.16 }, damageStat: 'atk', damageFlat: 6, knockback: 210, costStam: 3.5, stun: 0.2 },
-  // LIGHT weapon (knife/dagger): a quick, short, cheap stab — fast cadence, low damage + stagger
-  { id: 'ability.stab', name: 'Stab', cooldown: 0.4, shape: { range: 22, arc: 0.34, swing: 'melee', pattern: 'mixed', width: 8, swingTime: 0.22 }, damageStat: 'atk', damageFlat: 1, knockback: 120, costStam: 2, stun: 0.14 },
-  // the SWORD's 3-hit chain: two fast alternating cuts, then a committed finisher whose slash-wave (a
-  // 'swing'-following arc volume) reaches past the steel — after it, the chain ROOT locks for the finisher's
-  // cooldown (the post-combo recovery). Steps 1–2 keep short cooldowns so the chain flows.
-  { id: 'ability.swordSlash1', name: 'Slash', cooldown: 0.5, shape: { range: 0, arc: 0.55, swing: 'melee', pattern: 'arc', swingTime: 0.3 }, damageStat: 'atk', damageFlat: 3, knockback: 180, costStam: 5, stun: 0.2, comboNext: 'ability.swordSlash2' },
-  { id: 'ability.swordSlash2', name: 'Backslash', cooldown: 0.5, shape: { range: 0, arc: 0.55, swing: 'melee', pattern: 'arc', swingTime: 0.3, mirror: true }, damageStat: 'atk', damageFlat: 4, knockback: 200, costStam: 5, stun: 0.22, comboNext: 'ability.swordFinisher' },
+  { id: 'ability.slash', name: 'Slash', cooldown: 0.5, shape: { range: 30, arc: 0.5, swing: 'melee', pattern: 'mixed', width: 12, swingTime: 0.35 }, damageStat: 'atk', damageFlat: 6, knockback: 210, costStam: 3.5, stun: 0.2 },
+  // LIGHT weapon (knife/dagger): a quick, short, cheap stab — fast cadence, low damage + stagger (windup ~54ms)
+  { id: 'ability.stab', name: 'Stab', cooldown: 0.4, shape: { range: 22, arc: 0.34, swing: 'melee', pattern: 'mixed', width: 8, swingTime: 0.3 }, damageStat: 'atk', damageFlat: 1, knockback: 120, costStam: 2, stun: 0.14 },
+  // the SWORD's 3-hit chain: two committed heavy cuts (~228ms windups — REACTION-parryable, the price of the
+  // reach + damage), then a finisher whose slash-wave (a 'swing'-following arc volume) reaches past the
+  // steel — after it, the chain ROOT locks for the finisher's cooldown (the post-combo recovery).
+  { id: 'ability.swordSlash1', name: 'Slash', cooldown: 0.65, shape: { range: 0, arc: 0.55, swing: 'melee', pattern: 'arc', swingTime: 0.6 }, damageStat: 'atk', damageFlat: 3, knockback: 180, costStam: 5, stun: 0.2, comboNext: 'ability.swordSlash2' },
+  { id: 'ability.swordSlash2', name: 'Backslash', cooldown: 0.65, shape: { range: 0, arc: 0.55, swing: 'melee', pattern: 'arc', swingTime: 0.6, mirror: true }, damageStat: 'atk', damageFlat: 4, knockback: 200, costStam: 5, stun: 0.22, comboNext: 'ability.swordFinisher' },
   // the wave's window sits INSIDE the heavy rung's active phase [0.38, 0.72] — a telegraph must never
   // deal damage (the canon review caught the old [0.15, 0.7], authored against the deleted pre-phase timeline)
-  { id: 'ability.swordFinisher', name: 'Cross Cut', cooldown: 2.4, shape: { range: 0, arc: 0.7, swing: 'melee', pattern: 'arc', swingTime: 0.42, hitVolumes: [{ kind: 'weaponSegment', from: 0.3 }, { kind: 'arc', radius: 52, halfAngle: 0.9, thickness: 26, follow: 'swing', active: [0.38, 0.72] }] }, damageStat: 'atk', damageFlat: 8, knockback: 320, costStam: 8, stun: 0.5, shake: 4 }, // keeps the blade's dead zone; the wave still covers the mid-range
+  { id: 'ability.swordFinisher', name: 'Cross Cut', cooldown: 2.4, shape: { range: 0, arc: 0.7, swing: 'melee', pattern: 'arc', swingTime: 0.85, hitVolumes: [{ kind: 'weaponSegment', from: 0.3 }, { kind: 'arc', radius: 52, halfAngle: 0.9, thickness: 26, follow: 'swing', active: [0.38, 0.72] }] }, damageStat: 'atk', damageFlat: 8, knockback: 320, costStam: 8, stun: 0.5, shake: 4 }, // keeps the blade's dead zone; the wave still covers the mid-range
   // fighting style (flash step)
   { id: 'ability.flashDash', name: 'Flash Dash', cooldown: 0.45, costStam: 10, selfImpulse: 420, grantEffect: 'effect.invuln' },
   // devil fruit (gomu) — rubber-arm STRETCH punches: the fist cocks back then shoots far out (the arm is the hitbox)
   // fruit phases are AUTHORED (never the weight ladder): the Pistol's long rubber cock-back IS its telegraph
-  { id: 'ability.gomuPistol', name: 'Gomu Pistol', cooldown: 0.55, shape: { range: 118, arc: 0.12, single: true, swing: 'melee', pattern: 'stretch', swingTime: 0.44, phases: { windup: 0.36, active: 0.22, recover: 0.42 } }, damageStat: 'atk', damageFlat: 8, knockback: 330, costStam: 5.5, stun: 0.22 },
+  { id: 'ability.gomuPistol', name: 'Gomu Pistol', cooldown: 1.1, shape: { range: 118, arc: 0.12, single: true, swing: 'melee', pattern: 'stretch', swingTime: 1.05, phases: { windup: 0.46, active: 0.2, recover: 0.34 } }, damageStat: 'atk', damageFlat: 8, knockback: 330, costStam: 5.5, stun: 0.22 }, // a deliberately COMMITTED baseline (headroom for fast late gear): ~480ms rubber cock-back — the show IS the reactable telegraph
   { id: 'ability.gomuGatling', name: 'Gomu Gatling', cooldown: 1.6, shape: { range: 85, arc: 0.3, swing: 'melee', pattern: 'stretch', swingTime: 0.5, jabs: 4, phases: { windup: 0.1, active: 0.7, recover: 0.2 } }, damageStat: 'atk', knockback: 60, costStam: 13, stun: 0.12 },
   // Gomu Rocket: the arm grabs FORWARD, then the body rockets up to it — a long leap (launchAt fires mid-swing)
   // grab forward with BOTH hands (no contact damage), rocket the body, then SLAM an AoE where it lands
   { id: 'ability.gomuRocket', name: 'Gomu Rocket', cooldown: 2.0, costStam: 9, selfImpulse: 1100, impulseDur: 0.2, launchAt: 0.4, grantEffect: 'effect.invuln', shape: { range: 95, arc: 0.12, swing: 'melee', pattern: 'stretch', stretchMode: 'grab', swingTime: 0.5, bothHands: true, noHit: true, landRadius: 100, phases: { windup: 0.1, active: 0.3, recover: 0.6 } }, damageStat: 'atk', damageFlat: 12, knockback: 320, stun: 0.5, shake: 6 }, // grab reaches full at windup+active = 0.4 — exactly where launchAt fires
   // gomu HEAVY (the kick version of the Pistol): the leg cocks back then stamps far out — the stretched-leg stomp
-  { id: 'ability.gomuStamp', name: 'Gomu Stamp', cooldown: 1.0, shape: { range: 140, arc: 0.12, single: true, swing: 'melee', pattern: 'stretch', stretchMode: 'punch', limb: 'foot', swingTime: 0.5, phases: { windup: 0.36, active: 0.22, recover: 0.42 } }, damageStat: 'atk', damageFlat: 14, knockback: 340, costStam: 8, stun: 0.5 },
-  // enemy melee — the SAME ability path as the player (damage scales off the unit's atk attribute)
-  { id: 'ability.banditStrike', name: 'Strike', cooldown: 0.5, shape: { range: 0, arc: 0.28, swing: 'melee', pattern: 'line', swingTime: 0.24 }, damageStat: 'atk', knockback: 175, costStam: 3, stun: 0.15 },
-  { id: 'ability.captainCleave', name: 'Cleave', cooldown: 0.62, shape: { range: 0, arc: 0.55, swing: 'melee', swingTime: 0.38 }, damageStat: 'atk', knockback: 240, costStam: 4, stun: 0.35 },
+  { id: 'ability.gomuStamp', name: 'Gomu Stamp', cooldown: 1.35, shape: { range: 140, arc: 0.12, single: true, swing: 'melee', pattern: 'stretch', stretchMode: 'punch', limb: 'foot', swingTime: 1.15, phases: { windup: 0.46, active: 0.2, recover: 0.34 } }, damageStat: 'atk', damageFlat: 14, knockback: 340, costStam: 8, stun: 0.5 }, // the leg version of the Pistol — same committed rubber cock-back (~530ms), heavier tail for the harder stomp
+  // enemy melee — the SAME ability path as the player. Their phases are AUTHORED (kit-less abilities would
+  // fall to the twitchy unarmed rung): the PLAYER parries these, so their windups must clear reaction time.
+  { id: 'ability.banditStrike', name: 'Strike', cooldown: 0.8, shape: { range: 0, arc: 0.28, swing: 'melee', pattern: 'line', swingTime: 0.5, phases: { windup: 0.4, active: 0.25, recover: 0.35 } }, damageStat: 'atk', knockback: 175, costStam: 3, stun: 0.15 }, // 200ms tell
+  // the Brawler boss's bare-fist haymaker — a big, committed swing (315ms tell): unarmed but AUTHORED, so
+  // the guard-master's OWN blows are reactable and the parry duel goes both ways. The boss REWARDS the read.
+  { id: 'ability.brawlerStrike', name: 'Haymaker', cooldown: 1.0, shape: { range: 0, arc: 0.55, swing: 'melee', swingTime: 0.7, phases: { windup: 0.45, active: 0.25, recover: 0.3 } }, damageStat: 'atk', knockback: 240, costStam: 4, stun: 0.35 },
 ]);
 
 /**

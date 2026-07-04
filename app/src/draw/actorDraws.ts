@@ -346,6 +346,17 @@ export const drawActor: DrawFn = (g, e) => {
     g.strokeCircle(0, 0, (A.shoulderOut + A.shoulderHalfW) * r + 2);
   }
 
+  // GUARD arc (combat/guard) — drawn as a FRONTAL crescent because the guard IS directional: what you see
+  // covered is what blocks; the open back is honest. Brighter + wider while the parry window is live.
+  const cb = e.combatant;
+  if (cb?.blocking || (cb?.parryT ?? 0) > 0) {
+    const parrying = (cb!.parryT ?? 0) > 0;
+    g.lineStyle(parrying ? 4 : 3, parrying ? 0xf2f7ff : 0x9fd0ff, parrying ? 0.95 : 0.7);
+    g.beginPath();
+    g.arc(0, 0, (A.shoulderOut + A.shoulderHalfW) * r + 4, a - 1.05, a + 1.05);
+    g.strokePath();
+  }
+
   // (the held weapon is drawn earlier, behind the body + under its own gripping fist — see the hand loop)
 
   // health bar (+ a thinner stamina bar directly beneath it)
@@ -367,6 +378,24 @@ export const drawActor: DrawFn = (g, e) => {
       g.fillRect(bx - 1, sy - 1, w + 2, sh + 2);
       g.fillStyle(0x5ea0d8, 1); // same blue as the HUD stamina bar
       g.fillRect(bx, sy, w * spct, sh);
+    }
+  }
+
+  // posture: a VERTICAL guard meter just right of the silhouette, filling UPWARD toward the break (Sekiro-
+  // style — vertical reads distinctly from the horizontal HP/stamina). ALWAYS shown for a combatant (like
+  // the HP/stamina bars): the track sits empty when composed and fills amber as guard strain builds, so you
+  // can watch it climb toward a break in real time — not just glimpse it for one frame under fire.
+  if (rd.showHpBar && cb && cb.maxPosture > 0) {
+    const ph = r * 2; // bar height ≈ the body
+    const pw = 0.5; // thin sliver
+    const pbx = r + 5; // to the RIGHT of the silhouette
+    const pby = -ph / 2; // vertically centred on the body
+    const ppct = clamp(cb.posture / cb.maxPosture, 0, 1);
+    g.fillStyle(0x000000, 0.5); // the empty track — always visible so the meter reads as a fixture
+    g.fillRect(pbx - 1, pby - 1, pw + 2, ph + 2);
+    if (ppct > 0) {
+      g.fillStyle(0xe8a33d, 1); // amber — matches the plate's posture bar
+      g.fillRect(pbx, pby + ph * (1 - ppct), pw, ph * ppct); // grows from the BOTTOM up
     }
   }
 };
@@ -410,7 +439,7 @@ function drawQuadruped(g: Phaser.GameObjects.Graphics, e: Parameters<DrawFn>[1],
   const t = e.transform!;
   const r = t.r;
   const flashing = !!e.health && e.health.hitFlash > 0;
-  const body = flashing ? 0xffffff : e.render!.baseColor; // the BodyDef is the single color source
+  const body = flashing ? 0xffffff : e.render!.baseColor; // the race's skin/hide is the single color source
   g.fillStyle(0x000000, 0.2); // contact shadow (unrotated)
   g.fillEllipse(0, r * 0.5, r * 2.4, r * 1.1);
   g.save();
@@ -456,11 +485,10 @@ const drawCow: DrawFn = (g, e) => drawQuadruped(g, e, { spots: 0x4b3a2b, ear: 0x
 const drawPig: DrawFn = (g, e) => drawQuadruped(g, e, { ear: 0xcf7a84, snout: 0xcf7a84 });
 
 /** Draw registry keyed by BodyDef.draw (BodyKey). Humanoids share the moomoo body look; wildlife has its own quadruped. */
+/** Draw registry keyed by RaceDef.draw — the SILHOUETTE. Every humanoid race shares 'actor' (the moomoo
+ *  body look); wildlife races have their own quadruped draw. 'pickup' is a non-unit draw (ground items). */
 export const draws: Record<string, DrawFn> = {
-  hero: drawActor,
-  grunt: drawActor,
-  captain: drawActor,
-  villager: drawActor,
+  actor: drawActor,
   cow: drawCow,
   pig: drawPig,
   pickup: drawPickup,

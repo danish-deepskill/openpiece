@@ -38,8 +38,10 @@ export const Accessories = new Registry<AccessoryDef>('Accessories', (a) => {
 Accessories.registerAll([
   // the hero's icon — FOUND in the cutlass house (WorldGen loot), not spawn-worn (id grammar: accessory.<camelCase>)
   { id: 'accessory.strawHat', name: 'Straw Hat', slot: 'head', visual: { kind: 'sprite', art: 'accessories/examples/straw_hat.png', scale: 1.6 } },
-  // the Brute's helmet — marks the F+ fodder variant at a glance
-  { id: 'accessory.soldierHelmet', name: 'Soldier Helmet', slot: 'head', visual: { kind: 'sprite', art: 'accessories/examples/soldier_helmet.png', scale: 1.6 } },
+  // the Brawler's helmet (the D- sword duelist) — the plain grey visor
+  { id: 'accessory.soldierHelmet', name: 'Soldier Helmet', slot: 'head', visual: { kind: 'sprite', art: 'hats/soldier_helmet.png', scale: 1.6 } },
+  // the Brute's helmet — the horned one, marks the F+ fodder variant at a glance
+  { id: 'accessory.bruteHelmet', name: 'Brute Helmet', slot: 'head', visual: { kind: 'sprite', art: 'hats/brute_helmet.png', scale: 1.6 } },
   // the Bandit's hat — pairs with the knife (light-class kit)
   { id: 'accessory.banditHat', name: 'Bandit Hat', slot: 'head', visual: { kind: 'sprite', art: 'accessories/examples/bandit_hat.png', scale: 1.6 } },
 ]);

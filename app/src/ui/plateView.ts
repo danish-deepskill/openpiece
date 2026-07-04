@@ -25,6 +25,9 @@ export interface UnitPlateView {
   maxHp: number;
   stam: number | null;
   maxStam: number | null;
+  /** Guard strain (combat/guard) — an INVERSE pool: the bar FILLS toward the break. Null for non-combatants. */
+  posture: number | null;
+  maxPosture: number | null;
   /** The six allocatable attributes (combat/attributes.ts), FINAL values incl. modifiers. */
   attributes: Record<AttributeId, number>;
   atk: number;
@@ -58,6 +61,8 @@ export function unitPlateView(e: Entity): UnitPlateView | null {
     maxHp: e.health.maxHp,
     stam: e.combatant?.stam ?? null,
     maxStam: e.combatant?.maxStam ?? null,
+    posture: e.combatant?.posture ?? null,
+    maxPosture: e.combatant?.maxPosture ?? null,
     attributes,
     atk: sb?.get('atk') ?? 0,
     def: sb?.get('def') ?? 0,

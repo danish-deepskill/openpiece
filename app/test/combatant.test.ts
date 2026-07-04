@@ -5,7 +5,7 @@ import { World } from '../src/ecs/World';
 import { CombatantSystem } from '../src/systems/CombatantSystem';
 
 function fighter(world: World, over: Record<string, number> = {}): Entity {
-  return world.create({ combatant: { stam: 50, maxStam: 100, combo: 0, comboT: 0, ...over } });
+  return world.create({ combatant: { stam: 50, maxStam: 100, combo: 0, comboT: 0, posture: 0, maxPosture: 20, ...over } });
 }
 
 describe('CombatantSystem — delayed stamina regen + hitstun decay', () => {
