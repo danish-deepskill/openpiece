@@ -1,6 +1,6 @@
 import { Abilities, abilityRange } from '../combat/Ability';
 import { TILE } from '../config/constants';
-import { endGuard, PARRY_WINDOW, tryGuard } from '../combat/guard';
+import { ABILITY_BLOCK, endGuard, PARRY_WINDOW, tryGuard } from '../combat/guard';
 import { phaseAt } from '../combat/phases';
 import { trySprint } from '../combat/stamina';
 import { angleDiff, dist, norm, smoothFactor } from '../core/math';
@@ -250,7 +250,10 @@ const chase: FsmState = {
       }
       endGuard(e); // hold expired (or the foe vanished mid-guard) — arms down, back to the fight
       bb.guardT = 0;
-    } else if (foe?.melee && !e.melee && (p.blockChance > 0 || p.parryChance > 0) && (bb.guardCd ?? 0) <= 0) {
+    } else if (foe?.melee && !e.melee && e.loadout?.granted.has(ABILITY_BLOCK) && (p.blockChance > 0 || p.parryChance > 0) && (bb.guardCd ?? 0) <= 0) {
+      // CAPABILITY first (the grant — same generic granted.has() check every ability uses), then POLICY
+      // (blockChance/parryChance — how often to use a guard it HAS). Cleanly split: no guard unless it's in
+      // the kit, and the profile only tunes frequency. A parry roll on a block-only unit falls back to a block.
       const fm = foe.melee;
       const fp = fm.dur > 0 ? Math.min(1, fm.t / fm.dur) : 1;
       const windupLeft = (fm.phases.windup - fp) * fm.dur; // seconds until his strike goes LIVE

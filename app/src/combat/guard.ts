@@ -17,6 +17,12 @@ import { phaseAt, type CombatWeight } from './phases';
  * One engine: the player's F key and the AI brains call the SAME functions here (the Moat).
  */
 
+/** GUARD ability ids — the capability markers. A unit can block/parry iff the id is in its loadout.granted —
+ *  the SAME generic "do I have this ability" check every ability uses (AbilitySystem.ready), not a bespoke
+ *  per-ability helper. Kept in sync with defs/units.GUARD_KIT. */
+export const ABILITY_BLOCK = 'ability.block';
+export const ABILITY_PARRY = 'ability.parry';
+
 /** Parry deflection window opened by a guard tap (s). Generous on purpose — timing skill should live in
  *  reading the windup, not in frame-perfect input. */
 export const PARRY_WINDOW = 0.22;
@@ -60,12 +66,17 @@ export const WEIGHT_POSTURE: Record<CombatWeight, number> = Object.freeze({
  *  - an AI that ROLLED BLOCK passes `parry: false` — for the AI, block and parry are separate DECISIONS
  *    (the roll already chose one), so a block must NOT smuggle in a free parry window (the bug: a blockChance-1
  *    unit was still parrying, because tryGuard always armed the window).
+ * CAPABILITY-GATED (the Moat, ONE chokepoint): raising a guard needs `ability.block` granted; opening the
+ * parry window additionally needs `ability.parry`. A unit lacking the grant (villager/critter, a future
+ * disarmed fighter) simply cannot — the same check for the player and every AI.
  * During the actor's OWN windup this is the FEINT (the swing is forfeited); once the swing is active/recovering
- * it's committed — no guard. Returns false when guarding is impossible (stunned, mid-commit).
+ * it's committed — no guard. Returns false when guarding is impossible (no capability, stunned, mid-commit).
  */
 export function tryGuard(e: Entity, parry = true): boolean {
   const c = e.combatant;
   if (!c) return false;
+  const granted = e.loadout?.granted;
+  if (!granted?.has(ABILITY_BLOCK)) return false; // no guard capability — can't raise a guard at all (block is the floor)
   if ((c.stunT ?? 0) > 0) return false; // staggered — your arms won't answer
   const m = e.melee;
   if (m) {
@@ -74,7 +85,7 @@ export function tryGuard(e: Entity, parry = true): boolean {
     delete e.melee; // FEINT: show the tell, pull the swing, guard comes up
   }
   c.blocking = true;
-  if (parry && (c.parryCd ?? 0) <= 0) {
+  if (parry && granted.has(ABILITY_PARRY) && (c.parryCd ?? 0) <= 0) { // the parry window needs its OWN grant, not just block
     c.parryT = PARRY_WINDOW;
     c.parryCd = PARRY_COOLDOWN; // re-armed instantly on success (see resolveGuard)
   }

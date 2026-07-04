@@ -40,6 +40,47 @@ function midSwing(e: Entity, t = 0.05): void {
   e.melee = { ability: SLASH.id, t, dur: 0.6, motion: 'arc', phases: { windup: 0.38, active: 0.34, recover: 0.28 }, side: 1, angle: Math.PI, hitByVolume: [] };
 }
 
+describe('guard is a CAPABILITY — the granted ability, not a hardcoded flag (the Moat)', () => {
+  it('a fighter is granted block + parry (in loadout.granted); tryGuard works', () => {
+    const world = new World();
+    const sp = new Spawner(world, new Rng(1));
+    const fighter = sp.spawnUnit('unit.thug', 0, 0);
+    expect(fighter.loadout!.granted.has('ability.block')).toBe(true);
+    expect(fighter.loadout!.granted.has('ability.parry')).toBe(true);
+    expect(tryGuard(fighter)).toBe(true);
+    expect(fighter.combatant!.blocking).toBe(true);
+  });
+
+  it('a non-fighter (noGuard) is NOT granted the guard verbs; tryGuard refuses', () => {
+    const world = new World();
+    const sp = new Spawner(world, new Rng(1));
+    const villager = sp.spawnUnit('unit.villager', 0, 0);
+    expect(villager.loadout!.granted.has('ability.block')).toBe(false);
+    expect(tryGuard(villager)).toBe(false); // no capability → cannot raise a guard
+    expect(villager.combatant!.blocking ?? false).toBe(false);
+  });
+
+  it('block WITHOUT parry granted: tryGuard raises the block but opens NO parry window', () => {
+    const world = new World();
+    const sp = new Spawner(world, new Rng(1));
+    const e = sp.spawnUnit('unit.thug', 0, 0);
+    e.loadout!.granted.delete('ability.parry'); // block-capable, parry-incapable
+    expect(tryGuard(e, true)).toBe(true); // asks for a parry…
+    expect(e.combatant!.blocking).toBe(true); // …gets a block
+    expect(e.combatant!.parryT ?? 0).toBe(0); // but NO parry window (lacks the grant)
+  });
+
+  it('the incapable defender takes a clean hit (guard never engages)', () => {
+    const { attacker, defender, strikes } = duel();
+    defender.loadout!.granted.delete('ability.block'); // strip the capability
+    defender.loadout!.granted.delete('ability.parry');
+    tryGuard(defender); // no-op now
+    const hp = defender.health!.hp;
+    strikes.hit(attacker, defender, SLASH, 10, 0, 0);
+    expect(defender.health!.hp).toBeLessThan(hp); // lands clean — no guard to reroute it
+  });
+});
+
 describe('parry — a timed deflection that punishes the attacker', () => {
   it('negates the hit, spikes + staggers the attacker, interrupts their swing, re-arms the defender', () => {
     const { attacker, defender, strikes } = duel();

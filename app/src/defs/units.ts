@@ -49,6 +49,9 @@ export interface UnitDef extends Def {
   dialogue?: string[];
   /** HP bloat multiplier on top of the tier baseline (elites/bosses are tankier than their power tier). */
   hpMult?: number;
+  /** Opt OUT of the fundamental guard grant (GUARD_KIT) — a non-fighter (villager, wildlife) can't block or
+   *  parry. The rare NEGATIVE exception: guarding is universal, so we mark who LACKS it, not who has it. */
+  noGuard?: boolean;
   /** Per-unit friendly-fire tolerance — overrides the AI profile's `betrayHpFrac` for THIS unit (a loyal
    *  lieutenant at 0.4, a jumpy recruit at 0.95). Omitted ⇒ the profile default. See aiProfiles.betrayHpFrac. */
   betrayHpFrac?: number;
@@ -66,6 +69,11 @@ export const DASH_MIN_TIER: PowerTier = 'E+';
 /** The base kit EVERY actor falls back to (the bare-handed loadout) — the ONE home for these ids; equip.ts
  *  and spawns reference this, never string literals (CLAUDE.md: no hardcoded content lists in code). */
 export const BASE_KIT = { primary: 'ability.punch', heavy: 'ability.kick', dash: 'ability.dodge' } as const;
+
+/** The guard abilities every real COMBATANT is granted (block/parry are fundamental verbs — COMBAT.md). A
+ *  unit HAS the capability iff these are in its loadout.granted; non-fighters (villager/critters) skip them
+ *  via `noGuard`. One home for the ids; the guard engine + capability checks read the grant, not literals. */
+export const GUARD_KIT = ['ability.block', 'ability.parry'] as const;
 
 export const Units = new Registry<UnitDef>('Units', (u) => {
   for (const [k, v] of Object.entries(u.attributes ?? {}))
@@ -97,6 +105,7 @@ Units.registerAll([
   // (renders large purely from race.giant's size mult — no special 'boss body'), HP-bloated, dash, dark coat.
   { id: 'unit.brawler', name: 'Brawler', race: 'race.giant', garb: GARB.boss, hatColor: HAT.dark, tier: 'D-', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.brawlerStrike', gold: 80, hpMult: 2.4, boss: true },
   // a townsperson: a FULL unit on the SAME stack as everyone (the Moat) — civilian build, work-shirt blue.
+  // noGuard: an untrained civilian throws panicked punches but can't block/parry (the negative exception).
   {
     id: 'unit.villager',
     name: 'Villager',
@@ -107,6 +116,7 @@ Units.registerAll([
     faction: 'civilians',
     aiProfile: 'ai.townsfolk',
     attackAbility: 'ability.punch',
+    noGuard: true,
     dialogue: [
       'Welcome to the island, stranger.',
       'The Dock Gang runs the east side — give them a wide berth.',
@@ -115,6 +125,6 @@ Units.registerAll([
   },
   // passive wildlife (moomoo-style critters): quadruped BODIES carry their own draw + hide + physique, so
   // they need no outfit and default race.human (×1). HP-bloated a little so a kill takes a few swings, not one.
-  { id: 'unit.cow', name: 'Cow', body: 'body.cow', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch', hpMult: 2.5 },
-  { id: 'unit.pig', name: 'Pig', body: 'body.pig', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch', hpMult: 3.5 },
+  { id: 'unit.cow', name: 'Cow', body: 'body.cow', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch', hpMult: 2.5, noGuard: true },
+  { id: 'unit.pig', name: 'Pig', body: 'body.pig', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch', hpMult: 3.5, noGuard: true },
 ]);

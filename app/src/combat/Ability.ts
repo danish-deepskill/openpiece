@@ -42,9 +42,16 @@ export interface AbilityShape {
  * pistol, a style's dash). The AbilitySystem resolves them generically: pay cost, set cooldown, deal a
  * shaped hit (damage scaled off an attribute), apply a self-impulse, and/or apply a self-effect.
  */
+/** How an ability is INVOKED (input shape) — data, not a category. 'tap' fires once (punch, parry); 'hold'
+ *  stays active while held then ends on release (block, sprint); 'combo' chains on repeat presses. Most
+ *  abilities are the default 'tap'; guard uses this to distinguish block (hold) from parry (tap). */
+export type AbilityTrigger = 'tap' | 'hold' | 'combo';
+
 export interface AbilityDef extends Def {
   name: string;
   cooldown: number; // BASE recovery; effective = cooldown / atkSpeed (a tier stat)
+  /** Input shape (see AbilityTrigger). Default 'tap'. Guard reads it (block=hold, parry=tap). */
+  trigger?: AbilityTrigger;
   costStam?: number; // stamina drained on use AND the gate — you can't use what you can't pay for (clamped to 0)
   shape?: AbilityShape; // offensive abilities
   damageStat?: StatId; // base damage read from the user's attributes (e.g. 'atk')
@@ -101,6 +108,12 @@ Abilities.registerAll([
   // base kit (unarmed): a short, committed fist jab — the fist itself is the hitbox on contact (windup ~34ms)
   { id: 'ability.punch', name: 'Punch', cooldown: 0.5, shape: { range: 0, arc: 0.22, swing: 'melee', pattern: 'line', swingTime: 0.28, reachMul: 0.85 }, damageStat: 'atk', knockback: 165, costStam: 3, stun: 0.12 },
   { id: 'ability.dodge', name: 'Dodge', cooldown: 0.55, costStam: 6, selfImpulse: 320, grantEffect: 'effect.invuln' },
+  // GUARD abilities — a unit CAN block/parry iff these are in its loadout (the capability, granted like any
+  // ability: base kit for fighters, or a weapon/style could grant a better one). They aren't activated through
+  // AbilitySystem — the guard engine (combat/guard) drives them, gated by the grant. `trigger` records the
+  // input shape (hold vs tap) per the COMBAT.md decision; consumed by the guard wiring, not a generic dispatch yet.
+  { id: 'ability.block', name: 'Block', cooldown: 0, trigger: 'hold' },
+  { id: 'ability.parry', name: 'Parry', cooldown: 0, trigger: 'tap' },
   // base kit HEAVY: a committed kick — slower + harder than the jab. The foot only appears for this swing (right-click).
   { id: 'ability.kick', name: 'Kick', cooldown: 0.9, shape: { range: 0, arc: 0.3, swing: 'melee', pattern: 'line', swingTime: 0.4, limb: 'foot', reachMul: 1.45 }, damageStat: 'atk', damageFlat: 6, knockback: 320, costStam: 7, stun: 0.45 },
   // Haki — Armament: a timed coating that counters Devil Fruits (bypasses Logia intangibility) + boosts damage

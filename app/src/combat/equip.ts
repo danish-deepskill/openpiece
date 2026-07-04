@@ -4,7 +4,7 @@ import { Accessories } from '../defs/accessories';
 import type { ItemRef } from '../defs/items';
 import { itemSlot } from '../defs/items';
 import { Fruits, Potentials, Styles, Weapons, type LayerDef } from '../defs/layers';
-import { BASE_KIT } from '../defs/units';
+import { BASE_KIT, GUARD_KIT } from '../defs/units';
 import { removeAccessory, wearAccessory } from './apparel';
 import { syncDerivedResources } from './attributes';
 import { weaponKit } from './phases';
@@ -87,8 +87,9 @@ export function refreshLoadout(e: Entity): void {
   const lo = e.loadout;
   if (!eq || !lo) return;
 
-  // Base kit everyone has: a fist (light), a kick (heavy), a dodge. (Haki/Armament is A-tier+ — granted later.)
-  const granted = new Set<ContentId>([BASE_KIT.primary, BASE_KIT.heavy, BASE_KIT.dash]);
+  // Base kit everyone has: a fist (light), a kick (heavy), a dodge, and the GUARD verbs (block/parry — a
+  // fundamental capability, COMBAT.md). (Haki/Armament is A-tier+ — granted later.)
+  const granted = new Set<ContentId>([BASE_KIT.primary, BASE_KIT.heavy, BASE_KIT.dash, ...GUARD_KIT]);
   let primary: ContentId = BASE_KIT.primary;
   let heavy: ContentId = BASE_KIT.heavy; // base heavy; a fruit (or later a weapon/style) may override this
   let dash: ContentId = BASE_KIT.dash;

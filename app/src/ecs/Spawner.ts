@@ -16,7 +16,7 @@ import type { FactionId } from '../defs/factions';
 import { Accessories } from '../defs/accessories';
 import { itemName, type ItemRef } from '../defs/items';
 import { Weapons } from '../defs/layers';
-import { DASH_MIN_TIER, SPRINT_MIN_TIER, Units } from '../defs/units';
+import { DASH_MIN_TIER, GUARD_KIT, SPRINT_MIN_TIER, Units } from '../defs/units';
 import type { Combatant, Entity } from './components';
 import type { World } from './World';
 
@@ -91,6 +91,9 @@ export class Spawner {
     const canDash = ti >= tierIndex(DASH_MIN_TIER);
     const granted = new Set([u.attackAbility]);
     if (canDash) granted.add('ability.dodge');
+    // guard is a FUNDAMENTAL verb (COMBAT.md): every real fighter is granted block/parry, so "can this unit
+    // guard" = "is it in its loadout" (the Moat — same question as any ability). Non-fighters opt out via noGuard.
+    if (!u.noGuard) for (const a of GUARD_KIT) granted.add(a);
     const e = this.world.create({
       transform: { x, y, angle: 0, r: bodyR },
       mover: { vx: 0, vy: 0, speed: bodySpeed, mass: bodyMass, mode: 'foot', dodgeT: 0, dvx: 0, dvy: 0 },
