@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { factions } from '../src/defs/factions';
+import { Rng } from '../src/core/Rng';
+import { Spawner } from '../src/ecs/Spawner';
+import { World } from '../src/ecs/World';
 import { Units } from '../src/defs/units';
 
 describe('Factions — two sides: {straw_hat, civilians} ⚔ {bandits}', () => {
@@ -30,7 +33,9 @@ describe('Villager — a full unit on the same stack (the Moat)', () => {
     expect(v.faction).toBe('civilians');
     expect(v.tier).toBe('F');
     expect(v.aiProfile).toBe('ai.townsfolk');
-    expect(v.attackAbility).toBe('ability.punch');
     expect((v.dialogue ?? []).length).toBeGreaterThan(0);
+    // "fists" — no weapon, no style, so its primary resolves to the base-kit fist at spawn
+    const spawned = new Spawner(new World(), new Rng(1)).spawnUnit('unit.villager', 0, 0);
+    expect(spawned.loadout!.primary).toBe('ability.punch');
   });
 });

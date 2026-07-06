@@ -8,6 +8,7 @@ import { BASE_KIT, GUARD_KIT } from '../defs/units';
 import { removeAccessory, wearAccessory } from './apparel';
 import { syncDerivedResources } from './attributes';
 import { weaponKit } from './phases';
+import { ABILITY_SPRINT } from './stamina';
 
 export type LayerKind = 'weapon' | 'fruit' | 'style' | 'potential';
 
@@ -26,6 +27,27 @@ export function giveWeapon(e: Entity, weaponId: ContentId): void {
     e.loadout.primary = d.primary;
   }
   syncDerivedResources(e); // every modifier write path re-syncs the maxHp/maxStam pools (combat/attributes)
+}
+
+/**
+ * Give a non-player actor a FIGHTING STYLE: grants its dash + unarmed strikes and (bare-handed) makes them the
+ * primary/heavy. The Spawner's AI-unit path mirror of the style branch in refreshLoadout — a martial art is
+ * where a bare-fisted unit's strike comes from (banditStrike/brawlerStrike), not a per-unit field. Apply BEFORE
+ * a weapon: giveWeapon then overrides the primary (a drawn weapon out-prioritises bare martial arts).
+ */
+export function giveStyle(e: Entity, styleId: ContentId): void {
+  const d = Styles.get(styleId);
+  if (!e.equipment) e.equipment = { potentials: [] };
+  e.equipment.style = styleId;
+  e.attributes?.addAll(d.modifiers);
+  if (e.tags) for (const t of d.tags) e.tags.add(t);
+  const lo = e.loadout;
+  if (lo) {
+    lo.granted.add(d.dash);
+    if (d.primary) { lo.granted.add(d.primary); lo.primary = d.primary; }
+    if (d.heavy) { lo.granted.add(d.heavy); lo.heavy = d.heavy; }
+  }
+  syncDerivedResources(e);
 }
 
 function registryFor(kind: LayerKind) {
@@ -87,9 +109,13 @@ export function refreshLoadout(e: Entity): void {
   const lo = e.loadout;
   if (!eq || !lo) return;
 
-  // Base kit everyone has: a fist (light), a kick (heavy), a dodge, and the GUARD verbs (block/parry — a
+  // Base kit everyone has: a fist (light), a kick (heavy), a roll (the base mobility move), and the GUARD verbs (block/parry — a
   // fundamental capability, COMBAT.md). (Haki/Armament is A-tier+ — granted later.)
   const granted = new Set<ContentId>([BASE_KIT.primary, BASE_KIT.heavy, BASE_KIT.dash, ...GUARD_KIT]);
+  // PRESERVE the tier-gated sprint grant across a re-derive: the Spawner is the ONE authority that decides who
+  // can sprint (SPRINT_MIN_TIER), so a loadout rebuild (equip/unequip) must not silently strip a capability
+  // that isn't tied to equipment. Without this, equipping a weapon would revoke the hero's sprint.
+  if (lo.granted.has(ABILITY_SPRINT)) granted.add(ABILITY_SPRINT);
   let primary: ContentId = BASE_KIT.primary;
   let heavy: ContentId = BASE_KIT.heavy; // base heavy; a fruit (or later a weapon/style) may override this
   let dash: ContentId = BASE_KIT.dash;
@@ -106,6 +132,16 @@ export function refreshLoadout(e: Entity): void {
     const d = Styles.get(eq.style);
     granted.add(d.dash);
     dash = d.dash;
+    // a style's unarmed strikes are always GRANTED (so R can toggle to them), but only take over the
+    // primary/heavy when no WEAPON is held — a drawn weapon out-prioritises bare martial arts.
+    if (d.primary) {
+      granted.add(d.primary);
+      if (!eq.weapon) primary = d.primary;
+    }
+    if (d.heavy) {
+      granted.add(d.heavy);
+      if (!eq.weapon) heavy = d.heavy;
+    }
   }
   if (eq.fruit) {
     const d = Fruits.get(eq.fruit);

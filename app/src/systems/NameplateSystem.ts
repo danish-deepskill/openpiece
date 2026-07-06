@@ -17,11 +17,17 @@ const GAP = 4; // px between name and tier on the line
 export class NameplateSystem {
   private readonly nameP: Phaser.GameObjects.Text[] = [];
   private readonly tierP: Phaser.GameObjects.Text[] = [];
+  private textRot = 0; // counter-rotation (rad) to keep labels screen-upright under the shift-lock camera
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly world: World,
   ) {}
+
+  /** Keep nameplates screen-upright while the world camera spins (shift lock): the WorldScene passes −camRot. */
+  setTextRotation(rot: number): void {
+    this.textRot = rot;
+  }
 
   update(): void {
     let n = 0;
@@ -31,7 +37,7 @@ export class NameplateSystem {
       const idn = e.identity;
       if (!idn?.name || e.health?.dead) continue;
       const t = e.transform!;
-      const y = t.y - t.r - 13;
+      const above = t.r + 13; // distance the label sits ABOVE the unit (on screen)
       const nameColor =
         e === me
           ? COLOR_SELF
@@ -43,11 +49,22 @@ export class NameplateSystem {
       const tierStr = idn.tier ?? '';
       const tierText = tierStr ? this.slot(this.tierP, ti++).setText(tierStr).setColor(tierColor(tierStr)) : undefined;
 
-      // center the combined "Name Tier" line around the unit
+      // The whole "Name Tier" line counter-rotates as a RIGID unit about the actor center (t.x,t.y) so it
+      // stays ABOVE the unit ON SCREEN and upright while the shift-lock camera spins. Each segment's local
+      // offset (right = dx from line-left, up = `above`) is rotated by textRot into world space; the glyphs
+      // also rotate by textRot to read level. (Just rotating the glyphs left the line pinned world-above, so a
+      // 180° view flip dropped it BELOW the unit — this rotates the anchor too.)
       const total = nameText.width + (tierText ? GAP + tierText.width : 0);
-      const left = t.x - total / 2;
-      nameText.setPosition(left, y).setVisible(true);
-      if (tierText) tierText.setPosition(left + nameText.width + GAP, y).setVisible(true);
+      const cos = Math.cos(this.textRot);
+      const sin = Math.sin(this.textRot);
+      const place = (txt: Phaser.GameObjects.Text, dx: number): void => {
+        const lx = dx - total / 2; // local right offset (along the label line)
+        const ly = -above; // local up offset (the label sits this far above the unit, on screen)
+        // rotate the local (lx, ly) into world space about the actor center, then place + orient the glyphs
+        txt.setPosition(t.x + lx * cos - ly * sin, t.y + lx * sin + ly * cos).setRotation(this.textRot).setVisible(true);
+      };
+      place(nameText, 0);
+      if (tierText) place(tierText, nameText.width + GAP);
     }
     for (let i = n; i < this.nameP.length; i++) this.nameP[i].setVisible(false);
     for (let i = ti; i < this.tierP.length; i++) this.tierP[i].setVisible(false);

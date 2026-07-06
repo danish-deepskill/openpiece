@@ -57,9 +57,13 @@ describe('swingPose — Gomu rubber-arm stretch (on the Pistol\'s authored phase
     expect(pose('stretch', { t: 1, ...P }, { range: 200 }).tx).toBeCloseTo(bx, 1); // back to rest at the end
   });
 
-  it('a grab reaches forward with no wind-up (Gomu Rocket), unlike the punch', () => {
-    expect(pose('stretch', { t: 0.2, ...P }, { range: 200, stretchMode: 'grab' }).tx).toBeGreaterThan(bx); // already forward
-    expect(pose('stretch', { t: 0.2, ...P }, { range: 200 }).tx).toBeLessThan(bx); // punch is still mid wind-up
+  it('a grab (Gomu Rocket) COCKS BACK through the windup (a readable tell), then shoots to full reach', () => {
+    // P's phases put windup at 0.36; p=0.2 is mid-windup → the grab arm is drawn BACK (behind the guard), the
+    // telegraph. It then reaches full forward extension by the end of the active phase (where launchAt fires).
+    const grab = { range: 200, stretchMode: 'grab' } as const;
+    expect(pose('stretch', { t: 0.2, ...P }, grab).tx).toBeLessThan(bx); // cocked back during windup (the tell)
+    const aEnd = 0.36 + 0.22; // windup + active from PISTOL phases
+    expect(pose('stretch', { t: aEnd, ...P }, grab).tx).toBeCloseTo(bx + 200, 0); // full reach at the launch point
   });
 });
 

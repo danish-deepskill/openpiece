@@ -38,52 +38,83 @@ export class ShipSystem {
         }
       }
     }
-    // pin riders to their ship's deck (riding stores the ship's ID — resolve it; a sunk ship = ref gone)
+    // pin riders to their DECK SLOT (not the ship center — else riders stack): seat 0 = helm (aft), the rest
+    // spread FORWARD along the deck. The along-deck offset rotates with the ship's heading so they ride the
+    // deck as it turns. (riding stores the ship's ID — resolve it; a sunk ship = ref gone.)
     for (const e of this.world.with('riding', 'transform')) {
       const ship = this.world.byId(e.riding!.shipId);
-      if (ship?.transform) {
-        e.transform!.x = ship.transform.x;
-        e.transform!.y = ship.transform.y;
+      if (ship?.transform && ship.ship) {
+        const st = ship.transform;
+        const span = ShipHulls.get(ship.ship.hull).length * 0.32; // usable deck length for seating (px)
+        const seats = ShipHulls.get(ship.ship.hull).seats;
+        // map seat i∈[0,seats-1] to an offset from −span (aft/helm) to +span (bow), centered
+        const frac = seats > 1 ? e.riding!.seat / (seats - 1) : 0.5;
+        const along = -span + frac * (2 * span);
+        e.transform!.x = st.x + Math.cos(st.angle) * along;
+        e.transform!.y = st.y + Math.sin(st.angle) * along;
       } else {
         delete (e as Entity).riding; // the ship no longer exists — the rider is simply no longer riding
       }
     }
   }
 
-  /** Board `ship`: pin the actor to its deck and unanchor it. (Driven by the `verb.board` interaction.) */
+  /** Board `ship`: seat the actor at the helm (seat 0) and unanchor it. FOLLOWERS (recruited crew) board with
+   *  the leader into the remaining seats, up to the hull's `seats` capacity — extra crew are left ashore. Each
+   *  gets a distinct deck slot (pinRiders), so they don't stack. (verb.board) */
   board(e: Entity, ship: Entity): void {
-    e.riding = { shipId: ship.id }; // id at rest — every use re-resolves via world.byId
+    const hull = ShipHulls.get(ship.ship!.hull);
+    e.riding = { shipId: ship.id, seat: 0 }; // the pilot at the helm
     ship.ship!.anchored = false;
-    const name = ShipHulls.get(ship.ship!.hull).name;
-    events.emit('notify', { msg: `Boarded the ${name} — W/S throttle, A/D steer, E to disembark.` });
+    let seat = 1;
+    let leftBehind = 0;
+    for (const c of this.world.with('ai', 'transform')) {
+      if (c.ai!.bb.followId !== e.id || c.riding) continue; // only the leader's crew, not already aboard
+      if (seat < hull.seats) c.riding = { shipId: ship.id, seat: seat++ };
+      else leftBehind++;
+    }
+    const tail = leftBehind > 0 ? ` (${leftBehind} crew left ashore — the ${hull.name} is full)` : '';
+    events.emit('notify', { msg: `Boarded the ${hull.name} — W/S throttle, A/D steer, E to disembark.${tail}` });
   }
 
-  /** Step the rider off their ship onto the nearest open land; re-anchors the ship. */
+  /** Step the rider off their ship onto the nearest open land; re-anchors the ship. Riding FOLLOWERS step off
+   *  with the leader, each onto its own open spot near the ship. */
   disembark(e: Entity): void {
     const ship = this.world.byId(e.riding!.shipId);
     if (!ship?.ship || !ship.transform) {
       delete (e as Entity).riding; // ship gone (sunk/despawned) — nothing to step off of
       return;
     }
-    const st = ship.transform;
+    const spot = this.landingSpot(ship.transform, e.transform!.r);
+    if (!spot) {
+      events.emit('notify', { msg: 'Sail closer to land to disembark.' });
+      return;
+    }
+    e.transform!.x = spot.x;
+    e.transform!.y = spot.y;
+    delete e.riding;
+    // the crew disembarks too — each to its own open spot beside the ship (skips any it can't fit, staying aboard)
+    for (const c of this.world.with('riding', 'transform', 'ai')) {
+      if (c.riding!.shipId !== ship.id || c.ai!.bb.followId !== e.id) continue;
+      const cs = this.landingSpot(ship.transform, c.transform!.r);
+      if (cs) { c.transform!.x = cs.x; c.transform!.y = cs.y; delete (c as Entity).riding; }
+    }
+    ship.ship!.anchored = true;
+    ship.ship!.speed = 0;
+    ship.ship!.throttle = 0; // pilot() no longer runs for this ship — don't leave it 'powered'
+    events.emit('notify', { msg: 'Stepped ashore.' });
+  }
+
+  /** The nearest open foot-standable spot in a ring around the ship (for a body of radius `bodyR`), or null. */
+  private landingSpot(st: { x: number; y: number; r: number }, bodyR: number): { x: number; y: number } | null {
     for (let r = st.r + 10; r <= st.r + 90; r += 12) {
       for (let a = 0; a < 12; a++) {
         const ang = (a / 12) * Math.PI * 2;
         const lx = st.x + Math.cos(ang) * r;
         const ly = st.y + Math.sin(ang) * r;
-        if (this.collision.canOccupy(lx, ly, e.transform!.r, 'foot')) {
-          e.transform!.x = lx;
-          e.transform!.y = ly;
-          delete e.riding;
-          ship.ship!.anchored = true;
-          ship.ship!.speed = 0;
-          ship.ship!.throttle = 0; // pilot() no longer runs for this ship — don't leave it 'powered'
-          events.emit('notify', { msg: 'Stepped ashore.' });
-          return;
-        }
+        if (this.collision.canOccupy(lx, ly, bodyR, 'foot')) return { x: lx, y: ly };
       }
     }
-    events.emit('notify', { msg: 'Sail closer to land to disembark.' });
+    return null;
   }
 
   /** Apply helm input to the ridden ship: throttle (fwd ∈ -1..1) + steer (turn ∈ -1..1). */

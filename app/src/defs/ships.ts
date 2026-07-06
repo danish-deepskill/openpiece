@@ -25,6 +25,9 @@ export interface ShipHullDef extends Def {
   length: number; // draw size (full px)
   width: number;
   cannonSlots: number;
+  /** How many can RIDE (pilot + passengers) — the crew capacity. Boarding is refused once full, so a bigger
+   *  hull carries more of your crew across. */
+  seats: number;
   color: number;
 }
 
@@ -42,7 +45,8 @@ export const ShipHulls = new Registry<ShipHullDef>('ShipHulls', (s) => {
 });
 
 ShipHulls.registerAll([
-  { id: 'ship.sloop', name: 'Sloop', shipClass: 'sloop', hp: 220, maxSpeed: 235, accel: 120, reverseFrac: 0.25, turnBrake: 0.3, turnRate: 1.9, minTurnFrac: 0, r: 26, length: 92, width: 42, cannonSlots: 2, color: 0x8a5a2c },
-  { id: 'ship.caravel', name: 'Caravel', shipClass: 'caravel', hp: 430, maxSpeed: 200, accel: 80, reverseFrac: 0.2, turnBrake: 0.3, turnRate: 1.3, minTurnFrac: 0, r: 34, length: 124, width: 54, cannonSlots: 4, color: 0x7a4a22 },
-  { id: 'ship.galleon', name: 'Galleon', shipClass: 'galleon', hp: 820, maxSpeed: 165, accel: 55, reverseFrac: 0.15, turnBrake: 0.3, turnRate: 0.9, minTurnFrac: 0, r: 46, length: 168, width: 74, cannonSlots: 8, color: 0x6a3f1c },
+  // the starter boat — a humble Rowboat (id kept as ship.sloop to avoid churn; `name` is the display label)
+  { id: 'ship.sloop', name: 'Rowboat', shipClass: 'sloop', hp: 220, maxSpeed: 150, accel: 70, reverseFrac: 0.25, turnBrake: 0.3, turnRate: 1.2, minTurnFrac: 0, r: 26, length: 92, width: 42, cannonSlots: 2, seats: 2, color: 0x8a5a2c },
+  { id: 'ship.caravel', name: 'Caravel', shipClass: 'caravel', hp: 430, maxSpeed: 200, accel: 80, reverseFrac: 0.2, turnBrake: 0.3, turnRate: 1.3, minTurnFrac: 0, r: 34, length: 124, width: 54, cannonSlots: 4, seats: 4, color: 0x7a4a22 },
+  { id: 'ship.galleon', name: 'Galleon', shipClass: 'galleon', hp: 820, maxSpeed: 165, accel: 55, reverseFrac: 0.15, turnBrake: 0.3, turnRate: 0.9, minTurnFrac: 0, r: 46, length: 168, width: 74, cannonSlots: 8, seats: 8, color: 0x6a3f1c },
 ]);

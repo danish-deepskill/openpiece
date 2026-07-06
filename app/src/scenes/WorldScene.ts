@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { CAMERA_ZOOM, RegKey, SIM_DT, WORLD_H, WORLD_W, type MinimapDot } from '../config/constants';
+import { angleDiff, smoothFactor } from '../core/math';
+import { setBarRotation } from '../draw/actorDraws';
 import { factions } from '../defs/factions';
 import type { AIContext } from '../ai/Brain';
-import type { Entity } from '../ecs/components';
 import { Rng, streamSeed } from '../core/Rng';
 import { World } from '../ecs/World';
 import { Spawner } from '../ecs/Spawner';
@@ -18,6 +19,7 @@ import { FxSystem } from '../systems/FxSystem';
 import { GameDirector } from '../systems/GameDirector';
 import { InputSystem } from '../systems/InputSystem';
 import { InspectSystem } from '../systems/InspectSystem';
+import { AimReticle } from '../systems/AimReticle';
 import { AccessorySystem } from '../systems/AccessorySystem';
 import { MeleeSystem } from '../systems/MeleeSystem';
 import { MovementSystem } from '../systems/MovementSystem';
@@ -63,9 +65,15 @@ export class WorldScene extends Phaser.Scene {
   private doorRenderer!: DoorRenderer;
   private debug!: DebugOverlay;
   private inspectSys!: InspectSystem;
+  private aimReticle!: AimReticle;
   private fx!: FxSystem;
   private sea!: SeaRenderer;
   private readonly camTarget = { x: 0, y: 0 }; // camera follows the CONTROLLED entity (possession-safe)
+  /** Shift-lock view. `camRot` is applied to the camera each frame. `camBlend` (0→1) eases ONLY the toggle
+   *  (Alt on/off): the rotation itself always tracks the facing 1:1 (no lag at any turn speed), scaled by the
+   *  blend so entering/leaving lock glides instead of snapping. InputSystem owns the mode (Alt). */
+  private camRot = 0;
+  private camBlend = 0;
 
   constructor() {
     super('World');
@@ -93,7 +101,7 @@ export class WorldScene extends Phaser.Scene {
     const fx = new FxSystem(this);
     this.fx = fx;
     const damage = new Damage();
-    const strikes = new StrikeResolver(damage);
+    const strikes = new StrikeResolver(damage, combatRng);
     const effects = new EffectSystem(world);
     const abilities = new AbilitySystem(world, effects, strikes, combatRng);
     const ships = new ShipSystem(world, collision);
@@ -105,22 +113,20 @@ export class WorldScene extends Phaser.Scene {
     for (const pk of level.pickups) spawner.spawnPickup(pk.item, pk.x, pk.y);
     // townsfolk — FULL units (same stack as everyone): they wander, can be Talked to (E), can be attacked, and
     // self-defend. Allied to the player; hostile to bandits (factions). Lead a bandit into town to see them fight.
-    // the other villager is now an ALLIED Brute instead (faction override → straw_hat): friendly to you and the
-    // townsfolk, hostile to bandits. Lead a bandit over to watch him defend the town.
-    spawner.spawnUnit('unit.brute', level.playerSpawn.x + 70, level.playerSpawn.y - 12, undefined, undefined, 'straw_hat');
+    // a townsfolk Soldier (faction override → civilians): allied to you + the villagers, hostile to bandits.
+    // The recruit test unit — talk to him (E) to bring him into your crew.
+    spawner.spawnUnit('unit.soldier', level.playerSpawn.x + 70, level.playerSpawn.y - 12, undefined, undefined, 'civilians');
     spawner.spawnUnit('unit.villager', level.playerSpawn.x + 26, level.playerSpawn.y + 84);
     // passive wildlife grazing on the open grass south of the houses — they wander and bolt when struck (hunt them)
     spawner.spawnUnit('unit.cow', level.playerSpawn.x + 40, level.playerSpawn.y + 210);
-    spawner.spawnUnit('unit.cow', level.playerSpawn.x + 120, level.playerSpawn.y + 205);
     spawner.spawnUnit('unit.pig', level.playerSpawn.x + 20, level.playerSpawn.y + 225);
+    // a TERRITORIAL bull among the grazers (replaces the 2nd cow) — calm until you strike it, then it charges
+    spawner.spawnUnit('unit.bull', level.playerSpawn.x + 120, level.playerSpawn.y + 205);
 
     // enemy-isle gang (reachable by ship) — a squad; the captain fights solo. WHO spawns is level data
     // (EnemySpawn.unit, rolled from the seeded worldgen stream) — the scene just instantiates it.
     const isle = { id: 2, name: 'Isle Raiders' };
     for (const s of level.enemies) spawner.spawnUnit(s.unit, s.x, s.y, s.boss ? undefined : isle);
-    // TEST: 1 Soldier on the home island (east of spawn) — the guard-master brain (parry + tactical retreat)
-    // up close, without sailing. Swap back to the 3-Bandit Dock Gang once the AI experiment is dialed in.
-    spawner.spawnUnit('unit.soldier', level.playerSpawn.x + 500, level.playerSpawn.y, { id: 1, name: 'Dock Gang' });
     // an anchored Sloop at the home dock — board with E, sail east with W/S + A/D
     spawner.spawnShip('ship.sloop', level.boatSpawn.x, level.boatSpawn.y, 'straw_hat');
 
@@ -147,6 +153,7 @@ export class WorldScene extends Phaser.Scene {
     this.weaponSpriteSys = new WeaponSpriteSystem(this, world, this.renderSys);
     this.nameplateSys = new NameplateSystem(this, world);
     this.accessorySys = new AccessorySystem(this, world, this.renderSys);
+    this.aimReticle = new AimReticle(this, world, this.inputSys); // the '+' aim marker ahead of the controlled unit
 
     // roundPixels = false: smooth sub-pixel follow. (true rounds the lerped scroll each frame, which makes
     // everything jitter ~1px as the rounding boundary flickers — worse at zoom.) The camera follows a plain
@@ -181,6 +188,27 @@ export class WorldScene extends Phaser.Scene {
       this.camTarget.x = controlled.transform.x; // follow whoever is currently possessed
       this.camTarget.y = controlled.transform.y;
     }
+
+    // SHIFT-LOCK CAMERA: rotate the VIEW so the controlled unit's aim points up (Roblox-style). The rotation
+    // ALWAYS tracks the facing 1:1 — `aimRot` is the exact target, no smoothing, so the view is welded to the
+    // character at ANY turn speed (the earlier gap-threshold made FAST spins ease slowly — wrong). The ONLY
+    // easing is `camBlend` (0→1), a per-TOGGLE glide: it ramps in when Alt turns on and out when off, so the
+    // world eases into/out of the rotated view without snapping. rotation = aimRot × blend.
+    const locked = this.inputSys.shiftLocked && !!controlled?.transform;
+    const aimRot = controlled?.transform ? -(controlled.transform.angle + Math.PI / 2) : 0;
+    this.camBlend += ((locked ? 1 : 0) - this.camBlend) * smoothFactor(9, dt); // toggle ramp only (0↔1)
+    // rotation = 0 blended toward aimRot along the SHORTEST arc (so it can't sweep the long way as the facing
+    // wraps ±π). At blend 1 it's exactly aimRot → welded to the facing, 1:1 at any turn speed.
+    this.camRot = angleDiff(aimRot, 0) * this.camBlend;
+    this.cameras.main.setRotation(this.camRot);
+    // counter-rotate the world-space READOUTS so they stay screen-upright while the view spins: the
+    // nameplate + damage-number text, AND the overhead hp/stamina/posture bars (set before renderSys draws
+    // the actors below). The actor bodies/sprites still rotate with the world — only the readouts stay level.
+    this.nameplateSys.setTextRotation(-this.camRot);
+    this.fx.setTextRotation(-this.camRot);
+    setBarRotation(-this.camRot);
+    this.aimReticle.setRotation(-this.camRot); // the '+' stays screen-upright while the shift-lock view spins
+
     this.doorRenderer.update(); // redraw closed-door panels from the sim's door state
     this.sea.update(dt); // the sea drifts even while paused/dead
     this.fx.update(dt);
@@ -189,6 +217,7 @@ export class WorldScene extends Phaser.Scene {
     this.accessorySys.update();
     this.nameplateSys.update();
     this.inspectSys.update(); // publish the inspected unit's plate + selection ring (presentation-only)
+    this.aimReticle.update(); // the '+' aim marker (after actors, so it draws on top)
     this.debug.update();
     this.publish();
   }
@@ -230,8 +259,9 @@ export class WorldScene extends Phaser.Scene {
         { key: 'LMB', id: lo.primary },
         { key: 'RMB', id: lo.heavy },
         { key: 'Q', id: lo.dash },
-        { key: 'U', id: lo.slots[0] },
-        { key: 'I', id: lo.slots[1] },
+        { key: '1', id: lo.slots[0] },
+        { key: '2', id: lo.slots[1] },
+        { key: '3', id: lo.slots[2] },
       ] as Array<{ key: string; id?: string }>)
         .filter((x) => !!x.id && lo.granted.has(x.id))
         .map((x) => ({ key: x.key, id: x.id as string, cd: lo.cd.get(x.id as string) ?? 0 }));
@@ -240,9 +270,7 @@ export class WorldScene extends Phaser.Scene {
     r.set(RegKey.Prompt, this.dialogueSys.active || !e ? '' : this.interactionSys.prompt(e)); // hide while talking
     r.set(RegKey.Dialogue, this.dialogueSys.view());
     r.set(RegKey.Gold, this.director.gold);
-    r.set(RegKey.EnemiesLeft, this.director.enemiesAlive());
-    r.set(RegKey.Objective, this.director.objective);
-    r.set(RegKey.State, this.director.state);
+    r.set(RegKey.State, this.director.state); // still drives the death/respawn card
 
     const pf = this.director.controlledFaction();
     const dots: MinimapDot[] = [];

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Abilities, type AbilityDef, type AbilityShape } from '../src/combat/Ability';
 import { strikeVolumes, volumeHits, type StrikeFrame } from '../src/combat/hitVolume';
 import { StatBlock } from '../src/combat/StatBlock';
+import { Rng } from '../src/core/Rng';
 import { Weapons } from '../src/defs/layers';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
@@ -120,7 +121,7 @@ describe('MeleeSystem — timed volumes through a real swing', () => {
       faction: { id: 'civilians' }, // bandits are hostile to civilians — harmable
       health: { hp: 100, maxHp: 100, dead: false, hitFlash: 0, iframes: 0 },
     });
-    return { world, attacker, target, ms: new MeleeSystem(world, new StrikeResolver(new Damage())) };
+    return { world, attacker, target, ms: new MeleeSystem(world, new StrikeResolver(new Damage(), new Rng(1))) };
   }
 
   it('a two-window swing lands two hits at two different MOMENTS on a lingering target', () => {

@@ -11,11 +11,11 @@ function makeFighter(): Entity {
     attributes: new StatBlock({ atk: 9, def: 0 }),
     tags: new TagSet(),
     loadout: {
-      granted: new Set(['ability.punch', 'ability.dodge']),
+      granted: new Set(['ability.punch', 'ability.roll']),
       cd: new Map(),
       primary: 'ability.punch',
       heavy: 'ability.kick',
-      dash: 'ability.dodge',
+      dash: 'ability.roll',
       slots: [],
     },
     equipment: { potentials: [] },
@@ -36,7 +36,7 @@ describe('four-layer combat composition (data-driven)', () => {
     expect(e.loadout!.heavy).toBe('ability.gomuStamp'); // …and the HEAVY (the fruit's kick)
     expect(e.loadout!.granted.has('ability.kick')).toBe(true); // bare kick still granted (toggle back to it)
     expect(e.loadout!.dash).toBe('ability.flashDash');
-    expect([...e.loadout!.slots]).toEqual(['ability.gomuGatling', 'ability.gomuRocket']);
+    expect([...e.loadout!.slots]).toEqual(['ability.gomuGatling', 'ability.gomuRocket', 'ability.gomuOno']);
     expect(e.loadout!.granted.has('ability.gomuGatling')).toBe(true);
     expect(e.tags!.hasPrefix('fruit.type')).toBe(true);
     expect(e.tags!.has('weapon.class.medium')).toBe(true);

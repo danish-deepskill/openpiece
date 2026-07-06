@@ -1,10 +1,11 @@
-import type { AbilityDef } from '../combat/Ability';
+import { Abilities, type AbilityDef } from '../combat/Ability';
+import type { Rng } from '../core/Rng';
 import { damagePosture, PARRY_POSTURE, PARRY_STUN, resolveGuard, WEIGHT_POSTURE } from '../combat/guard';
-import { kitWeapon } from '../combat/phases';
-import { COMBO_CAP, COMBO_WINDOW, FX_COLOR } from '../config/constants';
+import { interruptChance, kitWeapon, phaseAt } from '../combat/phases';
+import { COMBO_CAP, COMBO_WINDOW, FX_COLOR, GUARD_KNOCKBACK_CARRY, GUARD_KNOCKBACK_MULT, PARRY_KNOCKBACK_MULT } from '../config/constants';
 import { events } from '../core/EventBus';
 import { factions } from '../defs/factions';
-import { grudges } from '../combat/targeting';
+import { entityHostile, grudges } from '../combat/targeting';
 import type { Entity } from '../ecs/components';
 import type { Damage } from './Damage';
 
@@ -16,7 +17,10 @@ import type { Damage } from './Damage';
  * already-chosen hit.
  */
 export class StrikeResolver {
-  constructor(private readonly damage: Damage) {}
+  constructor(
+    private readonly damage: Damage,
+    private readonly rng: Rng, // the seeded `combat` stream — the interrupt-chance roll (below) must be deterministic
+  ) {}
 
   /** Ability `d`'s base damage for attacker `e`: attribute-scaled (damageStat) + flat bonus + combo (≤ COMBO_CAP). */
   baseDamage(e: Entity, d: AbilityDef): number {
@@ -36,23 +40,28 @@ export class StrikeResolver {
       events.emit('fx:burst', { x: ot.x, y: ot.y, color: FX_COLOR.phase, n: 6, speed: 110 });
       return false;
     }
-    // GUARD — posture damage scales by the attacker's combat WEIGHT (kit rule: a punch thrown while a
-    // sword is sheathed rattles a guard like a fist, not like a heavy)
-    const outcome = resolveGuard(e, o, WEIGHT_POSTURE[kitWeapon(e, d)?.weaponClass ?? 'unarmed']);
+    // GUARD — posture damage is the ability's own `posture` if authored (a fruit power like Gomu, or the bull's
+    // gore, has no weapon class, so the weight table would under-rate it as a bare 'light' hit), else it scales
+    // by the attacker's combat WEIGHT (kit rule: a punch thrown while a sword is sheathed rattles a guard like a
+    // fist, not like a heavy). Weaponless → 'light' (the fallback since 'unarmed' folded into it).
+    const posture = d.posture ?? WEIGHT_POSTURE[kitWeapon(e, d)?.weaponClass ?? 'light'];
+    const outcome = resolveGuard(e, o, posture);
     if (outcome === 'parried') {
       // the deflection backfires onto the attacker: posture spike (parry pressure can BREAK an aggressor),
       // a stagger, and the swing itself is gone — the defender's punish opening
       damagePosture(e, PARRY_POSTURE);
-      if (e.combatant) e.combatant.stunT = Math.max(e.combatant.stunT ?? 0, PARRY_STUN);
+      if (e.combatant) e.combatant.stunT = Math.max(e.combatant.stunT ?? 0, PARRY_STUN); // already doubled in guard.ts
       delete e.melee;
+      this.guardKnockback(e, o, d, kx, ky, PARRY_KNOCKBACK_MULT); // a heavy blow jolts even a parry back a touch (< a block)
       events.emit('fx:burst', { x: ot.x, y: ot.y, color: FX_COLOR.parry, n: 12, speed: 240 });
       events.emit('fx:shake', { amount: 2 });
       this.alertAI(o, e, false);
       return false;
     }
     if (outcome === 'blocked' || outcome === 'guardBreak') {
-      // resolveGuard already banked the posture damage; the blocker stands firm (no knockback — bracing
-      // IS the point of blocking; chip damage is a deliberate non-feature for now)
+      // resolveGuard already banked the posture damage; the blocker braces — but a HEAVY blow's mass shoves them
+      // back a little (chip damage is still a deliberate non-feature). Block knockback > parry (bracing vs deflecting).
+      this.guardKnockback(e, o, d, kx, ky, 1);
       events.emit('fx:burst', { x: ot.x, y: ot.y, color: FX_COLOR.spark, n: 4, speed: 120 });
       if (outcome === 'guardBreak') events.emit('fx:shake', { amount: 5 }); // the break is the loud moment
       this.alertAI(o, e, false);
@@ -65,13 +74,52 @@ export class StrikeResolver {
       e.combatant.combo++;
       e.combatant.comboT = COMBO_WINDOW;
     }
-    // hitstun: a blow that LANDS (not phased/i-framed) staggers the target — cancel its swing + brief stun
+    // HITSTUN — the interrupt is WINDUP-ONLY (commitment): a swing can be stopped only BEFORE it launches (its
+    // windup, the read/react window). Once it's ACTIVE the blade is committed — hitting the attacker no longer
+    // cancels it, so you TRADE (you both connect, and a heavier weapon out-damages the trade). This kills the
+    // bare-hand cheese: spamming a fast attack into a committed heavy swing means you eat the sword too, instead
+    // of deleting an already-travelling blade. A target NOT mid-swing takes normal stun (a jab still staggers you).
     if (landed && stun > 0 && o.combatant) {
-      o.combatant.stunT = Math.max(o.combatant.stunT ?? 0, stun);
-      delete o.melee;
+      const swing = o.melee; // are they mid-swing, and if so what phase?
+      const phase = swing ? phaseAt(swing.phases, swing.dur > 0 ? swing.t / swing.dur : 1) : undefined;
+      if (!swing) {
+        o.combatant.stunT = Math.max(o.combatant.stunT ?? 0, stun); // not swinging → a jab still staggers
+      } else if (phase === 'windup') {
+        // WINDUP → interruptible, but PROBABILISTICALLY by weight (Model D): a lighter hit only sometimes clips
+        // the swing-arm and cancels a heavier windup. Roll on the seeded `combat` stream (determinism).
+        const atk = kitWeapon(e, d)?.weaponClass ?? 'light';
+        const def = kitWeapon(o, Abilities.get(swing.ability))?.weaponClass ?? 'light';
+        if (this.rng.chance(interruptChance(atk, def))) {
+          o.combatant.stunT = Math.max(o.combatant.stunT ?? 0, stun);
+          delete o.melee; // the windup is cancelled — the read/interrupt lands
+        }
+        // roll failed → the heavier swing shrugs off the clip and plays out (you traded)
+      }
+      // active/recover → COMMITTED: no cancel, no stun — the swing plays out and trades
     }
     this.alertAI(o, e, landed);
     return true;
+  }
+
+  /**
+   * Shove a GUARDING defender (`o`) back when their block/parry eats a heavy blow — a heavy weapon has mass, so
+   * even a stopped hit jolts the guard. `frac` scales it (1 on a block; a smaller PARRY_KNOCKBACK_MULT on a parry
+   * — a clean deflection barely moves you). Magnitude = the ability's own `guardKnockback` if authored (per-weapon
+   * — a greatsword shoves harder than a katana), else a fraction of the attack's normal `knockback` but ONLY for
+   * a HEAVY-class weapon (light/medium bracing holds firm). Direction reuses the attack's (kx,ky).
+   */
+  private guardKnockback(e: Entity, o: Entity, d: AbilityDef, kx: number, ky: number, frac: number): void {
+    const m = o.mover;
+    if (!m) return; // immovable defender (a docked ship) — no shove
+    const authored = d.guardKnockback;
+    const isHeavy = (kitWeapon(e, d)?.weaponClass ?? 'light') === 'heavy';
+    const mag = authored ?? (isHeavy ? (d.knockback ?? 0) * GUARD_KNOCKBACK_MULT : 0);
+    if (mag <= 0) return;
+    const len = Math.hypot(kx, ky) || 1; // normalize the attack's knockback vector to a pure direction
+    const push = (mag * frac) / len;
+    m.dvx = kx * push;
+    m.dvy = ky * push;
+    m.dodgeT = Math.max(m.dodgeT, GUARD_KNOCKBACK_CARRY); // carries LONGER than a normal hit → a visibly bigger slide
   }
 
   /** Getting hit — landed, blocked, or parried — ALERTS an AI victim to where the blow came from (a
@@ -85,7 +133,10 @@ export class StrikeResolver {
     bb.perceivedY = bb.lastSeenY = attacker.transform.y;
     bb.lostT = 0;
     bb.alertT = bb.profile.alertDur; // its own awareness trait (default lives in aiProfiles BASE, never here)
-    if (landed) this.formGrudge(attacker, victim); // friendly fire past tolerance → a permanent grudge
+    if (landed) {
+      this.formGrudge(attacker, victim); // friendly fire past tolerance → a permanent grudge
+      this.provokeTerritorial(attacker, victim); // a struck NEUTRAL fighter (a bull) turns on whoever hit it
+    }
   }
 
   /**
@@ -106,5 +157,21 @@ export class StrikeResolver {
     (victim.grudge ??= { ids: new Set<number>() }).ids.add(attacker.id);
     events.emit('fx:burst', { x: victim.transform!.x, y: victim.transform!.y, color: FX_COLOR.spark, n: 10, speed: 150 });
     if (attacker.control) events.emit('notify', { msg: `${victim.identity?.name ?? 'An ally'} turns on you!` });
+  }
+
+  /**
+   * TERRITORIAL retaliation (the bull): a NEUTRAL creature that FIGHTS (non-passive AI) turns hostile to
+   * whoever strikes it — a grudge, so its AI acquires + charges its attacker (nearestHostile reads grudges).
+   * This is the "provoke the bull" rule: unlike friendly-fire betrayal (formGrudge, ally-only), it fires for a
+   * NON-ally, NON-hostile attacker — the neutral-animal case. Skipped for passive prey (they FLEE, not fight)
+   * and when the pair is already hostile (a real enemy hitting it needs no new grudge). Symmetric mutual grudge
+   * so the attacker can keep hitting it and it fights back (entityHostile reads either direction).
+   */
+  private provokeTerritorial(attacker: Entity, victim: Entity): void {
+    const bb = victim.ai!.bb;
+    if (bb.profile.passive || !attacker.faction || !victim.faction) return; // prey flee; need factions to judge
+    if (factions.isAlly(attacker.faction.id, victim.faction.id)) return; // ally case is formGrudge's betrayal path
+    if (entityHostile(attacker, victim)) return; // already at war (a real enemy) — no new grudge needed
+    (victim.grudge ??= { ids: new Set<number>() }).ids.add(attacker.id); // it now hunts its attacker (the charge)
   }
 }

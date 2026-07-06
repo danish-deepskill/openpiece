@@ -18,26 +18,49 @@ const cutlassed = { equipment: { weapon: 'weapon.cutlass', potentials: [] } } as
 const sworded = { equipment: { weapon: 'weapon.sword', potentials: [] } } as unknown as Entity;
 
 describe('WEIGHT_PHASES — heavier means a longer, more readable windup', () => {
-  it('every rung sums to 1 and windup climbs unarmed → light → medium → heavy', () => {
+  it('every rung sums to 1', () => {
     for (const ph of Object.values(WEIGHT_PHASES)) {
       expect(ph.windup + ph.active + ph.recover).toBeCloseTo(1, 10);
     }
-    expect(WEIGHT_PHASES.unarmed.windup).toBeLessThan(WEIGHT_PHASES.light.windup);
-    expect(WEIGHT_PHASES.light.windup).toBeLessThan(WEIGHT_PHASES.medium.windup);
-    expect(WEIGHT_PHASES.medium.windup).toBeLessThan(WEIGHT_PHASES.heavy.windup);
+  });
+
+  it('windup TIME climbs by weight class: fist/knife (~0.2s floor) < cutlass (~0.3s) < sword (~0.4s)', () => {
+    // the ladder is windup TIME (fraction × swingTime), not the raw fraction — medium/heavy can share a fraction
+    // and differ by swingTime. Assert the resolved times on real weapon abilities so the ladder is what SHIPS.
+    const wt = (holder: Entity, id: string): number => {
+      const a = Abilities.get(id);
+      return resolvePhases(holder, a).windup * (a.shape?.swingTime ?? 0);
+    };
+    const fist = wt(cutlassed, 'ability.punch'); // ~0.20s — authors its own; holder irrelevant (kit rule)
+    const cutlass = wt(cutlassed, 'ability.cut'); // ~0.30s — authored
+    const sword = wt(sworded, 'ability.swordSlash1'); // ~0.40s — NO authored phases → the heavy rung × swingTime
+    expect(fist).toBeGreaterThanOrEqual(0.18); // nothing dips below the readable floor
+    expect(fist).toBeLessThan(cutlass); // fists telegraph less than a medium blade
+    expect(cutlass).toBeLessThan(sword); // …which telegraphs less than the heavy sword
   });
 });
 
 describe('resolvePhases — the kit rule (a sheathed sword cannot slow your kick)', () => {
-  it('a punch stays UNARMED-fast even while a weapon is equipped', () => {
-    expect(resolvePhases(cutlassed, Abilities.get('ability.punch'))).toBe(WEIGHT_PHASES.unarmed);
-    expect(resolvePhases(cutlassed, Abilities.get('ability.kick'))).toBe(WEIGHT_PHASES.unarmed);
+  it('a punch/kick keep their OWN authored windup even while a weapon is equipped (a sheathed sword cannot slow the bare strike)', () => {
+    // punch/kick now AUTHOR their own reactable windup (the Deepwoken model). A sheathed weapon must NOT override
+    // it up to the weapon's heavier class — the kit rule: your fist times against ITS clock, not the sword's.
+    expect(resolvePhases(cutlassed, Abilities.get('ability.punch'))).toBe(Abilities.get('ability.punch').shape!.phases);
+    expect(resolvePhases(cutlassed, Abilities.get('ability.kick'))).toBe(Abilities.get('ability.kick').shape!.phases);
+    expect(resolvePhases(cutlassed, Abilities.get('ability.punch'))).not.toBe(WEIGHT_PHASES.medium); // NOT the cutlass's rung
   });
 
-  it("a weapon's OWN kit inherits its class rung (cutlass → medium, sword chain → heavy)", () => {
-    expect(resolvePhases(cutlassed, Abilities.get('ability.cut'))).toBe(WEIGHT_PHASES.medium);
+  it("a weapon-kit ability with NO authored phases inherits its class rung (sword chain → heavy)", () => {
+    // the sword chain authors no phases → the heavy rung (its weapon class). cut/stab now DO author their
+    // own phases (a reactable enemy tell), so they're the authored case, tested separately below.
     expect(resolvePhases(sworded, Abilities.get('ability.swordSlash1'))).toBe(WEIGHT_PHASES.heavy);
+    expect(resolvePhases(sworded, Abilities.get('ability.swordSlash2'))).toBe(WEIGHT_PHASES.heavy);
     expect(resolvePhases(sworded, Abilities.get('ability.swordFinisher'))).toBe(WEIGHT_PHASES.heavy); // via comboNext
+  });
+
+  it("an ability's OWN authored phases win over its weapon class rung", () => {
+    // cut is medium-class but authors a 0.4 windup (a readable enemy tell) — the authored phases win
+    expect(resolvePhases(cutlassed, Abilities.get('ability.cut'))).toBe(Abilities.get('ability.cut').shape!.phases);
+    expect(resolvePhases(cutlassed, Abilities.get('ability.cut'))).not.toBe(WEIGHT_PHASES.medium);
   });
 
   it('fruit abilities keep their AUTHORED clock regardless of what is sheathed', () => {
@@ -60,7 +83,7 @@ describe('resolvePhases — the kit rule (a sheathed sword cannot slow your kick
     const sp = new Spawner(world, new Rng(1));
     for (const u of Units.all().filter((u) => u.faction === 'bandits')) {
       const e = sp.spawnUnit(u.id, 0, 0);
-      const a = Abilities.get(u.attackAbility);
+      const a = Abilities.get(e.loadout!.primary); // the RESOLVED primary (weapon's attack wins over the unarmed fallback)
       const windupSec = resolvePhases(e, a).windup * (a.shape?.swingTime ?? 0.18);
       expect(windupSec, `${u.id} (${a.id}) tell is unreactable`).toBeGreaterThanOrEqual(0.2);
     }
@@ -115,7 +138,7 @@ describe('the hitbox is DEAD outside the active phase', () => {
       faction: { id: 'civilians' },
       health: { hp: 100, maxHp: 100, dead: false, hitFlash: 0, iframes: 0 },
     });
-    const ms = new MeleeSystem(world, new StrikeResolver(new Damage()));
+    const ms = new MeleeSystem(world, new StrikeResolver(new Damage(), new Rng(1)));
     for (let i = 0; i < 3; i++) ms.update(0.1); // p → 0.3: still winding up
     expect(attacker.combatant!.combo).toBe(0); // the tell deals NO damage
     ms.update(0.1); // p = 0.4: the active phase opens
@@ -133,7 +156,7 @@ describe('a dodge buys OUT of a swing in flight', () => {
     const abilities = new AbilitySystem(world, new EffectSystem(world), {} as StrikeResolver, new Rng(3));
     expect(abilities.activate(hero, 'ability.punch')).toBe(true);
     expect(hero.melee).toBeDefined();
-    expect(abilities.activate(hero, 'ability.dodge')).toBe(true);
+    expect(abilities.activate(hero, 'ability.roll')).toBe(true);
     expect(hero.melee).toBeUndefined(); // the swing is gone — commitment escaped, attack forfeited
   });
 });

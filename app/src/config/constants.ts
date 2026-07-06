@@ -48,12 +48,9 @@ export const SIM_DT = 1 / 60;
 export const FOOT_SPEED = 165;
 export const BOAT_SPEED = 225;
 
-/** Terrain modifier: a unit standing on shallow water wades at this fraction of normal speed (see TileGrid.speedMul). */
-export const SHALLOW_MOVE_MULT = 0.5;
-
-/** Sprint (shared by player input + AI): run-speed multiplier and stamina drained per second. */
-export const SPRINT_MULT = 1.5;
-export const SPRINT_DRAIN = 24;
+/** Terrain modifiers: a unit's move speed on that ground, as a fraction of normal (see TileGrid.speedMul). */
+export const SHALLOW_MOVE_MULT = 0.5; // wading coastal shallows
+export const SAND_MOVE_MULT = 0.75; // trudging across sand/desert — heavier going than grass
 
 /** Stamina regen pauses this long after ANY spend (attack/ability/sprint), then resumes — so it never refills mid-fight. */
 export const STAM_REGEN_DELAY = 1.0;
@@ -67,13 +64,22 @@ export const COMBO_CAP = 5;
 export const COMBO_WINDOW = 2;
 /** How long (s) a knockback impulse carries the target (mover.dodgeT floor on a landed hit). */
 export const KNOCKBACK_CARRY = 0.12;
+/** DEFAULT fraction of a HEAVY attack's normal `knockback` that jolts a defender who BLOCKED/PARRIED it (a heavy
+ *  blow has mass). Per-ability `guardKnockback` overrides this for exact tuning; light/medium hits jolt nothing. */
+export const GUARD_KNOCKBACK_MULT = 0.7;
+/** How long (s) the GUARD-knockback impulse carries — longer than a normal hit's KNOCKBACK_CARRY so a blocked
+ *  heavy blow shoves the defender a visibly longer slide. */
+export const GUARD_KNOCKBACK_CARRY = 0.28;
+/** A PARRY takes only this fraction of the block's knockback — a clean deflection redirects the force, so it
+ *  barely moves you, whereas a BLOCK braces against the full mass and gets shoved more. Block > parry. */
+export const PARRY_KNOCKBACK_MULT = 0.35;
 /** Hitstun: while stunned, movement scales to this (a stagger, not a full freeze); attacks are blocked entirely. */
 export const STUN_SLOW = 0.45;
 
 /** Follow-camera zoom — higher = closer (moomoo.io-style). 1.0 showed too much world. */
 export const CAMERA_ZOOM = 2;
 
-export type GameState = 'start' | 'play' | 'paused' | 'dead' | 'win';
+export type GameState = 'start' | 'play' | 'paused' | 'dead';
 
 /** Impact-FX palette shared by the sim's fx-event payloads and FxSystem's own drawing (one literal per meaning). */
 export const FX_COLOR = {
@@ -95,8 +101,6 @@ export const RegKey = {
   /** UnitPlateView | null — the V+click inspected unit's plate (published by InspectSystem). */
   Inspect: 'hud.inspect',
   Gold: 'hud.gold',
-  EnemiesLeft: 'hud.enemies',
-  Objective: 'hud.objective',
   Combo: 'hud.combo',
   AbilityBar: 'hud.abilityBar',
   Prompt: 'hud.prompt',

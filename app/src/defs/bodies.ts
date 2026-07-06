@@ -45,5 +45,10 @@ Bodies.registerAll([
   // quadruped rigs — their own draw fns + hide colors + grazer physique
   { id: 'body.cow', name: 'Cattle', draw: 'cow', skin: 0xf2ece0, r: 14, reach: 18, speed: 70, mass: 2.2 },
   { id: 'body.pig', name: 'Swine', draw: 'pig', skin: 0xe79aa2, r: 12, reach: 16, speed: 60, mass: 1.8 },
+  // the BULL — a bigger, heavier, longer-reaching (horns) cattle rig with its OWN horned draw ('bull'), darker
+  // hide. reach 52 is deliberately well above r:18 — a bare strike's thrust is `reach − r·~0.85` (combat/swing),
+  // so a reach ≈ r would make the gore whiff INSIDE its own hull (the "charges but no damage" bug); the horns
+  // give it real reach past its big body.
+  { id: 'body.bull', name: 'Bull', draw: 'bull', skin: 0x6b5a4a, r: 18, reach: 39, speed: 74, mass: 3.4 },
   // NOTE: a future 4-ARM humanoid is just a new body row here (draw: 'actor4arm') — SAME races apply to it.
 ]);

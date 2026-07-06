@@ -5,7 +5,7 @@ import { tierIndex, tierStats } from '../combat/PowerTier';
 import { StatBlock } from '../combat/StatBlock';
 import { TagSet } from '../combat/TagSet';
 import { wearAccessory } from '../combat/apparel';
-import { giveWeapon, refreshLoadout } from '../combat/equip';
+import { equip, giveStyle, giveWeapon, refreshLoadout } from '../combat/equip';
 import type { Rng } from '../core/Rng';
 import { Bodies } from '../defs/bodies';
 import { Races } from '../defs/races';
@@ -15,8 +15,9 @@ import { ShipHulls } from '../defs/ships';
 import type { FactionId } from '../defs/factions';
 import { Accessories } from '../defs/accessories';
 import { itemName, type ItemRef } from '../defs/items';
+import { Traits } from '../defs/traits';
 import { Weapons } from '../defs/layers';
-import { DASH_MIN_TIER, GUARD_KIT, SPRINT_MIN_TIER, Units } from '../defs/units';
+import { BASE_KIT, DASH_MIN_TIER, GUARD_KIT, Units } from '../defs/units';
 import type { Combatant, Entity } from './components';
 import type { World } from './World';
 
@@ -85,12 +86,17 @@ export class Spawner {
     const hp = Math.round(attributes.get('maxHp'));
     const maxStam = Math.round(attributes.get('maxStam'));
     const profile = AIProfiles.get(u.aiProfile);
-    // tier-gated advanced movement: dash is granted as a normal ability; sprint is a brain capability flag
+    // tier-gated DASH (a normal ability grant, the Moat). SPRINT is no longer tier-gated — it's an opt-in TRAIT
+    // (trait.sprinter, applied below) so it's per-unit intentional, not "everyone ≥ E-". `canSprint` mirrors the
+    // sprinter trait onto the blackboard as a HOT-PATH cache the brain reads each tick (loadout is the truth;
+    // trySprint re-checks the grant).
     const ti = tierIndex(u.tier);
-    const canSprint = ti >= tierIndex(SPRINT_MIN_TIER);
+    const canSprint = (u.traits ?? []).includes('trait.sprinter');
     const canDash = ti >= tierIndex(DASH_MIN_TIER);
-    const granted = new Set([u.attackAbility]);
-    if (canDash) granted.add('ability.dodge');
+    // the primary starts as the base-kit fist; a STYLE (giveStyle) then a WEAPON (giveWeapon) override it
+    // below in precedence order. No per-unit attack field — the attack comes from an equipped layer.
+    const granted = new Set<string>([BASE_KIT.primary]);
+    if (canDash) granted.add('ability.roll');
     // guard is a FUNDAMENTAL verb (COMBAT.md): every real fighter is granted block/parry, so "can this unit
     // guard" = "is it in its loadout" (the Moat — same question as any ability). Non-fighters opt out via noGuard.
     if (!u.noGuard) for (const a of GUARD_KIT) granted.add(a);
@@ -102,7 +108,7 @@ export class Spawner {
       combatant: defaultCombatant(maxStam, Math.round(attributes.get('maxPosture'))),
       attributes,
       tags: new TagSet(),
-      loadout: { granted, cd: new Map(), primary: u.attackAbility, heavy: '', dash: canDash ? 'ability.dodge' : '', slots: [] },
+      loadout: { granted, cd: new Map(), primary: BASE_KIT.primary, heavy: '', dash: canDash ? 'ability.roll' : '', slots: [] },
       effects: { active: [], seq: 0 }, // EVERY actor can carry effects (dodge i-frames…) — the Moat, not hero-only
       ai: { brain: actorBrain, bb: { state: 'wander', home: { x, y }, wanderT: this.rng.range(0, 2), boss: !!u.boss, profile, canSprint, betrayHpFrac: u.betrayHpFrac ?? profile.betrayHpFrac, lastSeenX: x, lastSeenY: y, lostT: 0 } },
       // look = the BODY's rig (draw) + skin, with the unit's OUTFIT (garb) layered on; garb omitted ⇒ the
@@ -111,11 +117,24 @@ export class Spawner {
       identity: { name: u.name, tier: u.tier },
     });
     if (u.gold != null) e.loot = { gold: u.gold }; // only lootable units carry gold (townsfolk don't)
-    if (u.dialogue) e.npc = { dialogue: u.dialogue }; // a unit whose def has lines is conversable (verb.talk)
+    if (u.dialogue) e.npc = { dialogue: u.dialogue, recruitable: u.recruitable }; // conversable (verb.talk); may offer recruit
     if (squad) e.squad = squad;
+    if (u.style) giveStyle(e, u.style); // the fighting style FIRST (its unarmed strike becomes the primary)…
     const weaponId = weapon ?? u.weapon; // explicit override, else the unit's defined weapon (e.g. Brute's cutlass)
-    if (weaponId) giveWeapon(e, weaponId);
+    if (weaponId) giveWeapon(e, weaponId); // …then a weapon OVERRIDES it (a drawn blade out-prioritises bare martial arts)
+    // …then a DEVIL FRUIT (Luffy's Gomu): equip() runs refreshLoadout, which re-derives the loadout from ALL
+    // equipment and resolves the canonical primary precedence (weapon ?? fruit ?? style ?? fist) — so the fruit's
+    // light/heavy take over while unarmed, exactly like the player. Same path as the hero; the AI just isn't special.
+    if (u.fruit) equip(e, 'fruit', u.fruit);
     for (const id of u.accessories ?? []) wearAccessory(e, id);
+    // TRAITS: innate talents — grant each trait's modifiers + tags + abilities (the same plumbing accessories,
+    // layers, and the loadout use, so a trait needs NO bespoke read code). Source-tracked, so a retrait wipes it.
+    for (const id of u.traits ?? []) {
+      const tr = Traits.get(id);
+      if (tr.modifiers) e.attributes!.addAll(tr.modifiers);
+      if (tr.tags) for (const t of tr.tags) e.tags!.add(t);
+      if (tr.grants) for (const a of tr.grants) e.loadout!.granted.add(a); // trait-granted CAPABILITIES (e.g. sprint)
+    }
     return e;
   }
 

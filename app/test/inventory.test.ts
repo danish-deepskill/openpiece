@@ -10,7 +10,7 @@ import type { ShipSystem } from '../src/systems/ShipSystem';
 
 const HAT: ItemRef = { cat: 'accessory', id: 'accessory.strawHat' };
 const CUTLASS: ItemRef = { cat: 'weapon', id: 'weapon.cutlass' };
-const KNIFE: ItemRef = { cat: 'weapon', id: 'weapon.knife' };
+const DAGGER: ItemRef = { cat: 'weapon', id: 'weapon.dagger' };
 const GOMU: ItemRef = { cat: 'fruit', id: 'fruit.gomu' };
 
 /** A take-verb driver: places a pickup on top of the hero and runs the interaction (the real E-press path).
@@ -53,8 +53,8 @@ describe('inventory — pickup enters the bag then auto-equips', () => {
     equipItem(hero, CUTLASS);
     expect(hero.equipment!.weapon).toBe('weapon.cutlass');
 
-    take(w, sp, hero, KNIFE);
-    expect(hero.equipment!.weapon).toBe('weapon.knife'); // newer gear wins (good UX)
+    take(w, sp, hero, DAGGER);
+    expect(hero.equipment!.weapon).toBe('weapon.dagger'); // newer gear wins (good UX)
     expect(inventoryLabels(hero)).toContain('Cutlass'); // the displaced weapon dropped to the bag
   });
 

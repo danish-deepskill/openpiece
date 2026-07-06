@@ -194,7 +194,8 @@ export function generateLevel(rng: Rng): LevelLayout {
   // home village buildings — stamped as hollow wall blocks (Wall perimeter, Floor interior, 1-tile door).
   // Real grid obstacles so collision + pathfinding share one source of truth.
   const doors: { tx: number; ty: number }[] = [];
-  const stampHouse = (tx: number, ty: number, tw: number, th: number, label: string) => {
+  // buildings carry NO floating text label — the structure reads for itself (more natural than "House"/"Tavern" tags)
+  const stampHouse = (tx: number, ty: number, tw: number, th: number) => {
     for (let y = ty; y < ty + th; y++) {
       for (let x = tx; x < tx + tw; x++) {
         if (x < 0 || y < 0 || x >= grid.w || y >= grid.h) continue;
@@ -208,15 +209,14 @@ export function generateLevel(rng: Rng): LevelLayout {
       grid.tiles[doorY][doorX] = Tile.Door;
       doors.push({ tx: doorX, ty: doorY });
     }
-    grid.labels.push({ x: px(tx) + px(tw) / 2, y: px(ty) - 6, text: label });
   };
   const houses = [
-    { tx: HOME.cx - 7, ty: HOME.cy - 6, tw: 5, th: 4, label: 'House' },
-    { tx: HOME.cx - 2, ty: HOME.cy - 9, tw: 5, th: 4, label: 'House' },
-    { tx: HOME.cx - 9, ty: HOME.cy + 1, tw: 5, th: 4, label: 'House' },
-    { tx: HOME.cx, ty: HOME.cy + 4, tw: 6, th: 4, label: 'Tavern' },
+    { tx: HOME.cx - 7, ty: HOME.cy - 6, tw: 5, th: 4 },
+    { tx: HOME.cx - 2, ty: HOME.cy - 9, tw: 5, th: 4 },
+    { tx: HOME.cx - 9, ty: HOME.cy + 1, tw: 5, th: 4 },
+    { tx: HOME.cx, ty: HOME.cy + 4, tw: 6, th: 4 }, // the tavern (biggest) — recognizable by size + interior
   ];
-  for (const h of houses) stampHouse(h.tx, h.ty, h.tw, h.th, h.label);
+  for (const h of houses) stampHouse(h.tx, h.ty, h.tw, h.th);
   // interior-center pixel of a house — where stashed loot sits (walk in through the door, press E)
   const inside = (h: (typeof houses)[number]) => ({ x: px(h.tx) + px(h.tw) / 2, y: px(h.ty) + px(h.th) / 2 });
 
@@ -225,6 +225,7 @@ export function generateLevel(rng: Rng): LevelLayout {
   const cutlassHouse = inside(houses[0]);
   const pickups: PickupSpawn[] = [
     { item: { cat: 'weapon', id: 'weapon.cutlass' }, ...cutlassHouse },
+    { item: { cat: 'weapon', id: 'weapon.dagger' }, x: cutlassHouse.x, y: cutlassHouse.y - 22 }, // the light blade, above the cutlass
     { item: { cat: 'weapon', id: 'weapon.sword' }, x: cutlassHouse.x - 22, y: cutlassHouse.y }, // the 2H combo blade, left of the cutlass
     { item: { cat: 'accessory', id: 'accessory.strawHat' }, x: cutlassHouse.x + 22, y: cutlassHouse.y }, // beside the cutlass
     { item: { cat: 'fruit', id: 'fruit.gomu' }, ...inside(houses[2]) },
@@ -254,13 +255,24 @@ export function generateLevel(rng: Rng): LevelLayout {
   }
   // the Brawler — the island's boss (a bare-fisted aggressor), at the hub where the three wedges meet
   enemies.push({ x: px(ENEMY.cx), y: px(ENEMY.cy), boss: true, unit: 'unit.brawler' });
-  // the Soldier — the guard-master test unit — posted in the SOUTH wedge (bottom of the island), placed
-  // deterministically so it always appears; nudged inward if it lands on the ring/spoke stone
+  // the Soldier — the guard-master test unit — posted on the HOME island's SOUTH side (near where the player
+  // spawns), placed deterministically so it always appears; nudged inward if it lands on a house/stone tile.
+  // East of the tavern (HOME.cx, cy+4) so it doesn't spawn inside it.
   {
-    const sx = px(ENEMY.cx);
-    let sy = px(ENEMY.cy + 6); // due south, inside the wall band
-    for (let d = 6; d >= 3 && solidPx(sx, sy); d--) sy = px(ENEMY.cy + d);
+    const sx = px(HOME.cx + 4);
+    let sy = px(HOME.cy + 8); // south, inside the r=13 isle
+    for (let d = 8; d >= 4 && solidPx(sx, sy); d--) { sy = px(HOME.cy + d); }
     enemies.push({ x: sx, y: sy, boss: false, unit: 'unit.soldier' });
+  }
+  // LUFFY — a hostile D-tier rubber brawler (Gomu fruit + straw hat), posted at the TOP-RIGHT (NE) of the HOME
+  // island (the old Brute's spot), clear of the NW house cluster and the east dock; a duel target to feel the
+  // ai.luffy rush/charge + fruit-ability rotation. Placed deterministically, nudged toward the hub if the NE
+  // corner lands on stone/a house.
+  {
+    let bx = px(HOME.cx + 7);
+    let by = px(HOME.cy - 7); // north-east, inside the r=13 isle (~10 tiles from center)
+    for (let d = 7; d >= 4 && solidPx(bx, by); d--) { bx = px(HOME.cx + d); by = px(HOME.cy - d); }
+    enemies.push({ x: bx, y: by, boss: false, unit: 'unit.luffy' });
   }
 
   // tree groves — placed LAST so they can dodge every spawn/dock/door and the wall band (kept off the ring

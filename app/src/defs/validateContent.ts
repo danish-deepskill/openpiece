@@ -5,6 +5,7 @@ import { Registry, type ContentId } from '../core/Registry';
 import { Accessories } from './accessories';
 import { AIProfiles } from './aiProfiles';
 import { Fruits, Styles, Weapons } from './layers';
+import { Traits } from './traits';
 import { BASE_KIT, Units } from './units';
 // side-effect imports: these families have no cross-ref fields pulled in above, so without these lines
 // they're INVISIBLE to Registry.instances when the sweep runs standalone (CI). A new def module either
@@ -51,9 +52,18 @@ export function validateAllContent(): void {
   };
   for (const u of Units.all()) {
     check(u.id, 'aiProfile', u.aiProfile, AIProfiles);
-    check(u.id, 'attackAbility', u.attackAbility, Abilities);
     check(u.id, 'weapon', u.weapon, Weapons);
+    check(u.id, 'style', u.style, Styles); // the fighting style (grants the unarmed attack) must resolve
     for (const a of u.accessories ?? []) check(u.id, 'accessories', a, Accessories);
+    for (const tr of u.traits ?? []) check(u.id, 'traits', tr, Traits); // a typo'd trait id would silently grant nothing
+  }
+  // a trait's granted abilities must be registered (a typo'd grant would silently unlock nothing)
+  for (const tr of Traits.all()) for (const a of tr.grants ?? []) check(tr.id, 'grants', a, Abilities);
+  // a style's granted abilities (primary/heavy/dash) must be registered
+  for (const s of Styles.all()) {
+    check(s.id, 'primary', s.primary, Abilities);
+    check(s.id, 'heavy', s.heavy, Abilities);
+    check(s.id, 'dash', s.dash, Abilities);
   }
   for (const a of Abilities.all()) {
     check(a.id, 'grantEffect', a.grantEffect, Effects);

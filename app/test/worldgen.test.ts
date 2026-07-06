@@ -33,17 +33,19 @@ describe('WorldGen — walls & groves never seal a required path', () => {
       const level = generateLevel(new Rng(seed));
       const g = level.grid;
 
-      // ENEMY isle: flood from the inner end of the west dock (the player's landing) through the ring gap
+      // Flood each landmass from its foothold: the ENEMY isle from the west-dock landing (through the ring gap),
+      // the HOME isle from the player spawn. Enemies now live on EITHER island (home-island bandits near spawn),
+      // so each spawn must be walkable AND reachable from at least one of the two floods.
       const enemyReach = footReachable(g, ENEMY.cx - 10, ENEMY.cy);
+      const homeReach = footReachable(g, HOME.cx - 7, HOME.cy);
       for (const e of level.enemies) {
         const tx = tileOf(e.x);
         const ty = tileOf(e.y);
         expect(TileGrid.walkable(g.tiles[ty][tx], 'foot')).toBe(true); // no spawn embedded in wall/tree
-        expect(enemyReach[ty][tx]).toBe(true); // and the assault can actually reach it
+        expect(enemyReach[ty][tx] || homeReach[ty][tx]).toBe(true); // reachable from its island (enemy assault OR home spawn)
       }
 
-      // HOME isle: flood from the player spawn; both stashed pickups must be walk-in-able
-      const homeReach = footReachable(g, HOME.cx - 7, HOME.cy);
+      // HOME isle: both stashed pickups must be walk-in-able from the player spawn
       for (const p of level.pickups) {
         const tx = tileOf(p.x);
         const ty = tileOf(p.y);

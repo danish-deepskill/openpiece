@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Accessories, type AccessorySlot } from '../defs/accessories';
 import { accessoryDraws } from '../draw/accessoryDraws';
 import { ANATOMY, BODY_FRAME_R, SLOT_ANCHOR } from '../draw/actorDraws';
+import { rollHeadPlacement } from '../draw/rollAnim';
 import type { World } from '../ecs/World';
 import type { RenderSystem } from './RenderSystem';
 
@@ -43,18 +44,29 @@ export class AccessorySystem {
       if (e.health?.dead) continue;
       const t = e.transform!;
       const a = t.angle;
+      // ROLL: the head tumbles over→under (drawRollPose). A HAT sits on the crown, so it RIDES the head — pinned
+      // to the shared head placement, scaled with it, and FADED OUT while the head is tucked under (its crown
+      // faces the ground, so the hat is on the head's hidden far side). Non-head accessories (chest/back) have no
+      // clean roll placement, so they stay hidden for the roll.
+      const head = rollHeadPlacement(e);
       for (const id of Object.values(e.accessories!.slots)) {
         if (!id) continue;
         const d = Accessories.get(id);
+        const rollingHat = head !== null && (d.slot === 'head' || d.slot === 'face');
+        if (head !== null && !rollingHat) continue; // mid-roll non-head accessory → hidden (falls into the pool sweep)
         const v = d.visual;
         // a 'body'-frame sprite is REGISTERED to the mannequin (canvas center = body center) — its content
         // is already positioned by the artist on the template, so it takes no slot-anchor offset
         const registered = v.kind === 'sprite' && v.frame === 'body';
         const off = (registered ? 0 : SLOT_ANCHOR[d.slot] * t.r) + (d.offset ?? 0);
-        const x = t.x + Math.cos(a) * off;
-        const y = t.y + Math.sin(a) * off;
-        const alpha = this.renderSys.alphaById.get(e.id) ?? 1;
-        const depth = t.y + (d.layer === 'under' ? -0.6 : SLOT_DEPTH[d.slot]); // slot ladder over the y-sorted body
+        // normal: pinned along the aim. Rolling hat: pinned to the tumbling head instead.
+        const x = rollingHat ? t.x + head!.dx : t.x + Math.cos(a) * off;
+        const y = rollingHat ? t.y + head!.dy : t.y + Math.sin(a) * off;
+        const baseAlpha = this.renderSys.alphaById.get(e.id) ?? 1;
+        const alpha = rollingHat ? baseAlpha * head!.crownAlpha : baseAlpha; // fade the hat out as the head tucks under
+        const depth = rollingHat
+          ? this.renderSys.sortY(e) + (head!.overTop ? 0.5 : -0.5) // over the top → above body; under → behind it
+          : this.renderSys.sortY(e) + (d.layer === 'under' ? -0.6 : SLOT_DEPTH[d.slot]); // slot ladder over the y-sorted body (sortY handles riders)
 
         if (v.kind === 'sprite') {
           let img = this.images[usedImg];
@@ -69,10 +81,12 @@ export class AccessorySystem {
           // (scale 1.6 = 1.6 heads — a hat keeps fitting if the anatomy retunes), other slots against the
           // body diameter. body frame: the canvas spans the full ±BODY_FRAME_R·r regardless of slot.
           const basis = d.slot === 'head' || d.slot === 'face' ? ANATOMY.headR * 2 * t.r : 2 * t.r;
-          const dia = registered ? BODY_FRAME_R * 2 * t.r * v.scale : basis * v.scale;
+          const dia = (registered ? BODY_FRAME_R * 2 * t.r * v.scale : basis * v.scale) * (rollingHat ? head!.scale : 1); // shrink with the tumbling head
+          // rolling hat orients to the TRAVEL direction (it tumbles the way you roll), not the unit's aim
+          const rot = d.rotates === false ? 0 : (rollingHat ? head!.travel : a) + Math.PI / 2;
           img
             .setPosition(x, y)
-            .setRotation(d.rotates === false ? 0 : a + Math.PI / 2)
+            .setRotation(rot)
             .setDisplaySize(dia, dia)
             .setAlpha(alpha)
             .setDepth(depth)
@@ -87,7 +101,7 @@ export class AccessorySystem {
         }
         usedGfx++;
         g.setPosition(x, y)
-          .setRotation(d.rotates === false ? 0 : a)
+          .setRotation(d.rotates === false ? 0 : (rollingHat ? head!.travel : a)) // rolling hat follows travel, not aim
           .setAlpha(alpha)
           .setDepth(depth)
           .setVisible(true);

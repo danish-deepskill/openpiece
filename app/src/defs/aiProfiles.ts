@@ -19,9 +19,19 @@ export interface AIProfileDef extends Def {
   nearSight: number; // flank/peripheral range (px): sensed to the SIDES within this (short)
   blindArc: number; // rear blind-spot half-angle (rad): the surprise-attack window
   reaction: number; // aim-lag (s): it commits to where you WERE, so movement makes it whiff
+  /** LEAD AIM (s): predictive targeting — aim at where the target WILL be (perceived pos + its velocity × this),
+   *  the Calamity-boss trick that beats circle-kiting. 0 (default) = aim where it IS (lagged), which a circling
+   *  target dodges by drifting off the committed line; a positive value leads the aim so steady orbiting feeds it
+   *  your FUTURE spot. The counter shifts from "just circle" to "CHANGE speed/direction". Tune ~0.2–0.4s: too high
+   *  and it over-leads a stopping target (whiffs in front). Works WITH reaction (lag first, then lead the lagged pos). */
+  leadAim?: number;
   faceSway: number; // idle facing sway (rad): keeps the aim alive, not a dead-on lock
   loseSightSec: number; // give-up timer after losing sight
   alertDur: number; // a hit makes it investigate its attacker for this long (s)
+  /** SPOT DELAY (s): the beat between SEEING a target and committing to the chase — the "!" double-take. It holds,
+   *  faces you, then pursues; if it loses sight during the delay it stands down. A sharp soldier reacts fast
+   *  (~0.15s), a dozy thug slow (~0.5s). 0 ⇒ instant pursuit (no alert beat). Default 0.3 (via BASE). */
+  spotDelay: number;
   leash: number; // give up + go home past this far from its post
 
   // — Movement —
@@ -40,6 +50,12 @@ export interface AIProfileDef extends Def {
 
   // — Combat —
   strikeFrac: number; // stop this fraction INTO max reach, so blows land (not graze the edge)
+  /** Hold-spacing: while in reach, if it's crowded INSIDE this fraction of the strike distance (momentum/
+   *  body-push shoved it point-blank), it leans back toward blade range WHILE STILL SWINGING — so a long-blade
+   *  fighter drifts to blade distance instead of fighting chest-to-chest. Crucially it keeps attacking, so a
+   *  target that pins it (walks into it) just gets hit point-blank rather than pushing it back forever. The gap
+   *  from 1.0 is the no-jitter band. Default 0.72. */
+  holdBackoffFrac?: number;
   preferredRange?: number; // kite: keep this much distance
   guardRadius?: number; // guard: only engage within this of its post
   fleeBelowHp?: number; // 0..1 HP fraction; flee below it
@@ -49,6 +65,13 @@ export interface AIProfileDef extends Def {
   /** Chance (0..1) to attempt the riskier PARRY instead (rolled before block — parry ⊂ the guard decision).
    *  Its timing is honest: the tap only lands if the foe's active phase falls inside the parry window. */
   parryChance: number;
+  /** ABILITY ROTATION (0..1): chance PER swing to reach for a SPECIAL (the loadout's `heavy` + `slots` —
+   *  a fruit's Stamp/Gatling/Rocket, a style's committed strike) instead of the fast primary jab. The
+   *  candidates come from the unit's OWN loadout (generic — any fruit/style/weapon it carries joins), gated
+   *  by cooldown + stamina + that ability's own reach. 0 (default) ⇒ fodder that only ever throws its primary;
+   *  higher ⇒ a showy fighter (Luffy) that punctuates jabs with big rubber moves. Keep it MODEST — a special
+   *  every swing reads as spammy and drains stamina instantly; ~0.3 gives a jab-jab-SPECIAL rhythm. */
+  specialChance?: number;
   /** TACTICAL RETREAT (stamina management): when stamina drops to ≤ this FRACTION, break off and back to
    *  spacing to regen instead of flailing on an empty bar — a smart fighter saves its burst. Undefined ⇒
    *  fights to exhaustion (fodder). Pairs with `reengageStam` (hysteresis, so it doesn't jitter). */
@@ -56,6 +79,27 @@ export interface AIProfileDef extends Def {
   /** Re-engage once stamina recovers to ≥ this fraction (must be > regroupBelowStam — the hysteresis band).
    *  The gap between the two is how long it stays out regrouping: a wide band = long, patient resets. */
   reengageStam?: number;
+  /** RETREAT ROLL: while REGROUPING (backing off to regen), burst with the loadout's dash/roll instead of
+   *  walking — strategic direction (see rollSidewaysChance): a lateral juke around the target that resets
+   *  spacing without fleeing, or straight back. A signature disengage (Luffy bouncing/circling to catch his
+   *  breath) vs a plain backpedal. Needs a granted dash + the retreat band (regroupBelowStam/reengageStam);
+   *  cooldown-gated so it's a rhythmic hop, not a constant blur. Undefined/false ⇒ a regrouping unit just walks. */
+  retreatRoll?: boolean;
+  /** Chance (0..1) the retreat roll goes SIDEWAYS (a lateral juke around the target) vs straight back. Higher =
+   *  circles more / flees less — the anti-"he just runs away" knob. Default 0.7. Only read when retreatRoll. */
+  rollSidewaysChance?: number;
+  /** HARRY WHILE REGROUPING: a regrouping unit normally holds fire (banks the bar). With this, it still throws
+   *  its CHEAP primary (a jab) when the target wanders into reach — so it never goes fully passive and keeps
+   *  pressure on while resetting. The brain forces the primary only (no pricey specials) in this state, so the
+   *  bar still climbs net-positive. Undefined/false ⇒ pure reset (no attacks while regrouping). */
+  harryWhileRegroup?: boolean;
+  /** ROCKET REPOSITION: chance (0..1), rolled ONCE when a PINNED regrouper commits, that it PLANS to LEAP THROUGH
+   *  the target with its loadout HEAVY (Gomu Rocket aims along facing at the target; the long jump overshoots so
+   *  he lands BEHIND them, slam hit on the way) instead of jabbing. Once planned (bb.plannedSpecial) he CONSERVES
+   *  — stops jabbing so regen carries him to the heavy's cost — then fires. A committed mini-intent, so his own
+   *  jabs can't starve the stamina the Rocket needs (that's why it works even at a low regroup entry). Needs a
+   *  leaping loadout.heavy (selfImpulse/launchAt). Default 0 (never plans a reposition — just jabs while pinned). */
+  rocketEscapeChance?: number;
   /** Friendly-fire tolerance: an ALLY that beats this unit down to ≤ this HP fraction earns a PERMANENT,
    *  personal grudge (mutual hostility). 0.8 = snaps after losing 20%; HIGHER = jumpier (0.95 ≈ first hit);
    *  LOWER = more loyal (absorbs more); 0 = never turns. Only allies provoke it — real enemies aren't betrayal. */
@@ -71,6 +115,7 @@ const BASE: Omit<AIProfileDef, 'id' | 'name' | 'approach' | 'sight' | 'preferred
   faceSway: 0.16,
   loseSightSec: 5, // long enough to round a block + re-acquire at the current slow move speed
   alertDur: 3,
+  spotDelay: 1.5, // the default "!" double-take before pursuing — a deliberate ~1.5s beat (per-profile below)
   leash: 640,
   weaveAmp: 0.7,
   weaveFreq: 3.5,
@@ -96,6 +141,7 @@ export const AIProfiles = new Registry<AIProfileDef>('AIProfiles', (p) => {
     if (typeof v === 'number' && !Number.isFinite(v)) return `${k} must be finite (got ${v})`;
   }
   if (p.sight < 0) return `sight must be ≥ 0 (got ${p.sight})`;
+  if (p.spotDelay < 0) return `spotDelay must be ≥ 0 (got ${p.spotDelay})`; // 0 = instant pursuit (skip the alert beat)
   if (!(p.reaction > 0)) return `reaction must be > 0 — brains compute 1/reaction (got ${p.reaction})`;
   if (!(p.strikeFrac > 0 && p.strikeFrac <= 1)) return `strikeFrac must be in (0, 1] (got ${p.strikeFrac})`;
   if (p.fleeBelowHp !== undefined && (p.fleeBelowHp < 0 || p.fleeBelowHp > 1)) return `fleeBelowHp must be in [0, 1] (got ${p.fleeBelowHp})`;
@@ -110,12 +156,25 @@ export const AIProfiles = new Registry<AIProfileDef>('AIProfiles', (p) => {
 });
 
 AIProfiles.registerAll([
-  { ...BASE, id: 'ai.rusher', name: 'Rusher', approach: 'rush', sight: 210, reaction: 0.16, blockChance: 0.15 }, // fodder blocks occasionally, never parries
-  { ...BASE, id: 'ai.flanker', name: 'Flanker', approach: 'flank', sight: 220, blockChance: 0.2, parryChance: 0.03 },
+  { ...BASE, id: 'ai.rusher', name: 'Rusher', approach: 'rush', sight: 210, reaction: 0.16, spotDelay: 2.0, blockChance: 0.15 }, // fodder blocks occasionally, never parries; the SLOWEST double-take (~2s)
+  { ...BASE, id: 'ai.flanker', name: 'Flanker', approach: 'flank', sight: 220, spotDelay: 1.6, blockChance: 0.2, parryChance: 0.03 },
   { ...BASE, id: 'ai.kiter', name: 'Kiter', approach: 'kite', sight: 250, preferredRange: 170, reaction: 0.14 },
-  { ...BASE, id: 'ai.guard', name: 'Guard', approach: 'guard', sight: 190, leash: 260, loseSightSec: 2, guardRadius: 200, reaction: 0.24, wanderTether: 70, blockChance: 0.35, parryChance: 0.05 }, // disciplined post-holders
+  { ...BASE, id: 'ai.guard', name: 'Guard', approach: 'guard', sight: 190, leash: 260, loseSightSec: 2, guardRadius: 200, reaction: 0.24, spotDelay: 1.2, wanderTether: 70, blockChance: 0.35, parryChance: 0.05 }, // disciplined post-holders — alert, quicker to react
   // a boss-grade fencer: reads windups and answers with the guard — the unit that TEACHES the player feints
-  { ...BASE, id: 'ai.duelist', name: 'Duelist', approach: 'rush', sight: 230, reaction: 0.14, blockChance: 0.4, parryChance: 0.12 },
+  { ...BASE, id: 'ai.duelist', name: 'Duelist', approach: 'rush', sight: 230, reaction: 0.14, spotDelay: 1.0, blockChance: 0.4, parryChance: 0.12 }, // sharp: the fastest double-take (~1s)
+  // RUBBER BRAWLER (Luffy): a protagonist-grade AGGRESSOR built around the Gomu fruit's stretchy gap-closers.
+  // Not a fencer — he RUSHES and CHARGES relentlessly (long chargeMax + short chargeCd + low chargeStam = he
+  // sprint-lunges into range again and again, the Gear-2 pressure feel) rather than sitting on a guard. Sharp
+  // awareness (wide sight/cone, fast reaction, ~0.8s double-take) so he reads as skilled, not fodder. Modest
+  // block, a touch of parry (only bites if he ever holds a weapon — unarmed can't parry) — he trades, not turtles.
+  // stamina-aware BUT relentless: he fights nearly to EMPTY (retreats only ≤10%), so he burns his whole bar on
+  // rubber specials before ever backing off — then takes a fuller reset to 60% (still ≥ a Gatling's 26, with room
+  // for follow-ups). The wide 10→60 band = bigger, more separated bursts. He resets NOT by fleeing straight back
+  // but by JUKING (retreatRoll + rollSidewaysChance 0.75: a lateral roll AROUND you that finds an angle without
+  // opening distance) while STILL jabbing the cheap Pistol when you crowd him (harryWhileRegroup) — a slippery
+  // circler that reloads, not a backpedaler. (The low entry means ~1-2 cheap jabs near empty before he bails; the
+  // retreat trigger catches him within a jab of dropping below his special costs, so no sustained pistol decay.)
+  { ...BASE, id: 'ai.luffy', name: 'Rubber Brawler', approach: 'rush', sight: 260, cone: 1.3, reaction: 0.12, leadAim: 0.28, spotDelay: 0.8, chargeMax: 300, chargeDur: 0.9, chargeCd: 1.2, chargeStam: 12, blockChance: 0.25, parryChance: 0.08, specialChance: 0.35, regroupBelowStam: 0.1, reengageStam: 0.6, retreatRoll: true, rollSidewaysChance: 0.75, harryWhileRegroup: true, rocketEscapeChance: 0.35 },
   // a GUARD MASTER: the guard test dummy — sharp reaction + heavy BLOCK uptime (0.6), currently no parry.
   // The counter is the FEINT (bait the guard, then punish the whiffed block). EXPERIMENT: also a TACTICAL
   // fighter — it breaks off when its stamina runs low (≤30%), WALKS back to spacing to regen (no sprint, or
@@ -126,6 +185,13 @@ AIProfiles.registerAll([
   { ...BASE, id: 'ai.townsfolk', name: 'Townsfolk', approach: 'guard', sight: 220, leash: 160, loseSightSec: 2.5, guardRadius: 120, fleeBelowHp: 0.45, reaction: 0.3, wanderTether: 70 },
   // passive wildlife (cows/pigs): graze near their spawn, hunt no one (sight 0 = oblivious), bolt when struck
   { ...BASE, id: 'ai.critter', name: 'Critter', approach: 'guard', sight: 0, passive: true, turnSpeed: 2.2, leash: 200, loseSightSec: 1 },
+  // TERRITORIAL BEAST (the bull): grazes UNTIL provoked — NOT passive, so a strike (→ grudge + alert) flips it
+  // to CHASE its attacker rather than flee. It stays calm UNPROVOKED because wildlife is a NEUTRAL faction, so
+  // nearestHostile finds nobody to hunt; the grudge from being hit is what first gives it a target — and only
+  // THEN does its `sight` let it see + track that now-hostile attacker (sight can't manufacture a target out of
+  // a neutral, so a big sight is safe here). A heavy turnSpeed cap = it LUMBERS + arcs (can't pivot on a dime —
+  // circling it is the counter). Long leash/alert so once angry it commits. The charge is the sprint-charge.
+  { ...BASE, id: 'ai.bull', name: 'Bull', approach: 'rush', sight: 300, cone: 1.4, turnSpeed: 1.6, leash: 900, loseSightSec: 4, alertDur: 6, chargeMax: 320, chargeDur: 1.0, chargeCd: 2.5, chargeStam: 15, reaction: 0.28 },
 ]);
 
 export type Move = 'approach' | 'away' | 'home' | 'hold';
@@ -169,8 +235,15 @@ export function combatStance(
     else if (stamFrac <= p.regroupBelowStam) regroup = true;
     if (regroup) {
       const spacing = p.preferredRange ?? REGROUP_SPACING;
-      // back off if too close (recover at range); if already spaced, HOLD there (don't creep back yet). Never
-      // attack while regrouping — the whole point is to not spend the last of the bar.
+      // HARRIER PINNED IN REACH: if the target has crowded INTO melee range while a HARRYING unit is resetting,
+      // backing off is futile (a corner/wall or a faster chaser = no space to make). Rather than roll into the
+      // wall forever and eat free hits until the reset finishes, it TURNS AND FIGHTS — the same "cornered →
+      // commit" instinct as a trapped fleer (line ~470). HOLD → the brain jabs (engaging + in reach); while
+      // regrouping pickAttack forces the CHEAP primary, so the commit stays net-positive on stamina. THIS is the
+      // fix for "cornered Luffy becomes a helpless punching bag" — he never just waits out the reset getting hit.
+      if (p.harryWhileRegroup === true && dist <= reach) return { move: 'hold', attack: true, regroup };
+      // Otherwise the classic reset: back off toward open space to regen (or HOLD once spaced — don't creep back
+      // early). A non-harrier stays pure-conserve even when cornered (it would rather bank the bar than spend it).
       return { move: dist < spacing ? 'away' : 'hold', attack: false, regroup };
     }
   }

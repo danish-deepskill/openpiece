@@ -21,7 +21,7 @@ import { EffectSystem } from '../src/systems/EffectSystem';
 import { StrikeResolver } from '../src/systems/StrikeResolver';
 
 const SLASH = Abilities.get('ability.swordSlash1'); // in the sword's kit → HEAVY weight vs a guard
-const PUNCH = Abilities.get('ability.punch'); // NOT in the sword's kit → unarmed weight even while armed
+const PUNCH = Abilities.get('ability.punch'); // NOT in the sword's kit → bare (light) weight even while armed
 
 /** Attacker (sworded hero) squared up against a defender (thug) 30px east — the defender faces the blow. */
 function duel() {
@@ -30,8 +30,9 @@ function duel() {
   const attacker = sp.spawnHero(30, 0);
   giveWeapon(attacker, 'weapon.sword');
   const defender = sp.spawnUnit('unit.thug', 0, 0); // bandits — mutually hostile with the hero
+  giveWeapon(defender, 'weapon.sword'); // ARMED so it can PARRY (parry now requires a weapon; unarmed is block-only)
   defender.transform!.angle = 0; // facing the attacker: the incoming blow is inside the guard arc
-  const strikes = new StrikeResolver(new Damage());
+  const strikes = new StrikeResolver(new Damage(), new Rng(1));
   return { world, attacker, defender, strikes };
 }
 
@@ -116,10 +117,18 @@ describe('tryGuard parry flag — block and parry are distinct (the AI block-dec
   });
 
   it('tryGuard(e, true) — the player F tap — DOES arm the parry window', () => {
-    const { defender } = duel();
+    const { defender } = duel(); // duel()'s defender is ARMED (a sword)
     expect(tryGuard(defender, true)).toBe(true);
     expect(defender.combatant!.blocking).toBe(true);
     expect(defender.combatant!.parryT).toBeGreaterThan(0);
+  });
+
+  it('UNARMED can BLOCK but NOT parry — a bare fist deflects nothing (parry requires a weapon)', () => {
+    const world = new World();
+    const fists = new Spawner(world, new Rng(2)).spawnUnit('unit.thug', 0, 0); // no weapon (style.brawl)
+    expect(tryGuard(fists, true)).toBe(true); // the F tap raises the guard…
+    expect(fists.combatant!.blocking).toBe(true); // …block is up
+    expect(fists.combatant!.parryT ?? 0).toBe(0); // …but NO parry window (unarmed)
   });
 
   it('a pure-block defender BLOCKS an incoming hit (never parries it)', () => {
@@ -136,7 +145,7 @@ describe('tryGuard parry flag — block and parry are distinct (the AI block-dec
 });
 
 describe('block — HP rerouted to posture, by the attacker\'s WEIGHT', () => {
-  it('a blocked hit deals no HP damage; posture climbs by the weight rung (kit rule: a punch while armed is unarmed)', () => {
+  it('a blocked hit deals no HP damage; posture climbs by the weight rung (kit rule: a punch while armed is a bare light hit)', () => {
     const { attacker, defender, strikes } = duel();
     defender.combatant!.maxPosture = 100; // isolate WEIGHT scaling — a big pool so neither block breaks the guard
     defender.combatant!.blocking = true; // holding (no parry window)
@@ -145,7 +154,7 @@ describe('block — HP rerouted to posture, by the attacker\'s WEIGHT', () => {
     expect(defender.health!.hp).toBe(hp);
     expect(defender.combatant!.posture).toBe(WEIGHT_POSTURE.heavy); // the sword crushes guards…
     strikes.hit(attacker, defender, PUNCH, 10, 0, 0);
-    expect(defender.combatant!.posture).toBe(WEIGHT_POSTURE.heavy + WEIGHT_POSTURE.unarmed); // …the fist rattles them
+    expect(defender.combatant!.posture).toBe(WEIGHT_POSTURE.heavy + WEIGHT_POSTURE.light); // …the bare fist rattles them (weaponless → light)
   });
 
   it('posture overflow = GUARD BREAK: long stagger, guard down, posture reset', () => {
@@ -176,6 +185,7 @@ describe('feint — raising the guard during your OWN windup pulls the swing', (
   it('attacking DROPS the guard (the mirror rule) — no free deflection smuggled into a swing', () => {
     const world = new World();
     const hero = new Spawner(world, new Rng(3)).spawnHero(0, 0);
+    giveWeapon(hero, 'weapon.sword'); // armed → the parry window arms (parry now requires a weapon)
     const abilities = new AbilitySystem(world, new EffectSystem(world), {} as StrikeResolver, new Rng(3));
     tryGuard(hero);
     expect(hero.combatant!.parryT).toBeGreaterThan(0);
@@ -203,6 +213,7 @@ describe('posture upkeep (CombatantSystem)', () => {
   it('ticks the parry window shut and the whiff cooldown down', () => {
     const world = new World();
     const e = new Spawner(world, new Rng(1)).spawnHero(0, 0);
+    giveWeapon(e, 'weapon.sword'); // armed → parry window opens (parry requires a weapon)
     tryGuard(e);
     const sys = new CombatantSystem(world);
     sys.update(0.3); // > PARRY_WINDOW

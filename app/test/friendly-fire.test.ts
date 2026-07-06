@@ -42,7 +42,7 @@ describe('friendly-fire relations — grudge sits on top of the faction matrix',
 });
 
 describe('friendly-fire provocation — an ally beaten past tolerance turns permanently', () => {
-  const strikes = new StrikeResolver(new Damage());
+  const strikes = new StrikeResolver(new Damage(), new Rng(1));
   const PUNCH = Abilities.get('ability.punch'); // hit() resolves guard/posture by the ability — bare fist here
 
   it('forms a grudge only once HP crosses betrayHpFrac, and it is per-individual', () => {
@@ -78,7 +78,6 @@ describe('friendly-fire provocation — an ally beaten past tolerance turns perm
       tier: 'E',
       faction: 'civilians', // ally of the player
       aiProfile: 'ai.guard',
-      attackAbility: 'ability.punch',
       betrayHpFrac: 0.3, // tolerates being beaten to 30% before turning
     });
     const w = new World();

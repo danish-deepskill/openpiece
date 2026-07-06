@@ -138,15 +138,6 @@ export class TerrainRenderer {
     crt.setAlpha(CANOPY_ALPHA);
     crt.draw(cg);
     cg.destroy();
-
-    // world-space building labels (Graphics can't render text)
-    for (const lab of grid.labels) {
-      scene.add
-        .text(lab.x, lab.y, lab.text, { fontFamily: 'Trebuchet MS', fontSize: '11px', color: '#ffffff' })
-        .setOrigin(0.5, 1)
-        .setAlpha(0.85)
-        .setDepth(Depth.Building);
-    }
   }
 
   /** Generate a 1px-per-tile minimap texture (water transparent so the HUD panel shows through). */

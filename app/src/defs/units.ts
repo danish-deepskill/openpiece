@@ -39,14 +39,29 @@ export interface UnitDef extends Def {
   attributes?: Partial<Record<AttributeId, number>>;
   faction: FactionId;
   aiProfile: ContentId;
-  attackAbility: ContentId;
   gold?: number;
   /** Starting weapon, auto-equipped at spawn (its strike/mods/tags replace the bare-handed kit). */
   weapon?: ContentId;
+  /** Fighting STYLE, equipped at spawn — grants a martial art's dash + unarmed strikes (a bare-handed unit's
+   *  basic attack comes from HERE, e.g. style.brawl → banditStrike). A weapon still out-prioritises it. The
+   *  primary resolves: weapon ?? fruit ?? style ?? the base fist — one rule, no per-unit attack field. */
+  style?: ContentId;
+  /** DEVIL FRUIT, eaten at spawn (defs/layers → Fruits) — grants its abilities (light/heavy + slots), mods,
+   *  and tags via the SAME equip('fruit') path the player uses. Sits between weapon and style in the primary
+   *  precedence (weapon ?? FRUIT ?? style ?? fist), so a fruit-user's light/heavy become the fruit's while
+   *  unarmed. This is how an AI unit is BORN with a fruit (Luffy = fruit.gomu) — not a hero-only spawn hack. */
+  fruit?: ContentId;
   /** Accessories worn at spawn (one per body slot — see defs/accessories). */
   accessories?: ContentId[];
+  /** TRAITS — innate talents this unit HAS (defs/traits): each grants its modifiers/tags. A plain id list you
+   *  add to / remove from (the same has-this-marker model as ability grants). E.g. `['trait.mobileAttack.slow']`
+   *  lets it shuffle while swinging; omitted ⇒ none (rooted while attacking, the default). */
+  traits?: ContentId[];
   /** Lines spoken when Talked to (E). Presence attaches an `npc` component → the unit is conversable. */
   dialogue?: string[];
+  /** RECRUITABLE — after the talk dialogue, offer a yes/no to bring this unit into your crew (faction →
+   *  straw_hat + follows you, fighting enemies on sight). Needs `dialogue` (talk is the trigger). */
+  recruitable?: boolean;
   /** HP bloat multiplier on top of the tier baseline (elites/bosses are tankier than their power tier). */
   hpMult?: number;
   /** Opt OUT of the fundamental guard grant (GUARD_KIT) — a non-fighter (villager, wildlife) can't block or
@@ -59,16 +74,14 @@ export interface UnitDef extends Def {
 }
 
 /**
- * Tier gates for advanced movement (applied to AI units at spawn — see ecs/spawn). A unit at or above the
- * gate gains the capability; below it, it plods. Combat starts at E- (the F bands are non-combat NPCs):
- * every real fighter can sprint (≥ E-), and the tougher ones dash (≥ E+). One-line change to retune.
+ * Tier gate for the DASH (applied to AI units at spawn — see ecs/spawn). A unit at or above the gate gains it;
+ * below it, it plods. Sprint is NOT tier-gated — it's an opt-in `trait.sprinter` per unit (defs/traits).
  */
-export const SPRINT_MIN_TIER: PowerTier = 'E-';
 export const DASH_MIN_TIER: PowerTier = 'E+';
 
 /** The base kit EVERY actor falls back to (the bare-handed loadout) — the ONE home for these ids; equip.ts
  *  and spawns reference this, never string literals (CLAUDE.md: no hardcoded content lists in code). */
-export const BASE_KIT = { primary: 'ability.punch', heavy: 'ability.kick', dash: 'ability.dodge' } as const;
+export const BASE_KIT = { primary: 'ability.punch', heavy: 'ability.kick', dash: 'ability.roll' } as const;
 
 /** The guard abilities every real COMBATANT is granted (block/parry are fundamental verbs — COMBAT.md). A
  *  unit HAS the capability iff these are in its loadout.granted; non-fighters (villager/critters) skip them
@@ -91,19 +104,27 @@ const HAT = { hero: 0xf0c040, dark: 0x2a0d0d, civilian: 0x2e5a35 } as const;
 Units.registerAll([
   // the player — same data path as everyone; what makes it "the player" is the control tag. Spawns
   // BARE-HEADED (the straw hat is found in the cutlass house). Heroic human build, red-vest outfit.
-  { id: 'unit.hero', name: 'Captain', race: 'race.heroic', garb: GARB.hero, hatColor: HAT.hero, tier: 'D-', faction: 'straw_hat', aiProfile: 'ai.rusher', attackAbility: 'ability.punch' },
+  // unarmed → the base-kit fist (attackAbility omitted ⇒ BASE_KIT.primary).
+  { id: 'unit.hero', name: 'Captain', race: 'race.heroic', garb: GARB.hero, hatColor: HAT.hero, tier: 'D-', faction: 'straw_hat', aiProfile: 'ai.rusher', traits: ['trait.sprinter'] },
   // bandit fodder: ranked E-/E/E+ and now fighting AT that rank (statTier = tier) — a raised floor, so even
-  // the weakest mook is a real E-tier combatant, not F-tier chaff. Plain human build, ragged browns.
-  { id: 'unit.thug', name: 'Thug', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E-', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.banditStrike', gold: 8 },
-  { id: 'unit.bandit', name: 'Bandit', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.banditStrike', gold: 12, weapon: 'weapon.knife', accessories: ['accessory.banditHat'] },
-  { id: 'unit.brute', name: 'Brute', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E+', faction: 'bandits', aiProfile: 'ai.flanker', attackAbility: 'ability.banditStrike', gold: 18, weapon: 'weapon.cutlass', accessories: ['accessory.bruteHelmet'] },
+  // the weakest mook is a real E-tier combatant, not F-tier chaff. Plain human build, ragged browns. The
+  // basic attack comes from a LAYER: Thug's from its brawling STYLE (banditStrike), the weaponed bandit/brute
+  // from their WEAPON (dagger stab / cutlass cut) — no per-unit attack field; the primary resolves at spawn.
+  { id: 'unit.thug', name: 'Thug', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E-', faction: 'bandits', aiProfile: 'ai.rusher', style: 'style.brawl', gold: 8 },
+  { id: 'unit.bandit', name: 'Bandit', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E', faction: 'bandits', aiProfile: 'ai.rusher', gold: 12, weapon: 'weapon.dagger', accessories: ['accessory.banditHat'], traits: ['trait.sprinter'] },
+  { id: 'unit.brute', name: 'Brute', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E+', faction: 'bandits', aiProfile: 'ai.flanker', gold: 18, weapon: 'weapon.cutlass', accessories: ['accessory.bruteHelmet'], traits: ['trait.sprinter'] },
   // the SOLDIER — the GUARD-MASTER test unit (sword + helmet, its own STEEL-BLUE uniform so it reads apart
   // from the brown fodder). D- (a rank ABOVE the E+ Brute fodder — it's a trained fighter, not a mook).
-  // ai.master blocks + parries relentlessly — the counter is the FEINT.
-  { id: 'unit.soldier', name: 'Soldier', garb: GARB.soldier, hatColor: HAT.dark, tier: 'D-', faction: 'bandits', aiProfile: 'ai.master', attackAbility: 'ability.swordSlash1', gold: 30, weapon: 'weapon.sword', accessories: ['accessory.soldierHelmet'] },
+  // ai.master blocks + parries relentlessly — the counter is the FEINT. Attack = the SWORD's (attackAbility omitted).
+  { id: 'unit.soldier', name: 'Soldier', garb: GARB.soldier, hatColor: HAT.dark, tier: 'D-', faction: 'bandits', aiProfile: 'ai.master', gold: 30, weapon: 'weapon.sword', accessories: ['accessory.soldierHelmet'], dialogue: ['A blade for hire, if the crew is worth it.', "You've got the look of a captain going places."], recruitable: true, traits: ['trait.sprinter'] },
   // the BRAWLER — the island's D- boss: a BARE-FISTED, BARE-HEADED aggressor. humanoid body + GIANT race
   // (renders large purely from race.giant's size mult — no special 'boss body'), HP-bloated, dash, dark coat.
-  { id: 'unit.brawler', name: 'Brawler', race: 'race.giant', garb: GARB.boss, hatColor: HAT.dark, tier: 'D-', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.brawlerStrike', gold: 80, hpMult: 2.4, boss: true },
+  { id: 'unit.brawler', name: 'Brawler', race: 'race.giant', garb: GARB.boss, hatColor: HAT.dark, tier: 'D-', faction: 'bandits', aiProfile: 'ai.rusher', style: 'style.haymaker', gold: 80, hpMult: 2.4, boss: true, traits: ['trait.sprinter'] },
+  // LUFFY — a D-tier rubber brawler: heroic build, wears the straw hat, and has eaten the Gomu Gomu no Mi
+  // (fruit.gomu → pistol/gatling/rocket/stamp become his kit, the SAME fruit the player earns). ai.luffy is
+  // his aggressive rush+charge brain. Faction bandits for now so he's a hostile DUEL target you can spar to
+  // feel the rubber AI — flip to straw_hat (or recruitable) when he becomes a crewmate rather than a test foe.
+  { id: 'unit.luffy', name: 'Luffy', race: 'race.heroic', garb: GARB.hero, hatColor: HAT.hero, tier: 'D', faction: 'bandits', aiProfile: 'ai.luffy', fruit: 'fruit.gomu', accessories: ['accessory.strawHat'], traits: ['trait.sprinter'], gold: 60 },
   // a townsperson: a FULL unit on the SAME stack as everyone (the Moat) — civilian build, work-shirt blue.
   // noGuard: an untrained civilian throws panicked punches but can't block/parry (the negative exception).
   {
@@ -115,16 +136,23 @@ Units.registerAll([
     tier: 'F',
     faction: 'civilians',
     aiProfile: 'ai.townsfolk',
-    attackAbility: 'ability.punch',
-    noGuard: true,
+    noGuard: true, // untrained + bare-handed → the base-kit fist (no style, no weapon)
     dialogue: [
       'Welcome to the island, stranger.',
       'The Dock Gang runs the east side — give them a wide berth.',
       'Word is a Devil Fruit washed ashore; someone stashed it in one of the houses.',
     ],
   },
-  // passive wildlife (moomoo-style critters): quadruped BODIES carry their own draw + hide + physique, so
-  // they need no outfit and default race.human (×1). HP-bloated a little so a kill takes a few swings, not one.
-  { id: 'unit.cow', name: 'Cow', body: 'body.cow', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch', hpMult: 2.5, noGuard: true },
-  { id: 'unit.pig', name: 'Pig', body: 'body.pig', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch', hpMult: 3.5, noGuard: true },
+  // passive wildlife (moomoo-style critters): quadruped BODIES carry their own draw + hide + physique, so they
+  // need no outfit and default race.human (×1). HP is a real `health` attribute (not hpMult) — a direct number,
+  // ordered by BULK so it reads intuitively: pig (110) < cow (150) < bull (240). Enough that a kill takes a few
+  // swings, not one.
+  { id: 'unit.cow', name: 'Cow', body: 'body.cow', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attributes: { health: 300 }, noGuard: true },
+  { id: 'unit.pig', name: 'Pig', body: 'body.pig', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attributes: { health: 220 }, noGuard: true },
+  // the BULL — a TERRITORIAL beast (wildlife faction, so it's calm + huntable UNTIL you strike it, then it holds
+  // a grudge and CHARGES). Tier E- = a real (weak) COMBATANT band (can sprint/charge, gets atk/def), and its
+  // toughness is a big `health` attribute (240 HP — the tankiest animal, above the pig's ~207), NOT hpMult: a
+  // bull's bulk is real stats. `health` REPLACES the tier's hp seed (registry canon: spread values replace), so
+  // set it ABOVE the band, not below. Attack = the headbutt gore (style.gore). noGuard: animals don't block. gold = bounty.
+  { id: 'unit.bull', name: 'Bull', body: 'body.bull', tier: 'E-', faction: 'wildlife', aiProfile: 'ai.bull', style: 'style.gore', attributes: { health: 480 }, gold: 40, noGuard: true, traits: ['trait.sprinter'] }, // sprinter: the charge burst needs it
 ]);

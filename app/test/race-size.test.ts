@@ -31,7 +31,7 @@ describe('body × race × size — the three build axes compose', () => {
     // a large fishman: body.humanoid baseline × race.fishman × size.large on r/reach/mass; speed is race-only
     Units.register({
       id: 'unit.testBigFishman', name: 'Big Fishman', body: 'body.humanoid', race: 'race.fishman', size: 'size.large',
-      tier: 'E', faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.punch',
+      tier: 'E', faction: 'bandits', aiProfile: 'ai.rusher',
     });
     const e = sp.spawnUnit('unit.testBigFishman', 0, 0);
     const base = Bodies.get('body.humanoid');
@@ -49,7 +49,7 @@ describe('body × race × size — the three build axes compose', () => {
     // "other body" — a fishman-on-a-cow-body would keep race.fishman's mults but draw as a quadruped.
     Units.register({
       id: 'unit.testFishOnCow', name: 'Fish Cow', body: 'body.cow', race: 'race.fishman',
-      tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attackAbility: 'ability.punch',
+      tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter',
     });
     const e = sp.spawnUnit('unit.testFishOnCow', 0, 0);
     expect(e.render!.draw).toBe('cow'); // the BODY decides the silhouette…
@@ -61,7 +61,7 @@ describe('body × race × size — the three build axes compose', () => {
     const sp = new Spawner(world, new Rng(1));
     Units.register({
       id: 'unit.testBare', name: 'Bare', tier: 'F',
-      faction: 'bandits', aiProfile: 'ai.rusher', attackAbility: 'ability.punch',
+      faction: 'bandits', aiProfile: 'ai.rusher',
     });
     const e = sp.spawnUnit('unit.testBare', 0, 0);
     const base = Bodies.get('body.humanoid');

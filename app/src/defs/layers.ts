@@ -18,12 +18,12 @@ export interface LayerDef extends Def {
  *  `tipAt` says which canvas end is the striking tip (default 'top'); `gripAt` is where the hand holds, as
  *  a fraction of the art from the POMMEL end (0 = the very end; the pommel overhangs behind the hand). */
 export type WeaponVisual =
-  | { kind: 'blade' | 'dagger' | 'club'; length: number; width: number; color: number }
+  | { kind: 'blade' | 'club'; length: number; width: number; color: number }
   | { kind: 'sprite'; art: string; length: number; width: number; tipAt?: 'top' | 'bottom'; gripAt?: number };
 
 /** Weapon weight/archetype tier — drives the phase ladder (combat/phases.WEIGHT_PHASES: heavier = longer
- *  windup) and, later, posture damage. The unarmed kit's tier ('unarmed') lives beside this in CombatWeight
- *  — deliberately not here, since no weapon is unarmed. */
+ *  windup) and posture damage. The four classes ARE the full weight ladder now (CombatWeight = WeaponClass);
+ *  a weaponless attack (fist/kick/gore) has no class and falls back to 'light'. */
 export type WeaponClass = 'light' | 'medium' | 'heavy' | 'ranged';
 
 export interface WeaponDef extends LayerDef {
@@ -46,6 +46,12 @@ export interface FruitDef extends LayerDef {
 }
 export interface StyleDef extends LayerDef {
   dash: ContentId;
+  /** A fighting style's basic UNARMED attack (Black Leg kick, Rokushiki strike, a brawler's haymaker) —
+   *  grants + becomes the LIGHT primary when no weapon is held (a weapon still wins). This is where a bare-
+   *  handed unit's bespoke strike comes from: a martial art, not a per-unit field. Unset ⇒ the base fist. */
+  primary?: ContentId;
+  /** The style's HEAVY unarmed attack (a committed kick/haymaker), like FruitDef.heavy. Unset ⇒ the base kick. */
+  heavy?: ContentId;
 }
 export type PotentialDef = LayerDef;
 
@@ -63,7 +69,7 @@ Weapons.register({
   name: 'Cutlass',
   weaponClass: 'medium',
   primary: 'ability.cut',
-  visual: { kind: 'blade', length: 30, width: 5, color: 0xcdd3da },
+  visual: { kind: 'sprite', art: 'weapon/cutlass_1.png', length: 30, width: 6, tipAt: 'bottom', gripAt: 0.28 }, // curved sabre art points DOWN; hand holds the grip near the top
   modifiers: [{ stat: 'atk', op: 'flat', value: 6, source: 'weapon:weapon.cutlass' }],
   tags: ['weapon.class.medium'],
 });
@@ -83,12 +89,12 @@ Weapons.register({
 });
 
 Weapons.register({
-  id: 'weapon.knife',
-  name: 'Knife',
+  id: 'weapon.dagger',
+  name: 'Dagger',
   weaponClass: 'light',
-  primary: 'ability.stab',
-  visual: { kind: 'dagger', length: 22, width: 3, color: 0xbfc6cf }, // short, thin dagger (grip + guard + point)
-  modifiers: [{ stat: 'atk', op: 'flat', value: 3, source: 'weapon:weapon.knife' }], // light = modest bonus (cutlass is +6)
+  primary: 'ability.daggerSlice', // chain ROOT: Slice (swing) → Stab (finisher); see the dagger combo in Ability.ts
+  visual: { kind: 'sprite', art: 'weapon/dagger_1.png', length: 22, width: 5, tipAt: 'bottom', gripAt: 0.3 }, // dagger art points DOWN; hand holds the grip near the top. length 22 = the blade's own reach (hitbox matches the drawn blade)
+  modifiers: [{ stat: 'atk', op: 'flat', value: 3, source: 'weapon:weapon.dagger' }], // light = modest bonus (cutlass is +6)
   tags: ['weapon.class.light'],
 });
 
@@ -98,7 +104,7 @@ Fruits.register({
   fruitType: 'paramecia',
   primary: 'ability.gomuPistol',
   heavy: 'ability.gomuStamp',
-  slots: ['ability.gomuGatling', 'ability.gomuRocket'],
+  slots: ['ability.gomuGatling', 'ability.gomuRocket', 'ability.gomuOno'],
   modifiers: [{ stat: 'atk', op: 'flat', value: 5, source: 'fruit:fruit.gomu' }],
   tags: ['fruit.type.paramecia', 'fruit.gomu.rubber'],
 });
@@ -109,6 +115,35 @@ Styles.register({
   dash: 'ability.flashDash',
   modifiers: [{ stat: 'atk', op: 'flat', value: 2, source: 'style:style.flashstep' }],
   tags: ['style.flashstep'],
+});
+// STRIKING styles — a bare-handed unit's basic attack comes from its martial art (not a per-unit field).
+// dash falls back to the base roll (these are striking, not movement, styles). This is the seam Black Leg /
+// Rokushiki plug into: a richer style would add heavy/slots/modifiers on top (or swap the roll for Soru/Geppo).
+Styles.register({
+  id: 'style.brawl',
+  name: 'Street Brawling',
+  dash: 'ability.roll',
+  primary: 'ability.banditStrike', // the bandit's trained jab (was unit.thug's attackAbility)
+  modifiers: [],
+  tags: ['style.brawl'],
+});
+Styles.register({
+  id: 'style.haymaker',
+  name: 'Haymaker',
+  dash: 'ability.roll',
+  primary: 'ability.brawlerStrike', // the boss's committed bare-fist swing (was unit.brawler's attackAbility)
+  modifiers: [],
+  tags: ['style.haymaker'],
+});
+// the BULL's "style" — its natural weapon (the headbutt gore) as its basic attack. A style is just how a
+// weapon-less body's strike is granted (the Moat); an animal's attack is a style like a martial art is.
+Styles.register({
+  id: 'style.gore',
+  name: 'Gore',
+  dash: 'ability.roll',
+  primary: 'ability.gore',
+  modifiers: [],
+  tags: ['style.gore'],
 });
 
 Potentials.register({

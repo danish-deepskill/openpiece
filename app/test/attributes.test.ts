@@ -89,7 +89,6 @@ describe('attributes — spawn integration', () => {
       tier: 'E-',
       faction: 'bandits',
       aiProfile: 'ai.rusher',
-      attackAbility: 'ability.punch',
       attributes: { health: 12 },
     });
     const w = new World();
@@ -108,7 +107,6 @@ describe('attributes — spawn integration', () => {
       tier: 'F',
       faction: 'bandits',
       aiProfile: 'ai.rusher',
-      attackAbility: 'ability.punch',
       attributes: { luck: -1 },
     });
     expect(() => Units.get('unit.testBadSpread')).toThrow(/luck/);

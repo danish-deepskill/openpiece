@@ -17,6 +17,7 @@ const SIM_DIRS = ['ai', 'combat', 'core', 'defs', 'ecs', 'world'];
 /** The only systems/ files allowed to import Phaser (they take `scene` first — the presentation marker). */
 const PRESENTATION_SYSTEMS = new Set([
   'AccessorySystem.ts',
+  'AimReticle.ts',
   'DebugOverlay.ts',
   'FxSystem.ts',
   'InputSystem.ts',

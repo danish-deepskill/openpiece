@@ -13,6 +13,7 @@ export class MovementSystem {
     for (const e of this.world.with('transform', 'mover')) {
       const t = e.transform!;
       const m = e.mover!;
+      if (m.rollT) m.rollT = Math.max(0, m.rollT - dt); // roll-anim clock ticks down independently of the impulse decay
       let vx: number;
       let vy: number;
       if (m.dodgeT > 0) {

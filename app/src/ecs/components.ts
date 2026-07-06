@@ -28,6 +28,11 @@ export interface Mover {
   dodgeT: number;
   dvx: number;
   dvy: number;
+  /** ROLL animation clock (s), counts down while a roll is in flight — drives the ball-up+spin in drawActor.
+   *  Distinct from dodgeT (which knockback also sets); rollDur holds the total so the draw can compute progress.
+   *  Sim-set + serializable (presentation READS it, never writes). Absent/0 ⇒ not rolling. */
+  rollT?: number;
+  rollDur?: number;
 }
 
 export interface Health {
@@ -51,6 +56,10 @@ export interface Blackboard {
   home: { x: number; y: number }; // spawn/post position
   canSprint: boolean;
   boss?: boolean;
+  followId?: number; // a recruited crew member FOLLOWS this entity: its `home` tracks the leader each tick, so
+  //                    it stays near them (and its chase-on-sight still breaks off to fight, then returns)
+  heeling?: boolean; // follow hysteresis: currently closing on the leader (set past FOLLOW_FAR, cleared inside
+  //                    FOLLOW_NEAR) — the two-threshold band that stops the follower buzzing at one tether line
   // pursuit & perception — cross-entity refs are IDS at rest (ecs-hot-loop canon: serializable, and a dead
   // ref resolves to undefined via world.byId instead of dangling); brains re-resolve them each tick
   quarryId?: number; // who we're chasing (persists past line-of-sight)
@@ -59,6 +68,7 @@ export interface Blackboard {
   lastSeenY: number;
   lostT: number; // time since we last saw the target
   alertT?: number; // "I was hit" investigate/flee timer
+  spotT?: number; // "!" double-take countdown: set on entering `alert`, ticks down, then commits to the chase
   betrayHpFrac?: number; // friendly-fire tolerance (HP frac): an ALLY that drops me to ≤ this earns a
   //                        permanent grudge (seeded at spawn from unit/profile; undefined ⇒ never turns)
   perceivedX?: number; // perceived (reaction-lagged) target position — where it THINKS the target is
@@ -83,6 +93,17 @@ export interface Blackboard {
   guardT?: number; // guard hold remaining (s): while > 0 the brain stands its ground blocking
   guardCd?: number; // guard re-roll cooldown (s): one guard decision per enemy swing, not per tick
   regrouping?: boolean; // tactical stamina retreat (combatStance hysteresis): backing off to regen, not attacking
+  // COMMITTED next special (a mini-intent): when a pinned regrouper rolls the Rocket-reposition, it PLANS the move
+  // here instead of firing on the spot — so the harry logic knows to STOP jabbing (which would spend the stamina
+  // the plan needs) and instead conserve until the special is affordable + the opening lands, then fires + clears.
+  // A persisted decision the same way movement (mover.vx/vy) is a persisted movement intent; folds into the future
+  // PlayerIntent system when netcode lands. Undefined ⇒ no plan (normal per-beat attack choice).
+  plannedSpecial?: ContentId;
+  // ATTACK-DECISION CADENCE (the generic fix for "re-decides every tick"): a chance-gated attack choice may only
+  // be ROLLED when this timer is ≤ 0, then re-arms — so a `chance` reads as "per DECISION", never "per tick" (a
+  // per-tick roll snowballs to always-fires at sim rate). ONE ability-agnostic clock (like guardCd for guards),
+  // so ANY number of roll-based ability picks scale without per-ability state. Ticks down each frame.
+  decideCd?: number;
 }
 
 export interface AI {
@@ -152,10 +173,12 @@ export interface Ship {
   throttle: number;
 }
 
-/** Marks an entity riding/piloting a ship (its world position is pinned to the ship).
- *  Id at rest — ShipSystem resolves it via world.byId each use, so a sunk ship reads as gone, not stale. */
+/** Marks an entity riding/piloting a ship (its world position is pinned to a DECK SLOT, not the ship center,
+ *  so riders don't stack). Id at rest — ShipSystem resolves it via world.byId each use, so a sunk ship reads
+ *  as gone, not stale. */
 export interface Riding {
   shipId: number;
+  seat: number; // deck-slot index (0 = pilot at the helm; 1+ = passengers spread along the deck)
 }
 
 /**
@@ -177,6 +200,8 @@ export interface Combatant {
   parryCd?: number; // parry re-arm remaining (s): only a WHIFFED window pays this (success resets it)
   kickSide?: number; // last kicking foot (±1); alternated each kick so left/right kicks mirror
   handSide?: number; // last throwing hand (±1); alternated each bare/stretch swing (R → L → R, never random)
+  mixStab?: boolean; // 'mixed'-motion weapons (the cutlass) ALTERNATE stab↔swing deterministically (a coin
+  //                    flip read as inconsistent); this holds the last pick so the next flips to the other
   regenT?: number; // stamina-regen delay remaining (s): set on every spend, ticks down; regen only at 0
   stunT?: number; // hitstun remaining (s): while > 0 the unit can't attack and moves slowed (a stagger)
 }
@@ -199,9 +224,11 @@ export interface Grudge {
   ids: Set<number>;
 }
 
-/** A unit whose def carries dialogue is conversable (the `talk` verb). Recruitment lands with the crew system. */
+/** A unit whose def carries dialogue is conversable (the `talk` verb). `recruitable` offers a join-crew
+ *  choice after the lines; cleared once recruited so it can't be recruited twice. */
 export interface Npc {
   dialogue: string[];
+  recruitable?: boolean;
 }
 
 export interface Loot {

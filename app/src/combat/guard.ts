@@ -35,9 +35,9 @@ export const PARRY_POSTURE = 12;
 /** Defender posture refunded by a successful parry. */
 export const PARRY_REFUND = 8;
 /** Stagger on the parried attacker (s) — the punish opening. */
-export const PARRY_STUN = 0.45;
-/** Guard-break stagger (s) — Deepwoken's 1.05s, the price of turtling into overflow. */
-export const GUARD_BREAK_STUN = 1.05;
+export const PARRY_STUN = 0.5;
+/** Guard-break stagger (s) — the price of turtling into overflow (posture overflows → stunned wide open). */
+export const GUARD_BREAK_STUN = 2.0;
 /** Guard arcs: |angle between the defender's facing and the incoming hit| must be inside. The parry arc is
  *  slightly wider than the block arc (a read deserves forgiveness); the rear stays open to both. */
 export const BLOCK_ARC = 1.75; // ≈ ±100°
@@ -49,13 +49,12 @@ export const BLOCK_MOVE_MULT = 0.55;
 export const POSTURE_REGEN = 5;
 
 /** Posture damage a blocked hit deals, by the attacker's combat weight — scales with WEIGHT, not damage
- *  (Deepwoken's rule): a heavy crushes guards, a knife barely rattles them. Second column of the same
+ *  (Deepwoken's rule): a heavy crushes guards, a dagger barely rattles them. Second column of the same
  *  ladder that drives windup (combat/phases.WEIGHT_PHASES). */
 export const WEIGHT_POSTURE: Record<CombatWeight, number> = Object.freeze({
-  unarmed: 4,
-  light: 5,
-  medium: 8,
-  heavy: 14,
+  light: 5, // dagger / bare fists
+  medium: 8, // cutlass
+  heavy: 14, // sword
   ranged: 6,
 });
 
@@ -85,7 +84,10 @@ export function tryGuard(e: Entity, parry = true): boolean {
     delete e.melee; // FEINT: show the tell, pull the swing, guard comes up
   }
   c.blocking = true;
-  if (parry && granted.has(ABILITY_PARRY) && (c.parryCd ?? 0) <= 0) { // the parry window needs its OWN grant, not just block
+  // PARRY needs a WEAPON — a bare fist can only BLOCK (soak → posture), not deflect a blow. So the parry window
+  // opens only if armed (plus the parry grant + off cooldown). Unarmed → block-only. Checked here (the decision
+  // point) so picking up / dropping a weapon flips parry availability automatically, no grant bookkeeping.
+  if (parry && e.equipment?.weapon && granted.has(ABILITY_PARRY) && (c.parryCd ?? 0) <= 0) {
     c.parryT = PARRY_WINDOW;
     c.parryCd = PARRY_COOLDOWN; // re-armed instantly on success (see resolveGuard)
   }
@@ -102,6 +104,7 @@ export function endGuard(e: Entity): void {
 export function damagePosture(e: Entity, amount: number): boolean {
   const c = e.combatant;
   if (!c) return false;
+  if (e.tags?.has('state.godMode')) return false; // debug: never take posture damage → never guard-break
   c.posture += amount;
   if (c.posture < c.maxPosture) return false;
   c.posture = 0;

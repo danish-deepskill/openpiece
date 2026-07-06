@@ -2,10 +2,25 @@ import type Phaser from 'phaser';
 import { Tile } from '../config/constants';
 import { draws, type DrawFn } from '../draw/actorDraws';
 import { drawShip } from '../draw/shipDraws';
+import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { TileGrid } from '../world/TileGrid';
 
 const WADE_ALPHA = 0.5; // a foot unit standing in shallow water renders partly submerged
+
+const GOD_AURA_COLOR = 0xffe66e; // warm gold — reads as "divine/charged", distinct from the green HP / blue stamina bars
+
+/** Paint the god-mode aura into an actor's Graphics (LOCAL space, centered on the body). A slow-breathing
+ *  golden halo: a soft outer glow + a crisper inner ring, both pulsing on a sine of wall-clock `now` so it
+ *  reads as ACTIVE energy, not a static decal. Presentation-only (RenderSystem draws it before the body). */
+function drawGodAura(g: Phaser.GameObjects.Graphics, r: number, now: number): void {
+  const pulse = 0.5 + 0.5 * Math.sin(now / 260); // 0..1, ~1.6s breath
+  const glowR = r * (1.5 + 0.25 * pulse); // soft halo swells with the breath
+  g.fillStyle(GOD_AURA_COLOR, 0.1 + 0.12 * pulse);
+  g.fillCircle(0, 0, glowR);
+  g.lineStyle(2, GOD_AURA_COLOR, 0.5 + 0.4 * pulse); // bright ring rides the same beat
+  g.strokeCircle(0, 0, r * 1.35);
+}
 
 /** The full presentation draw registry: body draw keys + the non-actor looks. `Render.draw` (a plain string
  *  on the sim component) keys into this — the sim never holds a function pointer or a Graphics object. */
@@ -28,6 +43,18 @@ export class RenderSystem {
     private readonly grid: TileGrid,
   ) {}
 
+  /** The y a unit's layers (body, accessories, weapon) sort by. Normally its own transform.y — but a RIDER
+   *  sorts by its SHIP's y (+2, just above the deck), so ALL its layers draw above the hull regardless of the
+   *  rider's seat position (else an aft-seated rider's hat/weapon drops under the hull as the boat turns). The
+   *  ONE home for this rule; every render layer reads it so they can never disagree. */
+  sortY(e: Entity): number {
+    if (e.riding) {
+      const ship = this.world.byId(e.riding.shipId);
+      if (ship?.transform) return ship.transform.y + 2;
+    }
+    return e.transform!.y;
+  }
+
   update(_dt: number): void {
     const now = this.scene.time.now;
     const seen = new Set<number>();
@@ -41,7 +68,7 @@ export class RenderSystem {
       // brief invulnerability blink, composed on top of the wade fade
       if (e.health && e.health.iframes > 0 && Math.floor(now / 50) % 2 === 0) alpha *= 0.5;
       this.alphaById.set(e.id, alpha);
-      const depth = t.y + (rd.depthBias ?? 0); // top-down y-sort
+      const depth = this.sortY(e) + (rd.depthBias ?? 0); // top-down y-sort (rider layers sort by the ship — sortY)
 
       if (rd.sprite) {
         // sprite entity: render the item's own loaded texture (e.g. an accessory pickup's art) as an Image
@@ -65,6 +92,11 @@ export class RenderSystem {
       gfx.setDepth(depth);
       gfx.setAlpha(alpha);
       gfx.clear();
+      // GOD-MODE AURA (debug tell): a pulsing golden glow UNDER the body so you can SEE the tag is live. Purely
+      // presentational — reads the same 'state.godMode' tag the sim gates on, so it follows possession (the
+      // Moat: glow whoever you're driving). Drawn FIRST → the body paints over its center. Circle is
+      // rotation-invariant, so gfx's aim-rotation doesn't skew it.
+      if (e.tags?.has('state.godMode')) drawGodAura(gfx, t.r, now);
       DRAWS[rd.draw]?.(gfx, e);
     }
     // orphan sweep: destroy gfx/img for entities that despawned since last frame (sim only calls world.destroy)

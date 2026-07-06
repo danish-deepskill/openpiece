@@ -12,7 +12,8 @@ export class Damage {
   apply(target: Entity, dmg: number, kx: number, ky: number, byPlayer = false): boolean {
     const h = target.health;
     const t = target.transform;
-    if (!h || !t || h.dead || h.iframes > 0 || target.tags?.has('state.invuln')) return false;
+    // 'state.godMode' = the debug invincibility tag (like 'state.invuln' dodge i-frames, but persistent)
+    if (!h || !t || h.dead || h.iframes > 0 || target.tags?.has('state.invuln') || target.tags?.has('state.godMode')) return false;
 
     // flat damage reduction from the target's `def` attribute (tier/gear-driven); always lands for ≥1
     const def = target.attributes?.get('def') ?? 0;

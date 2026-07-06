@@ -24,22 +24,46 @@ export interface AttackPhases {
 
 export type AttackPhase = 'windup' | 'active' | 'recover';
 
-/** The weight tier an attack times against. 'unarmed' is deliberately NOT a WeaponClass — no weapon is
- *  "unarmed"; it's the tier of the empty-handed kit (fists, kicks), the twitchiest rung on the ladder. */
-export type CombatWeight = WeaponClass | 'unarmed';
+/** The weight tier an attack times against — the four weapon classes. A WEAPONLESS attack (fist/kick/bare
+ *  strike) has no weapon class, so it falls back to 'light' (the twitchiest rung); most bare attacks author
+ *  their OWN shape.phases anyway, so the fallback only sets the default for an unauthored one. */
+export type CombatWeight = WeaponClass;
 
 /**
  * The weight → phase ladder (data, frozen): heavier = longer windup (more telegraphed, more committed) and
  * longer tail. This is what makes a fist beat an unskilled sword: step in during the rear-back, punish the
  * follow-through. An ability's own `shape.phases` overrides its rung entirely (fruits always author theirs).
  */
+// The windup FRACTIONS below combine with each ability's swingTime to hit the windup-TIME ladder (readable-tell
+// floor ~0.2s for light/fists, ~0.3s medium, ~0.4s heavy): heavier weapons telegraph LONGER, matching their
+// higher damage/reach/commitment — so a light fast fist vs a slow punishable sword is a real choice.
 export const WEIGHT_PHASES: Record<CombatWeight, AttackPhases> = Object.freeze({
-  unarmed: Object.freeze({ windup: 0.12, active: 0.45, recover: 0.43 }), // twitchy — the zero-reach compensation
-  light: Object.freeze({ windup: 0.18, active: 0.42, recover: 0.4 }), // knife: fast, low commitment
-  medium: Object.freeze({ windup: 0.26, active: 0.4, recover: 0.34 }), // cutlass: balanced
-  heavy: Object.freeze({ windup: 0.38, active: 0.34, recover: 0.28 }), // sword: a visible rear-back, punishable tail
+  light: Object.freeze({ windup: 0.4, active: 0.3, recover: 0.3 }), // dagger / bare fists: ~0.2s tell at their ~0.5 swingTime — the floor
+  medium: Object.freeze({ windup: 0.5, active: 0.25, recover: 0.25 }), // cutlass: ~0.3s tell — clearly slower
+  heavy: Object.freeze({ windup: 0.5, active: 0.25, recover: 0.25 }), // sword: ~0.4s tell at its ~0.8 swingTime — a big rear-back, very punishable
   ranged: Object.freeze({ windup: 0.2, active: 0.3, recover: 0.5 }), // placeholder — shots fire instantly today
 });
+
+/** Weight rank for the INTERRUPT ladder (heavier = higher). Ranged sits at light (a quick shot, not a committed
+ *  heavy blow). Used to size the chance a hit CANCELS a target's WINDUP (see INTERRUPT_CHANCE / interruptChance). */
+const WEIGHT_RANK: Record<CombatWeight, number> = Object.freeze({ ranged: 1, light: 1, medium: 2, heavy: 3 });
+
+/**
+ * PROBABILISTIC interrupt (Model D): a hit landing during a target's WINDUP cancels the swing with THIS chance,
+ * by how much lighter the attacker is than the swing. Equal-or-heavier is a sure thing; each tier lighter halves
+ * it — so a light fist has only a slim shot at cancelling a heavy sword's windup (a lucky clip of the swing-arm),
+ * while it reliably interrupts another light. Deliberate RNG in the TACTICAL layer: a light attacker can't just
+ * SPAM through a heavy's windup, but isn't fully locked out. (windup-only still gates it — active swings commit.)
+ *   diff = swingerRank − attackerRank (how many tiers heavier the swing is)
+ */
+export const INTERRUPT_CHANCE: readonly number[] = [1, 0.5, 0.25]; // diff 0 → 100%, 1 → 50%, 2 → 25%
+
+/** Chance a hit of `attacker` weight cancels a swing of `swinger` weight during its windup (0..1). */
+export function interruptChance(attacker: CombatWeight, swinger: CombatWeight): number {
+  const diff = WEIGHT_RANK[swinger] - WEIGHT_RANK[attacker];
+  if (diff <= 0) return 1; // equal or heavier → always
+  return INTERRUPT_CHANCE[Math.min(diff, INTERRUPT_CHANCE.length - 1)];
+}
 
 /** A weapon's KIT: its primary attack + the combo chain it links to — memoized (defs are stable after
  *  registry resolution). The class-default rung applies ONLY to these: a kick thrown while a sword is
@@ -72,11 +96,11 @@ export function kitWeapon(e: Entity, d: AbilityDef): WeaponDef | undefined {
  * The phase resolution chain (layered data, arrays-replace style — same precedence idiom as hitVolumes):
  *   ability's own shape.phases                          (fruits and bespoke attacks author these)
  *   ?? the equipped weapon's class rung — IF the ability is that weapon's kit (kitWeapon rule)
- *   ?? the unarmed rung                                  (fists/kicks, armed or not)
+ *   ?? the 'light' rung                                  (weaponless fists/kicks fall back here)
  */
 export function resolvePhases(e: Entity, d: AbilityDef): AttackPhases {
   if (d.shape?.phases) return d.shape.phases;
-  return WEIGHT_PHASES[kitWeapon(e, d)?.weaponClass ?? 'unarmed'];
+  return WEIGHT_PHASES[kitWeapon(e, d)?.weaponClass ?? 'light'];
 }
 
 /** Which phase the attack is in at progress p∈[0,1] — the one shared clock read (melee gating, the future

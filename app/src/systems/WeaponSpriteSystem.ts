@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Weapons } from '../defs/layers';
 import { weaponAnchor } from '../draw/actorDraws';
+import { rollProgress } from '../draw/rollAnim';
 import type { World } from '../ecs/World';
 import type { RenderSystem } from './RenderSystem';
 
@@ -33,6 +34,10 @@ export class WeaponSpriteSystem {
         img = this.scene.add.image(0, 0, wid); // origin (the grip point) is set per frame from the def's rig
         this.imgs.set(e.id, img);
       }
+      if (rollProgress(e) !== null) {
+        img.setVisible(false); // mid-roll: the figure is a tucked BALL (drawRollBall) — the weapon is tucked in, hidden
+        continue;
+      }
       const a = weaponAnchor(e);
       if (!a) {
         img.setVisible(false); // rubber arms out (Gomu stretch) — the weapon reads as stowed
@@ -50,7 +55,7 @@ export class WeaponSpriteSystem {
         .setPosition(a.x, a.y)
         .setRotation(a.angle + (tipTop ? Math.PI / 2 : -Math.PI / 2)) // whichever end is the tip leads
         .setDisplaySize(w, h)
-        .setDepth(e.transform!.y + (e.render!.depthBias ?? 0) - 0.1) // just under the body: fists cover the hilt
+        .setDepth(this.renderSys.sortY(e) + (e.render!.depthBias ?? 0) - 0.1) // just under the body: fists cover the hilt (sortY handles riders)
         .setAlpha(this.renderSys.alphaById.get(e.id) ?? 1)
         .setVisible(true);
     }

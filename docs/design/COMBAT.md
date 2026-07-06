@@ -121,3 +121,44 @@ Today block/parry are HARDCODED into `Combatant` (`blocking`/`parryT`/`parryCd`)
 - Guard SKILL (window size, success, posture) moves toward ATTRIBUTE-derived (willpower/technique) so it scales
   per-unit and per-tier like everything else, instead of a flat profile chance.
 Do this as a standalone piece on a clean (committed) base — it's foundational surgery, well-shaped but meaty.
+
+## Weapon hitbox ↔ visual — the "what you see is what hits" architecture
+
+### The problem (and why patching it fails)
+Today a weapon's hitbox and its sprite are both driven by ONE number — `visual.length` (plus `width`). The sprite
+renderer (`WeaponSpriteSystem`) scales the art so "canvas-edge → grip = length", and the hitbox
+(`swingGeomOf.weaponLen`) uses the same `length` for a straight `weaponSegment` from hand→tip. This works ONLY
+for a **rigid straight blade** drawn tip-at-canvas-edge. It breaks two ways:
+- **Sprite drift:** a hand-drawn PNG has transparent margins + a grip/pommel, so the VISIBLE blade never equals
+  `length` — the hitbox out-reaches the drawn steel (the dagger bug). One number can't be both "hitbox reach"
+  AND "the scale that makes the visible blade reach that far" — that depends on the PNG's internal layout the
+  code can't see.
+- **Non-straight weapons:** a **scythe** (curved crescent offset from the shaft), **kusarigama** (sickle on a
+  chain — variable length, two damage zones), **nunchaku** (flailing end on a flexible link) have hitboxes that
+  are NOT a hand→tip line. `length`+`width` has no vocabulary for them.
+
+The lesson: **the dagger bug and the scythe are the SAME problem** — a single straight `length` cannot describe
+an arbitrary weapon's hitbox. Smarter length fudging (bladeFrac, artScale) is a straight-blade-only band-aid and
+an architectural dead end. Don't build it as the solution.
+
+### The target architecture (build when exotic weapons land)
+1. **Hitbox = a composition of `HitVolume`s** (ALREADY EXISTS — `combat/hitVolume`: `weaponSegment` straight,
+   `arc` crescent — the sword slash-wave; extend the union with shapes + PHASE-DRIVEN positions for chains/flails).
+   This is the hitbox AUTHORITY. A scythe's crescent is an `arc` volume today; a nunchaku's whipping end is a
+   segment whose position is driven by swing phase (the Gomu stretch arm + `follow:'swing'` already do this — the
+   machinery exists, it needs generalizing).
+2. **Sprite authored to MATCH its volumes** via the **authoring-frame pattern** — the SAME solution the codebase
+   already uses for accessories (`BODY_FRAME_R`, `frame:'body'`, `docs/art/unit-template.svg`): the weapon art is
+   drawn on a known canvas where its hit volumes are ALSO defined, so the curved scythe blade sits exactly on its
+   arc volume BY CONSTRUCTION, not by a length number. `length`/`width` stop being the universal descriptor —
+   they're just the straight-blade convenience case of the general volume system.
+
+So "what you see is what hits" holds for ANY shape because the drawn *blade* (not the whole art, not a length
+guess) coincides with the hit volume by authoring, the way the drawn fist already IS the punch hitbox.
+
+### What's built NOW (the straight-blade stopgap)
+Straight blades (dagger/cutlass/sword) work via `length`/`width` + optional `hitVolumes[{from}]` to carve off the
+grip (the sword's dead zone; the dagger's blade-only `from:0.45`). This is a STOPGAP for rigid straight weapons —
+it does NOT generalize. The dagger is tuned so its hitbox roughly matches its sprite; getting it pixel-exact is a
+symptom of the missing authoring frame, not worth chasing with more length fudges. Build the volume-authoring
+foundation above when the first non-straight weapon (scythe/kusarigama/nunchaku) is actually added.

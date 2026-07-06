@@ -7,6 +7,11 @@ import type { DialogueView } from '../systems/DialogueSystem';
 import { PLATE_CONTENT_H, UnitPlate } from '../ui/UnitPlate';
 import type { UnitPlateView } from '../ui/plateView';
 
+/** Ability-slot box size (px) — sized so 6 fit the 290px plate width below it (LMB/RMB/Q + slots 1/2/3): a
+ *  full fruit kit fills all six (primary, heavy, dash, 3 specials). (6×38 + 5×6 gap = 258 ≤ the inner width.) */
+const ABIL_W = 38;
+const ABIL_H = 38;
+
 /** Canvas HUD overlay (parallel scene). Reads continuous state from the registry; one-offs via EventBus. */
 export class HudScene extends Phaser.Scene {
   private g!: Phaser.GameObjects.Graphics;
@@ -25,7 +30,8 @@ export class HudScene extends Phaser.Scene {
 
   /** Bottom-left player card: THE shared unit readout (UnitPlate) + a player-only ability-bar row below
    *  the content block — extras go OUTSIDE the readout so every unit's plate stays identical. */
-  private readonly panel = { x: 12, y: GAME_H - 202, w: 290, h: 190 };
+  // tall enough to CONTAIN the plate (PLATE_CONTENT_H 150) + the ability bar row below it, with a bottom inset
+  private readonly panel = { x: 12, y: GAME_H - 212, w: 290, h: 200 };
   private readonly barX = 24; // panel.x + inner pad
   private barY = 0; // ability-row top (set in create)
 
@@ -44,10 +50,8 @@ export class HudScene extends Phaser.Scene {
     this.txt.hudCombo = mk(P.x + P.w - 4, P.y - 20, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '12px', color: '#ffcf5a' }).setOrigin(1, 0).setVisible(false);
     this.txt.autoaim = mk(P.x + 4, P.y - 20, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#7fd1ff' }).setVisible(false);
 
-    // --- corners / center (world + objective info, not "the player") ---
+    // --- corners / center (world info, not "the player") ---
     this.txt.gold = mk(GAME_W - 18, 16, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '14px', color: '#f0b429' }).setOrigin(1, 0);
-    this.txt.enemies = mk(GAME_W - 18, 50, { fontFamily: 'Trebuchet MS', fontSize: '12px', color: '#ffffff' }).setOrigin(1, 0);
-    this.txt.objective = mk(GAME_W / 2, GAME_H - 24, { fontFamily: 'Georgia', fontStyle: 'italic', fontSize: '13px', color: '#ffffff' }).setOrigin(0.5, 0);
     this.txt.prompt = mk(GAME_W / 2, GAME_H - 50, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '14px', color: '#f0b429' }).setOrigin(0.5, 0);
     this.txt.combo = mk(GAME_W / 2, 40, { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '20px', color: '#f0b429' }).setOrigin(0.5, 0);
     this.notifText = mk(GAME_W / 2, 74, { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '16px', color: '#f0b429' }).setOrigin(0.5, 0);
@@ -76,10 +80,10 @@ export class HudScene extends Phaser.Scene {
 
     // ability bar (player-only row, below the shared readout block): one box per equipped/granted ability
     this.barY = P.y + PLATE_CONTENT_H + 4;
-    for (let i = 0; i < 5; i++) {
-      const bx = this.barX + i * 53 + 24;
-      const key = this.add.text(bx, this.barY + 4, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '10px', color: '#f0b429' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
-      const name = this.add.text(bx, this.barY + 20, '', { fontFamily: 'Trebuchet MS', fontSize: '9px', color: '#f3e7c9' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
+    for (let i = 0; i < 6; i++) {
+      const bx = this.barX + i * (ABIL_W + 6) + ABIL_W / 2;
+      const key = this.add.text(bx, this.barY + 4, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#f0b429' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
+      const name = this.add.text(bx, this.barY + 21, '', { fontFamily: 'Trebuchet MS', fontSize: '10px', color: '#f3e7c9' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
       this.abilSlots.push({ key, name });
     }
 
@@ -101,21 +105,29 @@ export class HudScene extends Phaser.Scene {
         slot.name.setVisible(false);
         continue;
       }
-      const bx = this.barX + i * 53;
-      const w = 48;
-      const h = 36;
+      const bx = this.barX + i * (ABIL_W + 6);
+      const by = this.barY;
       const def = Abilities.has(entry.id) ? Abilities.get(entry.id) : undefined;
+      const onCd = entry.cd > 0 && def && def.cooldown > 0;
+      // dark base box
       g.fillStyle(0x140c06, 0.82);
-      g.fillRoundedRect(bx, this.barY, w, h, 5);
-      g.lineStyle(1.5, 0xf0b429, 0.5);
-      g.strokeRoundedRect(bx, this.barY, w, h, 5);
-      if (entry.cd > 0 && def) {
-        const frac = Math.min(1, entry.cd / def.cooldown);
-        g.fillStyle(0x000000, 0.6);
-        g.fillRect(bx, this.barY, w, h * frac);
+      g.fillRoundedRect(bx, by, ABIL_W, ABIL_H, 6);
+      // COOLDOWN FILL: an amber overlay that fills bottom→top as the ability recovers (empty = on cd, full =
+      // ready). `ready` = 1 − cd/cooldown, so it visibly climbs back up over the recovery. Clear at a glance.
+      const ready = onCd ? Math.max(0, 1 - entry.cd / def!.cooldown) : 1;
+      if (ready > 0) {
+        const fh = ABIL_H * ready;
+        g.fillStyle(onCd ? 0x8a6a2c : 0x2a6a3a, onCd ? 0.55 : 0.4); // amber while filling, green tint when ready
+        g.fillRect(bx, by + (ABIL_H - fh), ABIL_W, fh);
       }
-      slot.key.setText(entry.key).setPosition(bx + w / 2, this.barY + 3).setVisible(true);
-      slot.name.setText(def ? def.name : entry.id).setPosition(bx + w / 2, this.barY + 19).setVisible(true);
+      // border: bright gold when ready, dim when cooling — a second ready/not-ready cue
+      g.lineStyle(2, onCd ? 0x7a4f1f : 0xf0b429, onCd ? 0.6 : 0.95);
+      g.strokeRoundedRect(bx, by, ABIL_W, ABIL_H, 6);
+      slot.key.setText(entry.key).setPosition(bx + ABIL_W / 2, by + 4).setVisible(true);
+      // seconds remaining while cooling (fast cds otherwise flash by unread), else the ability name
+      slot.name.setText(onCd ? `${entry.cd.toFixed(1)}s` : def ? def.name : entry.id)
+        .setColor(onCd ? '#ffcf8a' : '#f3e7c9')
+        .setPosition(bx + ABIL_W / 2, by + 21).setVisible(true);
     }
   }
 
@@ -151,8 +163,10 @@ export class HudScene extends Phaser.Scene {
     g.lineStyle(2, 0x4d4a45, 1);
     g.strokeCircle(cx, cy, ar);
     this.dlg.name.setText(v.name).setPosition(BX + 92, BY + 16).setVisible(true);
-    this.dlg.text.setText(v.text).setPosition(BX + 92, BY + 42).setVisible(true);
-    const hint = v.done ? (v.last ? '[E] ✕  close' : '[E] ▼  more') : '[E] ▶▶  skip';
+    // the spoken line stays as the text; a recruit choice appends its Y/N prompt on the next line so you read
+    // the line AND see the options together (the choice only appears once the last line is fully revealed).
+    this.dlg.text.setText(v.choice ? `${v.text}\n${v.choice}` : v.text).setPosition(BX + 92, BY + 42).setVisible(true);
+    const hint = v.choice ? '[Y] yes   [N] no' : v.done ? (v.last ? '[E] ✕  close' : '[E] ▼  more') : '[E] ▶▶  skip';
     this.dlg.hint.setText(hint).setPosition(BX + BW - 16, BY + BH - 12).setVisible(true);
   }
 
@@ -167,8 +181,6 @@ export class HudScene extends Phaser.Scene {
     this.inspectPlate.draw(g, (r.get(RegKey.Inspect) as UnitPlateView | null) ?? null);
 
     this.txt.gold.setText('● ' + ((r.get(RegKey.Gold) as number) ?? 0) + ' gold');
-    this.txt.enemies.setText('Enemies left: ' + ((r.get(RegKey.EnemiesLeft) as number) ?? 0));
-    this.txt.objective.setText('◆ ' + ((r.get(RegKey.Objective) as string) ?? ''));
     this.txt.prompt.setText((r.get(RegKey.Prompt) as string) ?? '');
     this.drawDialogue(g);
     const combo = (r.get(RegKey.Combo) as number) ?? 0;
@@ -201,8 +213,7 @@ export class HudScene extends Phaser.Scene {
 
     const state = r.get(RegKey.State) as string;
     if (state === 'dead') this.showCard('Washed Ashore', 'You were defeated. Press [E] to recover at home.', '#d4483b');
-    else if (state === 'win') this.showCard('Victory!', 'The enemy isle is yours, Captain. Press [E] to keep sailing.', '#f0b429');
-    else this.hideCard();
+    else this.hideCard(); // no win card — the sea is open-ended, there's nothing to "clear"
   }
 
   private showCard(title: string, msg: string, color: string): void {

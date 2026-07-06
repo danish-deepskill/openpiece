@@ -24,7 +24,6 @@ export interface GameEvents {
   // director hooks — consumed by HUD today; the event director/persistence will subscribe later
   enemyKilled: { gold: number; boss: boolean };
   playerDied: {};
-  gameWon: {};
   autoAimChanged: { on: boolean };
   // fx channel -- the SIM emits these; FxSystem (presentation) subscribes. Sim never calls presentation
   // directly (DESIGN_PATTERNS section 5); this stream is also the future audio hook + net-replication feed.
@@ -33,6 +32,16 @@ export interface GameEvents {
   'fx:swing': SwingFx;
   'fx:corpse': { x: number; y: number; r: number; color: number };
   'fx:shake': { amount: number };
+  /** An expanding SHOCKWAVE ring — a slam/impact (Gomu Ono's stomp). Grows from ~0 to `radius` and fades over
+   *  `life` seconds. Presentation-only (a cosmetic ring; the AoE damage is separate). */
+  'fx:ring': { x: number; y: number; radius: number; color: number; life: number };
+  /** An AI just SPOTTED a target and is about to give chase — the "!" double-take marker over its head. The sim
+   *  (brain's alert state) emits it at the unit's position; FxSystem draws a rising "!" there for `dur` seconds.
+   *  (The unit HOLDS STILL during the alert beat, so a fixed-position marker tracks it fine — no world lookup.) */
+  'fx:spotted': { x: number; y: number; dur: number };
+  /** DEBUG only: an instantaneous AoE fired (Gomu Rocket landing slam) — the overlay draws its radius briefly
+   *  so you can SEE where it hit (the AoE is a one-frame radial check, invisible otherwise). */
+  'debug:aoe': { x: number; y: number; radius: number };
 }
 
 type EventKey = keyof GameEvents;

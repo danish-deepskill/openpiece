@@ -78,15 +78,32 @@ export const Verbs: VerbDef[] = [
     reach: 24,
     label: (_a, t) => `Talk to ${t!.identity?.name ?? 'someone'}`,
     can: (a, t) => !a.riding && !!t?.npc,
-    run: (_a, t, ctx) =>
+    run: (a, t, ctx) => {
+      const npc = t!.npc!;
+      const name = t!.identity?.name ?? 'Someone';
+      // a recruitable NPC ends its lines with a yes/no; Y brings it into your crew (see recruit)
+      const choice = npc.recruitable ? `Recruit ${name}?  [Y] Yes   [N] No` : undefined;
       ctx.dialogue.open(
-        t!.identity?.name ?? 'Someone',
-        t!.npc!.dialogue,
+        name,
+        npc.dialogue,
         t!.render?.baseColor ?? 0xe0a070,
         t!.render?.hatColor ?? 0x888888,
-      ),
+        choice,
+        choice ? (yes) => { if (yes) recruit(a, t!); } : undefined,
+      );
+    },
   },
 ];
+
+/** Bring `target` into the actor's crew: switch it to the actor's faction (the matrix makes it an ally, so it
+ *  stops fighting you and defends you) and set it to FOLLOW the actor (its AI home tracks the leader — brains.
+ *  syncFollow). Clears `recruitable` so it can't be recruited again. Simple crew: no roster/limit yet. */
+export function recruit(actor: Entity, target: Entity): void {
+  if (actor.faction) target.faction = { id: actor.faction.id };
+  if (target.ai) target.ai.bb.followId = actor.id;
+  if (target.npc) target.npc.recruitable = false;
+  events.emit('notify', { msg: `${target.identity?.name ?? 'They'} joined your crew!` });
+}
 
 /**
  * Resolves "what can I interact with right now?" for an actor — the single source of truth for BOTH the HUD

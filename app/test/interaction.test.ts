@@ -71,6 +71,66 @@ describe('InteractionSystem — generic verbs (the Moat for interaction)', () =>
   });
 });
 
+describe('recruit — talk offers a join-crew choice; Y flips faction + follows', () => {
+  it('a recruitable NPC ends dialogue with a choice; choosing YES joins the crew', () => {
+    const world = new World();
+    const a = actorAt(world, 0, 0);
+    a.faction = { id: 'straw_hat' };
+    const npc = world.create({
+      transform: { x: 10, y: 0, angle: 0, r: 11 },
+      identity: { name: 'Soldier' },
+      faction: { id: 'bandits' },
+      npc: { dialogue: ['for hire'], recruitable: true },
+      ai: { brain: (() => undefined) as never, bb: { state: 'wander', home: { x: 10, y: 0 } } as never },
+    });
+    const dlg = new DialogueSystem();
+    const sys = sysFor(world, dlg);
+    sys.interact(a); // opens the session with a recruit choice
+    dlg.update(10); // reveal the (last) line
+    expect(dlg.view()?.choice).toMatch(/Recruit Soldier/); // the prompt shows once the line is revealed
+    expect(dlg.choosing).toBe(true);
+    dlg.choose(true); // YES
+    expect(dlg.active).toBe(false); // dialogue closed
+    expect(npc.faction!.id).toBe('straw_hat'); // joined your crew (matrix ally now)
+    expect(npc.ai!.bb.followId).toBe(a.id); // and set to FOLLOW you
+    expect(npc.npc!.recruitable).toBe(false); // can't be recruited again
+  });
+
+  it('choosing NO leaves the NPC unchanged', () => {
+    const world = new World();
+    const a = actorAt(world, 0, 0);
+    a.faction = { id: 'straw_hat' };
+    const npc = world.create({
+      transform: { x: 10, y: 0, angle: 0, r: 11 },
+      identity: { name: 'Soldier' },
+      faction: { id: 'bandits' },
+      npc: { dialogue: ['for hire'], recruitable: true },
+      ai: { brain: (() => undefined) as never, bb: { state: 'wander', home: { x: 10, y: 0 } } as never },
+    });
+    const dlg = new DialogueSystem();
+    sysFor(world, dlg).interact(a);
+    dlg.update(10);
+    dlg.choose(false); // NO
+    expect(npc.faction!.id).toBe('bandits'); // unchanged
+    expect(npc.ai!.bb.followId).toBeUndefined();
+    expect(npc.npc!.recruitable).toBe(true); // still recruitable
+  });
+
+  it('a non-recruitable NPC has no choice (plain talk closes on the last line)', () => {
+    const world = new World();
+    const a = actorAt(world, 0, 0);
+    const npc = world.create({ transform: { x: 10, y: 0, angle: 0, r: 11 }, identity: { name: 'Villager' }, npc: { dialogue: ['hello'] } });
+    const dlg = new DialogueSystem();
+    sysFor(world, dlg).interact(a);
+    dlg.update(10);
+    expect(dlg.view()?.choice).toBeUndefined();
+    expect(dlg.choosing).toBe(false);
+    dlg.advance(); // last line + no choice → closes
+    expect(dlg.active).toBe(false);
+    void npc;
+  });
+});
+
 describe('DialogueSystem — typewriter', () => {
   it('reveals progressively, and E skips to the full line (without advancing it)', () => {
     const dlg = new DialogueSystem();

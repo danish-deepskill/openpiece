@@ -1,6 +1,6 @@
 import { FX_COLOR, type GameState } from '../config/constants';
 import { events } from '../core/EventBus';
-import { DEFAULT_PLAYER_FACTION, factions, type FactionId } from '../defs/factions';
+import { DEFAULT_PLAYER_FACTION, type FactionId } from '../defs/factions';
 import type { Avatar, Entity } from '../ecs/components';
 import { defaultCombatant } from '../ecs/Spawner';
 import type { World } from '../ecs/World';
@@ -10,12 +10,11 @@ function defaultAvatar(): Avatar {
   return {};
 }
 
-/** Game state, objectives, death/win, and the possession hook. Win = no hostiles to the controlled faction remain. */
+/** Game state, death/respawn, and the possession hook. (No win condition — the sea is open-ended, not a level
+ *  you "clear"; the objective/enemies-left/Victory UI were removed for that open-world feel.) */
 export class GameDirector {
   state: GameState = 'start';
   gold = 0;
-  objective = 'Reach the eastern isle and defeat the captain';
-  private everHadEnemies = false;
 
   constructor(
     private readonly world: World,
@@ -33,10 +32,6 @@ export class GameDirector {
     this.state = s; // continuous state — the HUD reads it via RegKey.State each frame (no event needed)
   }
 
-  setObjective(o: string): void {
-    this.objective = o; // read via RegKey.Objective
-  }
-
   controlled(): Entity | undefined {
     return this.world.first('control');
   }
@@ -45,20 +40,10 @@ export class GameDirector {
     return this.controlled()?.faction?.id ?? DEFAULT_PLAYER_FACTION;
   }
 
-  enemiesAlive(): number {
-    const pf = this.controlledFaction();
-    let n = 0;
-    for (const e of this.world.entities) {
-      if (e.health && !e.health.dead && e.faction && factions.isHostile(pf, e.faction.id)) n++;
-    }
-    return n;
-  }
-
   update(dt: number): void {
     if (this.state !== 'play') return;
     this.tickTimers(dt);
     this.cleanupDead();
-    this.checkWin();
   }
 
   private tickTimers(dt: number): void {
@@ -116,14 +101,6 @@ export class GameDirector {
     events.emit('notify', { msg: 'You wash ashore at home, alive.' });
   }
 
-  private checkWin(): void {
-    const n = this.enemiesAlive();
-    if (n > 0) this.everHadEnemies = true;
-    if (n === 0 && this.everHadEnemies && this.state === 'play') {
-      this.setState('win');
-      events.emit('gameWon', {});
-    }
-  }
 
   /** The Moat: hand human control to any entity (it gains an avatar if it lacked one). */
   possess(target: Entity): void {

@@ -1,4 +1,4 @@
-import { MAPH, MAPW, SHALLOW_MOVE_MULT, TILE, Tile } from '../config/constants';
+import { MAPH, MAPW, SAND_MOVE_MULT, SHALLOW_MOVE_MULT, TILE, Tile } from '../config/constants';
 import type { MoveMode } from '../ecs/components';
 
 /** Tiles that stop a foot actor (buildings + terrain barriers). Water is handled separately (per mode);
@@ -6,17 +6,10 @@ import type { MoveMode } from '../ecs/components';
  *  blocking terrain kind joins this set — walkable/pathable then pick it up with no other change. */
 const FOOT_BLOCKED: ReadonlySet<Tile> = new Set([Tile.Wall, Tile.Door, Tile.StoneWall, Tile.Tree]);
 
-export interface MapLabel {
-  x: number;
-  y: number;
-  text: string;
-}
-
 /** The static world as a tile array. Buildings are baked into the tiles as Wall/Floor (no separate AABBs),
- * so collision and pathfinding both read one source of truth. `labels` are world-space text markers. */
+ * so collision and pathfinding both read one source of truth. */
 export class TileGrid {
   tiles: Tile[][] = [];
-  labels: MapLabel[] = [];
 
   constructor(
     readonly w: number = MAPW,
@@ -41,7 +34,9 @@ export class TileGrid {
 
   /** Terrain movement modifier (1 = normal). The hook for wadable/rough ground — data, not branching in systems. */
   static speedMul(t: Tile): number {
-    return t === Tile.ShallowWater ? SHALLOW_MOVE_MULT : 1;
+    if (t === Tile.ShallowWater) return SHALLOW_MOVE_MULT;
+    if (t === Tile.Sand) return SAND_MOVE_MULT; // sand/desert = heavier going (0.75)
+    return 1;
   }
 
   /** Looser rule for AI planning + line-of-sight: doorways count as passable, so enemies route and track

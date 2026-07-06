@@ -119,7 +119,7 @@ export function strikeFrameOf(e: Entity, m: MeleeSwing, d: AbilityDef, pose: Swi
     tipY: t.y + pose.ty,
     aim: m.angle,
     swingAngle: pose.drawAngle,
-    segmentHalfW: wv ? wv.width / 2 + 3 : t.r * HAND_R_FRAC, // blade half-width (+3 forgiveness), or the fist
+    segmentHalfW: wv ? wv.width / 2 : t.r * HAND_R_FRAC, // blade half-width (the drawn blade IS the hitbox — no fat pad), or the fist radius
   };
 }
 

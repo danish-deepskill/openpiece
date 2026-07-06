@@ -7,6 +7,8 @@ import { Pool } from '../core/Pool';
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: number; r: number }
 interface Corpse { x: number; y: number; r: number; color: number; life: number; max: number }
 interface DmgText { obj: Phaser.GameObjects.Text; vy: number; life: number }
+interface Spot { obj: Phaser.GameObjects.Text; life: number; max: number } // the "!" spotted marker
+interface Ring { x: number; y: number; radius: number; color: number; life: number; max: number } // expanding shockwave
 
 /** Pooled, presentation-only effects. Lives outside the ECS to keep the hot path allocation-free. */
 export class FxSystem {
@@ -15,7 +17,15 @@ export class FxSystem {
   private swings: SwingFx[] = [];
   private corpses: Corpse[] = [];
   private texts: DmgText[] = [];
+  private spots: Spot[] = [];
+  private rings: Ring[] = [];
+  private textRot = 0; // counter-rotation to keep damage numbers upright under the shift-lock camera
   private readonly textPool: Pool<Phaser.GameObjects.Text>;
+
+  /** Keep damage numbers screen-upright while the world camera spins (shift lock): WorldScene passes −camRot. */
+  setTextRotation(rot: number): void {
+    this.textRot = rot;
+  }
 
   constructor(private readonly scene: Phaser.Scene) {
     this.gfx = scene.add.graphics().setDepth(Depth.Fx);
@@ -25,6 +35,8 @@ export class FxSystem {
     events.on('fx:swing', (o) => this.swing(o));
     events.on('fx:corpse', ({ x, y, r, color }) => this.corpse(x, y, r, color));
     events.on('fx:shake', ({ amount }) => this.shake(amount));
+    events.on('fx:spotted', ({ x, y, dur }) => this.spotted(x, y, dur));
+    events.on('fx:ring', ({ x, y, radius, color, life }) => this.rings.push({ x, y, radius, color, life, max: life }));
     this.textPool = new Pool<Phaser.GameObjects.Text>(
       () =>
         scene.add
@@ -46,12 +58,23 @@ export class FxSystem {
 
   dmgText(x: number, y: number, val: number, color: string): void {
     const o = this.textPool.acquire();
-    o.setText(String(Math.round(val))).setColor(color).setPosition(x, y).setAlpha(1).setVisible(true);
+    // reset the shared-pool styling a "!" marker may have left on this recycled object (stroke + bigger font)
+    o.setText(String(Math.round(val))).setColor(color).setStroke('', 0).setFontSize(14).setPosition(x, y).setAlpha(1).setVisible(true);
     this.texts.push({ obj: o, vy: -34, life: 0.8 });
   }
 
   swing(o: SwingFx): void {
     this.swings.push(o);
+  }
+
+  /** The "!" spotted marker: a bold amber exclamation with a DARK OUTLINE (so it reads on ANY terrain — a plain
+   *  amber "!" washed out on desert/sand) that pops in over the unit's head for `dur` seconds while it registers
+   *  you (the alert double-take), then fades. Shares the damage-number text pool; the stroke is cleared in
+   *  dmgText so a recycled object can't carry a stray outline. */
+  spotted(x: number, y: number, dur: number): void {
+    const o = this.textPool.acquire();
+    o.setText('!').setColor('#ffd24a').setStroke('#241a08', 4).setFontSize(18).setPosition(x, y).setAlpha(1).setVisible(true);
+    this.spots.push({ obj: o, life: dur, max: dur });
   }
 
   corpse(x: number, y: number, r: number, color: number): void {
@@ -83,18 +106,40 @@ export class FxSystem {
       d.obj.y += d.vy * dt;
       d.vy *= Math.pow(0.92, dt * 60);
       d.life -= dt;
-      d.obj.setAlpha(clamp(d.life / 0.8, 0, 1));
+      d.obj.setAlpha(clamp(d.life / 0.8, 0, 1)).setRotation(this.textRot); // stay upright under the shift-lock camera
       if (d.life <= 0) {
         this.textPool.release(d.obj);
         this.texts.splice(i, 1);
       }
     }
 
+    for (let i = this.spots.length - 1; i >= 0; i--) {
+      const s = this.spots[i];
+      s.life -= dt;
+      const k = s.life / s.max; // 1 → 0
+      const pop = Math.min(1, (s.max - s.life) / 0.08); // quick pop-in over the first 80ms
+      s.obj.setScale(pop * (0.9 + 0.3 * k)).setAlpha(clamp(k * 1.4, 0, 1)).setRotation(this.textRot); // upright under shift-lock
+      if (s.life <= 0) {
+        this.textPool.release(s.obj);
+        this.spots.splice(i, 1);
+      }
+    }
+
+    for (const r of this.rings) r.life -= dt;
+    this.rings = this.rings.filter((r) => r.life > 0);
+
     const g = this.gfx;
     g.clear();
     for (const c of this.corpses) {
       g.fillStyle(c.color, clamp(c.life / c.max, 0, 1));
       g.fillCircle(c.x, c.y, c.r);
+    }
+    // SHOCKWAVE rings: expand from ~0 to `radius` while fading — a slam impact (Gomu Ono's stomp).
+    for (const rg of this.rings) {
+      const prog = 1 - rg.life / rg.max; // 0 → 1 over its life
+      const cur = rg.radius * (0.2 + 0.8 * prog); // grows outward
+      g.lineStyle(4 * (1 - prog) + 1, rg.color, clamp(rg.life / rg.max, 0, 1)); // thick+opaque early, thin+faint late
+      g.strokeCircle(rg.x, rg.y, cur);
     }
     for (const s of this.swings) this.drawSwing(s);
     for (const p of this.particles) {
