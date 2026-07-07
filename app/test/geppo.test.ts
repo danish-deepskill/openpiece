@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { GEPPO_FALL_DUR, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN, Tile } from '../src/config/constants';
+import { GEPPO_FALL_DUR, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN } from '../src/config/constants';
+import { TERRAIN } from '../src/defs/terrains';
 import { Rng } from '../src/core/Rng';
 import { Manuals } from '../src/defs/manuals';
 import { Spawner } from '../src/ecs/Spawner';
@@ -20,7 +21,7 @@ import type { StrikeResolver } from '../src/systems/StrikeResolver';
 const abilities = (world: World) => new AbilitySystem(world, new EffectSystem(world), {} as StrikeResolver, new Rng(1));
 function grassGrid() {
   const g = new TileGrid(50, 50);
-  g.tiles = Array.from({ length: 50 }, () => Array.from({ length: 50 }, () => Tile.Grass));
+  g.tiles = Array.from({ length: 50 }, () => Array.from({ length: 50 }, () => TERRAIN.grass));
   return g;
 }
 const move = (world: World) => new MovementSystem(world, new Collision(grassGrid()));

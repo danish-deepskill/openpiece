@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, Tile } from '../config/constants';
+import { GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL } from '../config/constants';
 import { draws, type DrawFn } from '../draw/actorDraws';
 import { drawShip } from '../draw/shipDraws';
 import type { Entity } from '../ecs/components';
@@ -92,7 +92,7 @@ export class RenderSystem {
         // SUBMERGED (dived under) reads faint; SURFACE swim (deep OR shallow) reads the SAME as a shallow wade —
         // you're at the top of the water either way, so deep swimming shouldn't look more see-through than wading.
         if (e.mover.submerged) alpha = SUBMERGED_ALPHA;
-        else if (e.mover.mode === 'swim' || (e.mover.mode === 'foot' && this.grid.tileAtPx(t.x, t.y) === Tile.ShallowWater)) alpha = WADE_ALPHA;
+        else if (e.mover.mode === 'swim' || (e.mover.mode === 'foot' && this.grid.terrainAtPx(t.x, t.y).water === 'shallow')) alpha = WADE_ALPHA;
       }
       // brief invulnerability blink, composed on top of the wade fade
       if (e.health && e.health.iframes > 0 && Math.floor(now / 50) % 2 === 0) alpha *= 0.5;

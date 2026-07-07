@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BREATH_DRAIN, DROWN_DAMAGE, DROWN_INTERVAL, MAX_BREATH, SWIM_STAM_DRAIN, Tile } from '../src/config/constants';
+import { BREATH_DRAIN, DROWN_DAMAGE, DROWN_INTERVAL, MAX_BREATH, SWIM_STAM_DRAIN } from '../src/config/constants';
+import { TERRAIN } from '../src/defs/terrains';
 import { StatBlock } from '../src/combat/StatBlock';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
@@ -17,7 +18,7 @@ import { TileGrid } from '../src/world/TileGrid';
 /** An all-DEEP-water grid so a 'swim' actor is genuinely in the deep (drain keys on actual depth, not just mode). */
 function deepGrid(): TileGrid {
   const g = new TileGrid(10, 10);
-  g.tiles = Array.from({ length: 10 }, () => Array.from({ length: 10 }, () => Tile.Water));
+  g.tiles = Array.from({ length: 10 }, () => Array.from({ length: 10 }, () => TERRAIN.water));
   return g;
 }
 function swimmer(world: World, mode: 'foot' | 'swim', submerged = false): Entity {

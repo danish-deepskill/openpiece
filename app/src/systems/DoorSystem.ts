@@ -1,4 +1,5 @@
-import { TILE, Tile } from '../config/constants';
+import { TILE } from '../config/constants';
+import { TERRAIN } from '../defs/terrains';
 import type { World } from '../ecs/World';
 import type { TileGrid } from '../world/TileGrid';
 
@@ -41,7 +42,7 @@ export class DoorSystem {
         }
       }
       this.open[i] = open;
-      this.grid.tiles[d.ty][d.tx] = open ? Tile.Floor : Tile.Door;
+      this.grid.tiles[d.ty][d.tx] = open ? TERRAIN.floor : TERRAIN.door;
     }
   }
 }

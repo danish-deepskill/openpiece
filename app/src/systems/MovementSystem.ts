@@ -1,4 +1,4 @@
-import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN, LEDGE_MOVE_MULT, STUN_SLOW, TILE, Tile } from '../config/constants';
+import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN, LEDGE_MOVE_MULT, STUN_SLOW, TILE } from '../config/constants';
 import { spendStamina } from '../combat/stamina';
 import { events } from '../core/EventBus';
 import { deckCanOccupy, deckCellAtLocal, deckOf, deckToWorld, deckTryMove, gangplankOutward, hullBlocksWorldPoint, worldToDeck } from '../defs/decks';
@@ -93,11 +93,11 @@ export class MovementSystem {
           vx *= STUN_SLOW; // staggered → sluggish (the knockback impulse above is unaffected)
           vy *= STUN_SLOW;
         }
-        // TERRAIN SPEED — slower over deep water (swim) / shallows (wade), from the ACTUAL tile under you (not the
-        // mode; the mode is derived below and could lag a tick). Deep water swims, else the ground modifier. SKIP it
-        // while AIRBORNE (above the ground) AND while ON DECK: an on-deck actor stands on the wooden deck, not the
-        // OCEAN under the hull — reading the sea tile there would slow deck-walking to a swim pace (the deck-slow bug).
-        const overDeep = !airborne && !e.onDeck && this.collision.tileAtPx(t.x, t.y) === Tile.Water;
+        // TERRAIN SPEED — slower over deep water (swim) / shallows (wade), from the ACTUAL terrain under you (not
+        // the mode; the mode is derived below and could lag a tick). Deep water swims, else the ground modifier.
+        // SKIP it while AIRBORNE (above the ground) AND while ON DECK: an on-deck actor stands on the wooden deck,
+        // not the OCEAN under the hull — reading the sea there would slow deck-walking to a swim pace.
+        const overDeep = !airborne && !e.onDeck && this.collision.terrainAtPx(t.x, t.y).water === 'deep';
         const terrain = airborne || e.onDeck ? 1 : overDeep ? this.collision.swimSpeed(t.x, t.y) : this.collision.terrainSpeed(t.x, t.y);
         vx *= terrain;
         vy *= terrain;
@@ -134,7 +134,7 @@ export class MovementSystem {
       // follow the ship — the terrain under it (open sea) must NOT relabel it a swimmer (it'd drain breath + show
       // the swim pose while safely aboard). Boarding sets things up; here we just leave an on-deck actor's mode alone.
       if (!airborne && !e.onDeck && (m.mode === 'foot' || m.mode === 'swim')) {
-        m.mode = this.collision.tileAtPx(t.x, t.y) === Tile.Water ? 'swim' : 'foot';
+        m.mode = this.collision.terrainAtPx(t.x, t.y).water === 'deep' ? 'swim' : 'foot';
       }
     }
   }

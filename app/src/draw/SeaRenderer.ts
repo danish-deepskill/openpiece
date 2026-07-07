@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { Depth, TILE, Tile } from '../config/constants';
+import { Depth, TILE } from '../config/constants';
+import { terrainByOrdinal } from '../defs/terrains';
 import type { TileGrid } from '../world/TileGrid';
 
 const CREST = 0xffffff; // wave-crest colour
@@ -41,7 +42,7 @@ export class SeaRenderer {
       const row = this.grid.tiles[ty];
       for (let tx = x0; tx < x1; tx++) {
         const t = row[tx];
-        if (t !== Tile.Water && t !== Tile.ShallowWater) continue; // both deep + shallow water ripple
+        if (terrainByOrdinal(t).water === undefined) continue; // both deep + shallow water ripple
         const ph = Math.sin(tx * PHASE_X + ty * PHASE_Y + this.t * SPEED) * 0.5 + 0.5;
         g.fillRect(tx * TILE, ty * TILE + ph * BOB, TILE + 1, 3);
       }

@@ -1,88 +1,82 @@
-import { MAPH, MAPW, SAND_MOVE_MULT, SHALLOW_MOVE_MULT, SWIM_MOVE_MULT, TILE, Tile } from '../config/constants';
+import { MAPH, MAPW, SHALLOW_MOVE_MULT, SWIM_MOVE_MULT, TILE } from '../config/constants';
+import { TERRAIN, terrainByOrdinal, type TerrainDef } from '../defs/terrains';
 import type { MoveMode } from '../ecs/components';
 
-/** Tiles that stop a foot actor (buildings + terrain barriers). Water is handled separately (per mode);
- *  a closed Door blocks collision but is overridden passable for AI planning (see `pathable`). A new
- *  blocking terrain kind joins this set — walkable/pathable then pick it up with no other change. */
-const FOOT_BLOCKED: ReadonlySet<Tile> = new Set([Tile.Wall, Tile.Door, Tile.StoneWall, Tile.Tree]);
-
-/** Tiles that stop even an AIRBORNE actor (a jumper) — the TALL obstacles: BUILDING structure (Wall + Door)
- *  has a roof, so you can't hop onto/through a house. A jump CLEARS everything else that blocks on foot — deep
- *  Water (jump the channel), a freestanding StoneWall, a Tree (vault the low grove). Data, not a branch: mark a
- *  new too-tall-to-jump terrain here and `airWalkable` picks it up. (docs/design/MOVEMENT_AIR.md) */
-const BLOCKS_AIR: ReadonlySet<Tile> = new Set([Tile.Wall, Tile.Door]);
-
-/** LOW WALLS — foot-blocked but NOT air-blocked: you jump OVER them, and you can also LAND ON TOP and perch
- *  (walkable-but-slow while `onLedge`). DERIVED as FOOT_BLOCKED − BLOCKS_AIR (currently StoneWall + Tree) so a
- *  future blocking tile is automatically low or tall by its set membership — never missable by hand-listing. The
- *  ship rail is the deck-frame peer of this set. (docs/design/MOVEMENT_AIR.md — the low-wall ledge model.) */
-const LOW_WALL: ReadonlySet<Tile> = new Set([...FOOT_BLOCKED].filter((t) => !BLOCKS_AIR.has(t)));
-
-/** The static world as a tile array. Buildings are baked into the tiles as Wall/Floor (no separate AABBs),
- * so collision and pathfinding both read one source of truth. */
+/**
+ * The static world as a grid of terrain ORDINALS (see defs/terrains.ts — behavior lives on TerrainDef rows, not
+ * in switch statements here). Buildings are still baked into the cells as wall/floor/door terrain (no separate
+ * structure layer YET — that's the next slice); collision, pathfinding, and rendering all read one source of
+ * truth. Storage is plain small ints, Uint8Array/chunk-ready for the streamed-world future.
+ */
 export class TileGrid {
-  tiles: Tile[][] = [];
+  tiles: number[][] = [];
 
   constructor(
     readonly w: number = MAPW,
     readonly h: number = MAPH,
   ) {}
 
-  tileAt(tx: number, ty: number): Tile {
-    if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return Tile.Water;
+  /** The stored ordinal at a cell; out-of-bounds reads as open sea (the world is an island in endless water). */
+  tileAt(tx: number, ty: number): number {
+    if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return TERRAIN.water;
     return this.tiles[ty][tx];
   }
 
-  tileAtPx(px: number, py: number): Tile {
+  tileAtPx(px: number, py: number): number {
     return this.tileAt(Math.floor(px / TILE), Math.floor(py / TILE));
   }
 
-  /** Physical movement rule (collision). BOAT travels water/docks/shallows. FOOT and SWIM share ONE rule: deep
-   *  Water, shallows, and land are ALL passable — you can wade into the sea (→ become a swimmer) and climb back
-   *  out freely; only solid terrain (walls/trees) blocks. Deliberately NOT "deep water is a wall on foot": the
-   *  MODE (foot vs swim) is a LABEL derived from where you ARE (MovementSystem), not a collision cage — caging
-   *  foot out of water then flipping the mode early to sneak past the cage was the root of the swim-boundary bugs
-   *  (early opacity/speed, seam stalls, corner sticks). Now collision is mode-agnostic; the mode just follows your
-   *  position. (AI stays out of the sea via `pathable`, which still walls Water for foot — planning, not collision.) */
-  static walkable(t: Tile, mode: MoveMode, onLedge = false): boolean {
-    if (mode === 'boat') return t === Tile.Water || t === Tile.Dock || t === Tile.ShallowWater;
-    if (onLedge && LOW_WALL.has(t)) return true; // PERCHED atop a low wall (jumped onto it) → it's walkable (slow)
-    return !FOOT_BLOCKED.has(t); // foot & swim: water + land passable, walls/trees block
+  /** The terrain DEF at a cell — the decoded row systems ask semantic questions of (`.water === 'deep'`). */
+  terrainAt(tx: number, ty: number): TerrainDef {
+    return terrainByOrdinal(this.tileAt(tx, ty));
   }
 
-  /** Is this tile a LOW WALL — jumpable-over AND standable-on-top (a stone wall / a tree)? Used to set the perch
-   *  state when a jump lands atop one, and to keep it walkable while perched. */
-  static isLowWall(t: Tile): boolean {
-    return LOW_WALL.has(t);
+  terrainAtPx(px: number, py: number): TerrainDef {
+    return terrainByOrdinal(this.tileAtPx(px, py));
   }
 
-  /** Physical movement rule for an AIRBORNE actor (a jumper — docs/design/MOVEMENT_AIR.md): clears everything a
-   *  foot actor can't (deep water, stone walls, trees) EXCEPT the too-tall BLOCKS_AIR structures (building
-   *  Wall/Door). So you can jump a channel or vault a low barrier, but not hop onto/through a house. */
-  static airWalkable(t: Tile): boolean {
-    return !BLOCKS_AIR.has(t);
+  /** Physical movement rule (collision). BOAT travels boatPassable cells. FOOT and SWIM share ONE rule: only
+   *  blocksFoot terrain stops them — deep water is deliberately PASSABLE on foot (the mover's mode relabels to
+   *  swim from position, movement-frames truthful-mode rule; caging foot out of water was the old seam-bug
+   *  family). `onLedge` = perched atop a LOW wall you jumped onto → that low wall is walkable (balance across it). */
+  static walkable(ordinal: number, mode: MoveMode, onLedge = false): boolean {
+    const d = terrainByOrdinal(ordinal);
+    if (mode === 'boat') return d.boatPassable;
+    if (onLedge && d.blocksFoot && !d.blocksAir) return true; // perched on the low wall — standable
+    return !d.blocksFoot;
   }
 
-  /** Terrain movement modifier (1 = normal). The hook for wadable/rough ground — data, not branching in systems. */
-  static speedMul(t: Tile): number {
-    if (t === Tile.ShallowWater) return SHALLOW_MOVE_MULT;
-    if (t === Tile.Sand) return SAND_MOVE_MULT; // sand/desert = heavier going (0.75)
-    return 1;
+  /** Physical rule for an AIRBORNE actor (a jumper — docs/design/MOVEMENT_AIR.md): clears everything a foot
+   *  actor can't EXCEPT tall (blocksAir) structure — jump a channel or a stone wall, not through a house. */
+  static airWalkable(ordinal: number): boolean {
+    return !terrainByOrdinal(ordinal).blocksAir;
   }
 
-  /** Move modifier while SWIMMING deep water — slower than a wade (you're fully in the sea, not walking). */
-  static swimSpeedMul(t: Tile): number {
-    return t === Tile.Water ? SWIM_MOVE_MULT : SHALLOW_MOVE_MULT; // deep = slow swim; shallows = the wade pace
+  /** A LOW WALL — foot-blocked but not air-blocked: jump over it, or land on top and perch (mover.onLedge).
+   *  Derived from the def's two blocking fields, so a new blocking terrain is automatically low or tall. */
+  static isLowWall(ordinal: number): boolean {
+    const d = terrainByOrdinal(ordinal);
+    return d.blocksFoot && !d.blocksAir;
   }
 
-  /** Looser rule for AI planning + line-of-sight: doorways count as passable, so enemies route and track
-   *  through them (the DoorSystem opens the door as they arrive) instead of treating a house as sealed. */
-  static pathable(t: Tile, mode: MoveMode): boolean {
+  /** Terrain movement multiplier (1 = normal) — the def's own knob (shallows wade, sand trudges). */
+  static speedMul(ordinal: number): number {
+    return terrainByOrdinal(ordinal).speedMul;
+  }
+
+  /** Move multiplier while SWIMMING — deep water swims (SWIM_MOVE_MULT); anything else at the wade pace. */
+  static swimSpeedMul(ordinal: number): number {
+    return terrainByOrdinal(ordinal).water === 'deep' ? SWIM_MOVE_MULT : SHALLOW_MOVE_MULT;
+  }
+
+  /** Looser rule for AI PLANNING + line-of-sight: doors count as passable (DoorSystem opens them on arrival) and
+   *  deep water counts as blocked for foot (a land brain has no swim logic) — both def flags, not tile branches. */
+  static pathable(ordinal: number, mode: MoveMode): boolean {
+    const d = terrainByOrdinal(ordinal);
     if (mode === 'foot') {
-      if (t === Tile.Door) return true; // AI routes through doors (DoorSystem opens them on arrival)
-      if (t === Tile.Water) return false; // …but NOT into the sea — collision now lets foot enter water (→ swim),
-      //                                     yet AI planning must keep land units ashore (they have no swim logic)
+      if (d.door) return true;
+      if (d.aiFootAvoid) return false;
     }
-    return TileGrid.walkable(t, mode);
+    return TileGrid.walkable(ordinal, mode);
   }
 }

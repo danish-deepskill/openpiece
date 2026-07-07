@@ -9,18 +9,8 @@ export const WORLD_H = MAPH * TILE;
 export const GAME_W = 1280;
 export const GAME_H = 720;
 
-export enum Tile {
-  Water = 0,
-  Grass = 1,
-  Sand = 2,
-  Dock = 3,
-  Wall = 4, // solid building wall — blocks foot & boat
-  Floor = 5, // building interior — walkable on foot
-  Door = 6, // doorway in a building wall — blocks (closed) until the player approaches (see DoorSystem)
-  ShallowWater = 7, // coastal shallows: wadable on foot (but slow — SHALLOW_MOVE_MULT); boats can cross it
-  StoneWall = 8, // freestanding stone barrier — blocks foot & boat, NO door mechanic (unlike a building Wall)
-  Tree = 9, // tree/grove — blocks foot movement (cover); not choppable yet (future: a Woodcutting entity)
-}
+// NOTE: terrain kinds are CONTENT now — defs in `defs/terrains.ts` (the TerrainDef registry). The grid stores
+// each def's ordinal; stamp cells with the TERRAIN constants exported there. The old `Tile` enum is gone.
 
 /** Island layout, in tile coordinates. */
 export const HOME = { cx: 17, cy: 27, r: 13 };

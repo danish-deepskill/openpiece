@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ENEMY, HOME, TILE, Tile } from '../src/config/constants';
+import { ENEMY, HOME, TILE } from '../src/config/constants';
+import { TERRAIN } from '../src/defs/terrains';
 import { Rng } from '../src/core/Rng';
 import { itemProblem } from '../src/defs/items';
 import { generateLevel } from '../src/world/WorldGen';
@@ -58,7 +59,7 @@ describe('WorldGen — walls & groves never seal a required path', () => {
     for (const seed of [0, 7, 23, 39]) {
       const g = generateLevel(new Rng(seed)).grid;
       const trees: Array<[number, number]> = [];
-      for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) if (g.tiles[y][x] === Tile.Tree) trees.push([x, y]);
+      for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) if (g.tiles[y][x] === TERRAIN.tree) trees.push([x, y]);
       for (let i = 0; i < trees.length; i++) {
         for (let j = i + 1; j < trees.length; j++) {
           const d2 = (trees[i][0] - trees[j][0]) ** 2 + (trees[i][1] - trees[j][1]) ** 2;
@@ -80,8 +81,8 @@ describe('WorldGen — walls & groves never seal a required path', () => {
     let walls = 0;
     let trees = 0;
     for (const row of g.tiles) for (const t of row) {
-      if (t === Tile.StoneWall) walls++;
-      else if (t === Tile.Tree) trees++;
+      if (t === TERRAIN.stoneWall) walls++;
+      else if (t === TERRAIN.tree) trees++;
     }
     expect(walls).toBeGreaterThan(10); // a real perimeter, not a stray tile
     expect(trees).toBeGreaterThan(0);

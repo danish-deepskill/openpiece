@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SWIM_MOVE_MULT, Tile } from '../src/config/constants';
+import { SWIM_MOVE_MULT } from '../src/config/constants';
+import { TERRAIN } from '../src/defs/terrains';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
 import { MovementSystem } from '../src/systems/MovementSystem';
@@ -16,14 +17,14 @@ const TILE = 32;
 /** A grid: land (Grass) on the west half, deep Water on the east half; the shoreline is at column `shoreCol`. */
 function shoreGrid(shoreCol = 10) {
   const g = new TileGrid(20, 20);
-  g.tiles = Array.from({ length: 20 }, () => Array.from({ length: 20 }, (_, tx) => (tx >= shoreCol ? Tile.Water : Tile.Grass)));
+  g.tiles = Array.from({ length: 20 }, () => Array.from({ length: 20 }, (_, tx) => (tx >= shoreCol ? TERRAIN.water : TERRAIN.grass)));
   return g;
 }
 /** The REAL coastline: Grass | a ShallowWater ring (one column) | deep Water — so we test the shallow→deep seam. */
 function coastGrid(): TileGrid {
   const g = new TileGrid(20, 20);
   g.tiles = Array.from({ length: 20 }, () =>
-    Array.from({ length: 20 }, (_, tx) => (tx < 10 ? Tile.Grass : tx === 10 ? Tile.ShallowWater : Tile.Water)),
+    Array.from({ length: 20 }, (_, tx) => (tx < 10 ? TERRAIN.grass : tx === 10 ? TERRAIN.shallowWater : TERRAIN.water)),
   );
   return g;
 }
@@ -38,7 +39,7 @@ describe('swim mode transitions (MovementSystem)', () => {
   it('an ON-DECK actor over deep water does NOT become a swimmer — the deck keeps its mode', () => {
     const world = new World();
     const g = new TileGrid(20, 20);
-    g.tiles = Array.from({ length: 20 }, () => Array.from({ length: 20 }, () => Tile.Water)); // all sea
+    g.tiles = Array.from({ length: 20 }, () => Array.from({ length: 20 }, () => TERRAIN.water)); // all sea
     const e = swimmer(world, 5 * TILE, 5 * TILE); // sitting on open water
     e.onDeck = { shipId: 999, lx: 0, ly: 0 }; // aboard a sloop (parented to the deck by ShipSystem)
     new MovementSystem(world, new Collision(g)).update(0.2);
@@ -98,7 +99,7 @@ describe('swim mode transitions (MovementSystem)', () => {
     const world = new World();
     const g = new TileGrid(20, 20);
     g.tiles = Array.from({ length: 20 }, (_, ty) =>
-      Array.from({ length: 20 }, (_, tx) => (tx >= 11 || ty >= 11 ? Tile.Water : tx === 10 || ty === 10 ? Tile.ShallowWater : Tile.Grass)),
+      Array.from({ length: 20 }, (_, tx) => (tx >= 11 || ty >= 11 ? TERRAIN.water : tx === 10 || ty === 10 ? TERRAIN.shallowWater : TERRAIN.grass)),
     );
     const e = swimmer(world, 13 * TILE, 13 * TILE); // deep, out past the corner
     e.mover!.mode = 'swim';

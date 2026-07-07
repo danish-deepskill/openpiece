@@ -1,4 +1,5 @@
-import { ENEMY, HOME, TILE, Tile } from '../config/constants';
+import { ENEMY, HOME, TILE } from '../config/constants';
+import { TERRAIN } from '../defs/terrains';
 import type { Rng } from '../core/Rng';
 import type { ItemRef } from '../defs/items';
 import { TileGrid } from './TileGrid';
@@ -67,7 +68,7 @@ function stampWallRing(grid: TileGrid, cx: number, cy: number, cfg: typeof WALL_
   const gapHalf = cfg.gaps > 0 ? cfg.gapWidth / (2 * cfg.radius) : 0; // gap arc half-width (radians)
   for (let ty = 0; ty < grid.h; ty++) {
     for (let tx = 0; tx < grid.w; tx++) {
-      if (grid.tiles[ty][tx] !== Tile.Grass) continue;
+      if (grid.tiles[ty][tx] !== TERRAIN.grass) continue;
       const d = Math.hypot(tx - cx, ty - cy);
       if (Math.abs(d - cfg.radius) >= cfg.thickness) continue; // outside the wall band
       if (gapHalf > 0) {
@@ -80,7 +81,7 @@ function stampWallRing(grid: TileGrid, cx: number, cy: number, cfg: typeof WALL_
         }
         if (inGap) continue;
       }
-      grid.tiles[ty][tx] = Tile.StoneWall;
+      grid.tiles[ty][tx] = TERRAIN.stoneWall;
     }
   }
 }
@@ -98,7 +99,7 @@ function stampWallSpokes(grid: TileGrid, cx: number, cy: number, ring: typeof WA
   const gapEnd = gapStart + cfg.gapWidth;
   for (let ty = 0; ty < grid.h; ty++) {
     for (let tx = 0; tx < grid.w; tx++) {
-      if (grid.tiles[ty][tx] !== Tile.Grass) continue;
+      if (grid.tiles[ty][tx] !== TERRAIN.grass) continue;
       const dx = tx - cx;
       const dy = ty - cy;
       const d = Math.hypot(dx, dy);
@@ -108,7 +109,7 @@ function stampWallSpokes(grid: TileGrid, cx: number, cy: number, ring: typeof WA
         const da = Math.abs(Math.atan2(Math.sin(a - sa), Math.cos(a - sa))); // wrapped angular offset from the spoke line
         if (da * d >= cfg.halfW) continue; // perpendicular distance to the spoke line = da·d; outside the band
         if (d >= gapStart && d <= gapEnd) break; // the crossing doorway — leave it open
-        grid.tiles[ty][tx] = Tile.StoneWall;
+        grid.tiles[ty][tx] = TERRAIN.stoneWall;
         break;
       }
     }
@@ -129,7 +130,7 @@ function scatterGroves(
     protect.some((p) => (p.tx - tx) ** 2 + (p.ty - ty) ** 2 < clear2) ||
     (ringR !== undefined && Math.abs(Math.hypot(tx - cx, ty - cy) - ringR) < cfg.clear);
   const plantable = (tx: number, ty: number): boolean =>
-    inBounds(grid, tx, ty) && grid.tiles[ty][tx] === Tile.Grass && !near(tx, ty);
+    inBounds(grid, tx, ty) && grid.tiles[ty][tx] === TERRAIN.grass && !near(tx, ty);
   const spaced = (tx: number, ty: number): boolean =>
     trunks.every((p) => (p.tx - tx) ** 2 + (p.ty - ty) ** 2 >= space2);
   for (let i = 0; i < count; i++) {
@@ -151,7 +152,7 @@ function scatterGroves(
       const tx = Math.round(ctx + Math.cos(a) * rr);
       const ty = Math.round(cty + Math.sin(a) * rr);
       if (!plantable(tx, ty) || !spaced(tx, ty)) continue;
-      grid.tiles[ty][tx] = Tile.Tree;
+      grid.tiles[ty][tx] = TERRAIN.tree;
       trunks.push({ tx, ty });
       planted++;
     }
@@ -164,14 +165,14 @@ export function generateLevel(rng: Rng): LevelLayout {
   const grid = new TileGrid();
 
   for (let y = 0; y < grid.h; y++) {
-    const row: Tile[] = [];
+    const row: number[] = [];
     for (let x = 0; x < grid.w; x++) {
-      let t = Tile.Water;
+      let t: number = TERRAIN.water;
       const dh = Math.hypot(x - HOME.cx, (y - HOME.cy) * 1.05);
       const de = Math.hypot(x - ENEMY.cx, (y - ENEMY.cy) * 1.05);
-      if (dh < HOME.r + 2 || de < ENEMY.r + 2) t = Tile.ShallowWater; // coastal shallows: a wadable ring off the beach
-      if (dh < HOME.r) t = dh < HOME.r - 2 ? Tile.Grass : Tile.Sand; // …overridden by the island itself (sand/grass)
-      if (de < ENEMY.r) t = de < ENEMY.r - 2 ? Tile.Grass : Tile.Sand;
+      if (dh < HOME.r + 2 || de < ENEMY.r + 2) t = TERRAIN.shallowWater; // coastal shallows: a wadable ring off the beach
+      if (dh < HOME.r) t = dh < HOME.r - 2 ? TERRAIN.grass : TERRAIN.sand; // …overridden by the island itself (sand/grass)
+      if (de < ENEMY.r) t = de < ENEMY.r - 2 ? TERRAIN.grass : TERRAIN.sand;
       row.push(t);
     }
     grid.tiles.push(row);
@@ -180,15 +181,15 @@ export function generateLevel(rng: Rng): LevelLayout {
   // docks: home reaches east, enemy reaches west (tiles recorded so groves keep clear of the landings)
   const dockTiles: Pt[] = [];
   for (let x = HOME.cx + 10; x <= HOME.cx + 16 && x < grid.w; x++) {
-    grid.tiles[HOME.cy][x] = Tile.Dock;
+    grid.tiles[HOME.cy][x] = TERRAIN.dock;
     dockTiles.push({ tx: x, ty: HOME.cy });
-    if (grid.tiles[HOME.cy + 1]) grid.tiles[HOME.cy + 1][x] = Tile.Dock;
+    if (grid.tiles[HOME.cy + 1]) grid.tiles[HOME.cy + 1][x] = TERRAIN.dock;
   }
   for (let x = ENEMY.cx - 16; x <= ENEMY.cx - 10; x++) {
     if (x < 0) continue;
-    grid.tiles[ENEMY.cy][x] = Tile.Dock;
+    grid.tiles[ENEMY.cy][x] = TERRAIN.dock;
     dockTiles.push({ tx: x, ty: ENEMY.cy });
-    if (grid.tiles[ENEMY.cy + 1]) grid.tiles[ENEMY.cy + 1][x] = Tile.Dock;
+    if (grid.tiles[ENEMY.cy + 1]) grid.tiles[ENEMY.cy + 1][x] = TERRAIN.dock;
   }
 
   // home village buildings — stamped as hollow wall blocks (Wall perimeter, Floor interior, 1-tile door).
@@ -200,13 +201,13 @@ export function generateLevel(rng: Rng): LevelLayout {
       for (let x = tx; x < tx + tw; x++) {
         if (x < 0 || y < 0 || x >= grid.w || y >= grid.h) continue;
         const edge = x === tx || x === tx + tw - 1 || y === ty || y === ty + th - 1;
-        grid.tiles[y][x] = edge ? Tile.Wall : Tile.Floor;
+        grid.tiles[y][x] = edge ? TERRAIN.wall : TERRAIN.floor;
       }
     }
     const doorX = tx + Math.floor(tw / 2); // doorway in the bottom wall (openable — see DoorSystem)
     const doorY = ty + th - 1;
     if (grid.tiles[doorY]) {
-      grid.tiles[doorY][doorX] = Tile.Door;
+      grid.tiles[doorY][doorX] = TERRAIN.door;
       doors.push({ tx: doorX, ty: doorY });
     }
   };

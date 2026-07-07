@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
-import { Depth, MAPW, MAPH, TILE, Tile, WORLD_H, WORLD_W } from '../config/constants';
+import { Depth, MAPW, MAPH, TILE, WORLD_H, WORLD_W } from '../config/constants';
+import { Terrains, terrainByOrdinal } from '../defs/terrains';
+import { terrainBakes } from './terrainBakes';
 import type { TileGrid } from '../world/TileGrid';
 
 /** Canopy overlay knobs (visual only — the trunk tile is the blocker; the leaves overhang walkable tiles). */
@@ -14,83 +16,30 @@ function hash01(x: number, y: number, salt: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-function tileColor(t: Tile, x: number, y: number): number {
-  switch (t) {
-    case Tile.Water:
-      return 0x16456b;
-    case Tile.ShallowWater:
-      return 0x2e7ea3; // lighter teal — reads as a shallows depth band against the deep navy
-    case Tile.Sand:
-      return 0xd9bd82;
-    case Tile.Dock:
-      return 0xa9824e;
-    case Tile.Wall:
-      return 0x5a4a30;
-    case Tile.Floor:
-      return 0xb98a5a;
-    case Tile.Door:
-      return 0xb98a5a; // floor-colored threshold; wood frame posts drawn in the bake pass
-    case Tile.StoneWall:
-      return 0x8a8781; // weathered gray stone (top-lit + shadowed in the bake pass)
-    case Tile.Tree:
-      return (x + y) & 1 ? 0x4f8a45 : 0x4a8240; // grass under the canopy (trunk + leaves drawn in the bake pass)
-    default:
-      return (x + y) & 1 ? 0x4f8a45 : 0x4a8240; // grass checker
-  }
+/** A cell's base fill — the def's color, alternating with `checker` on (x+y) parity where present. */
+function baseColor(ordinal: number, x: number, y: number): number {
+  const d = terrainByOrdinal(ordinal);
+  return d.checker !== undefined && (x + y) % 2 === 0 ? d.checker : d.color;
 }
 
-/** Bakes the static world (tiles, incl. building Wall/Floor) once into a RenderTexture + a minimap texture. */
+/** Bakes the static world once into a RenderTexture + a minimap texture — entirely def-driven: colors and bake
+ *  keys come from TerrainDef rows (defs/terrains.ts); the bake painters are strategy rows in terrainBakes.ts. */
 export class TerrainRenderer {
   static bake(scene: Phaser.Scene, grid: TileGrid): void {
+    // fail LOUD before painting anything: every def's bake key must resolve to a painter (the terrain twin of
+    // the accessory proc-draw boot sweep) — a typo'd key must never ship as a silently-plain tile.
+    for (const d of Terrains.all()) {
+      if (d.bake && !terrainBakes[d.bake]) throw new Error(`TerrainRenderer: def '${d.id}' names unknown bake '${d.bake}'`);
+    }
+
     const g = scene.add.graphics();
     for (let y = 0; y < grid.h; y++) {
       for (let x = 0; x < grid.w; x++) {
         const t = grid.tiles[y][x];
-        g.fillStyle(tileColor(t, x, y), 1);
+        g.fillStyle(baseColor(t, x, y), 1);
         g.fillRect(x * TILE, y * TILE, TILE + 1, TILE + 1);
-        if (t === Tile.Wall) {
-          // a little dimension so walls read as solid building blocks
-          g.fillStyle(0x6e5a38, 1);
-          g.fillRect(x * TILE, y * TILE, TILE + 1, 4);
-          g.fillStyle(0x000000, 0.25);
-          g.fillRect(x * TILE, y * TILE + TILE - 4, TILE + 1, 4);
-        } else if (t === Tile.Door) {
-          // wood frame posts on the sides → reads as a doorway you pass through (N-S opening)
-          g.fillStyle(0x6b4a2a, 1);
-          g.fillRect(x * TILE, y * TILE, 5, TILE + 1);
-          g.fillRect(x * TILE + TILE - 4, y * TILE, 5, TILE + 1);
-        } else if (t === Tile.StoneWall) {
-          // stone dimension: bright top ridge + dark base + a mortar seam, so the ring reads as raised rock
-          g.fillStyle(0xa6a29a, 1);
-          g.fillRect(x * TILE, y * TILE, TILE + 1, 5);
-          g.fillStyle(0x000000, 0.28);
-          g.fillRect(x * TILE, y * TILE + TILE - 5, TILE + 1, 5);
-          g.fillStyle(0x6d6a63, 1);
-          g.fillRect(x * TILE, y * TILE + TILE / 2 - 1, TILE + 1, 2);
-        } else if (t === Tile.Tree) {
-          // GROUND half of a tree only: root shadow + trunk on the 1-tile blocker. The crown is a separate
-          // overlay ABOVE actors (see the canopy pass below) so units walk UNDER the leaves.
-          const cx = x * TILE + TILE / 2;
-          const cy = y * TILE + TILE / 2;
-          g.fillStyle(0x000000, 0.2);
-          g.fillEllipse(cx + 3, cy + 8, TILE * 0.9, TILE * 0.42); // ground shadow, offset with the light
-          g.fillStyle(0x4a3018, 1);
-          g.fillEllipse(cx, cy + 8, TILE * 0.5, 9); // root flare
-          g.fillRect(cx - 5, cy - 12, 11, 22); // trunk column
-          g.fillStyle(0x6b4a2c, 1);
-          g.fillRect(cx - 5, cy - 12, 4, 22); // lit bark edge (sun from the NW)
-        } else if (t === Tile.Sand) {
-          // coastline foam: a soft light rim on the water-facing edges of the beach (baked → free at runtime)
-          const wet = (nx: number, ny: number): boolean => {
-            const nt = grid.tileAt(nx, ny);
-            return nt === Tile.Water || nt === Tile.ShallowWater;
-          };
-          g.fillStyle(0xdfeee9, 0.5);
-          if (wet(x - 1, y)) g.fillRect(x * TILE, y * TILE, 3, TILE + 1);
-          if (wet(x + 1, y)) g.fillRect(x * TILE + TILE - 2, y * TILE, 3, TILE + 1);
-          if (wet(x, y - 1)) g.fillRect(x * TILE, y * TILE, TILE + 1, 3);
-          if (wet(x, y + 1)) g.fillRect(x * TILE, y * TILE + TILE - 2, TILE + 1, 3);
-        }
+        const bake = terrainByOrdinal(t).bake;
+        if (bake) terrainBakes[bake]!(g, grid, x, y); // key existence swept above — a miss can't reach here
       }
     }
 
@@ -99,13 +48,13 @@ export class TerrainRenderer {
     rt.draw(g);
     g.destroy();
 
-    // canopy overlay: every tree's leaf crown, baked ONCE like the terrain but at Depth.Canopy — above the
-    // actor y-sort band, so units on the walkable tiles around a trunk pass UNDER the leaves. The whole
+    // canopy overlay: every canopy-flagged cell's leaf crown, baked ONCE like the terrain but at Depth.Canopy —
+    // above the actor y-sort band, so units on the walkable tiles around a trunk pass UNDER the leaves. The whole
     // texture gets CANOPY_ALPHA (not per-fill alpha) so overlapping crowns can't stack darker.
     const cg = scene.add.graphics();
     for (let y = 0; y < grid.h; y++) {
       for (let x = 0; x < grid.w; x++) {
-        if (grid.tiles[y][x] !== Tile.Tree) continue;
+        if (!grid.terrainAt(x, y).canopy) continue;
         const cx = x * TILE + TILE / 2;
         const cy = y * TILE + TILE / 2;
         const R = TILE * CANOPY_RADIUS * (0.86 + 0.28 * hash01(x, y, 1)); // per-tree crown size variation
@@ -140,20 +89,14 @@ export class TerrainRenderer {
     cg.destroy();
   }
 
-  /** Generate a 1px-per-tile minimap texture (water transparent so the HUD panel shows through). */
+  /** Generate a 1px-per-tile minimap texture. A def WITHOUT `minimap` is transparent (the sea — deep + shallow —
+   *  so the HUD panel shows through); everything else fills its def's minimap shade. */
   static bakeMinimap(scene: Phaser.Scene, grid: TileGrid, key = 'minimap'): string {
     const g = scene.add.graphics();
     for (let y = 0; y < grid.h; y++) {
       for (let x = 0; x < grid.w; x++) {
-        const t = grid.tiles[y][x];
-        if (t === Tile.Water || t === Tile.ShallowWater) continue; // sea (deep + shallows) is transparent on the minimap
-        const c = // dock/sand reuse tileColor (one source); wall/floor/grass are minimap-specific shades
-          t === Tile.Dock || t === Tile.Sand ? tileColor(t, 0, 0)
-          : t === Tile.Wall ? 0x2e2618
-          : t === Tile.StoneWall ? 0x6b6b6b
-          : t === Tile.Tree ? 0x2f5a2f
-          : t === Tile.Floor || t === Tile.Door ? 0x8a6a3a
-          : 0x3f7340;
+        const c = terrainByOrdinal(grid.tiles[y][x]).minimap;
+        if (c === undefined) continue;
         g.fillStyle(c, 1);
         g.fillRect(x, y, 1, 1);
       }

@@ -1,4 +1,5 @@
-import { TILE, Tile, WORLD_H, WORLD_W } from '../config/constants';
+import { TILE, WORLD_H, WORLD_W } from '../config/constants';
+import type { TerrainDef } from '../defs/terrains';
 import type { MoveMode } from '../ecs/components';
 import { TileGrid } from './TileGrid';
 
@@ -13,7 +14,7 @@ export class Collision {
    *  respects world bounds (no leaving the map). */
   canOccupy(x: number, y: number, r: number, mode: MoveMode, airborne = false, onLedge = false): boolean {
     if (x < r || y < r || x > WORLD_W - r || y > WORLD_H - r) return false; // world bounds (center kept r off the edge)
-    const passable = (t: Tile): boolean => (airborne ? TileGrid.airWalkable(t) : TileGrid.walkable(t, mode, onLedge));
+    const passable = (t: number): boolean => (airborne ? TileGrid.airWalkable(t) : TileGrid.walkable(t, mode, onLedge));
     // only the tiles the circle's bounding box could touch — a small window, not the whole grid
     const tx0 = Math.floor((x - r) / TILE);
     const tx1 = Math.floor((x + r) / TILE);
@@ -87,15 +88,13 @@ export class Collision {
     return TileGrid.swimSpeedMul(this.grid.tileAtPx(x, y));
   }
 
-  /** The tile under a world point — for the swim/foot transition to read the terrain the actor is over. */
-  tileAtPx(x: number, y: number): Tile {
+  /** The stored ordinal under a world point — for callers that feed TileGrid's static rules (isLowWall etc.). */
+  tileAtPx(x: number, y: number): number {
     return this.grid.tileAtPx(x, y);
   }
 
-  /** The tile at a circle's LEADING EDGE along its velocity — used by the foot⇄swim transition to see the
-   *  terrain it's about to enter (a step ahead of the center), so the mode flips AS it crosses the shoreline. */
-  tileAheadPx(x: number, y: number, vx: number, vy: number, r: number): Tile {
-    const len = Math.hypot(vx, vy) || 1;
-    return this.grid.tileAtPx(x + (vx / len) * r, y + (vy / len) * r);
+  /** The terrain DEF under a world point — the decoded row for semantic reads (`.water === 'deep'`). */
+  terrainAtPx(x: number, y: number): TerrainDef {
+    return this.grid.terrainAtPx(x, y);
   }
 }

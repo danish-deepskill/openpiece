@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Tile } from '../src/config/constants';
+import { TERRAIN } from '../src/defs/terrains';
 import { Collision } from '../src/world/Collision';
 import { TileGrid } from '../src/world/TileGrid';
 
@@ -14,7 +14,7 @@ const T = 32; // TILE
 /** A grid that's all Grass except a single Wall tile at (wallTx, wallTy). */
 function wallAt(wallTx: number, wallTy: number): TileGrid {
   const g = new TileGrid(20, 20);
-  g.tiles = Array.from({ length: 20 }, (_, ty) => Array.from({ length: 20 }, (_, tx) => (tx === wallTx && ty === wallTy ? Tile.Wall : Tile.Grass)));
+  g.tiles = Array.from({ length: 20 }, (_, ty) => Array.from({ length: 20 }, (_, tx) => (tx === wallTx && ty === wallTy ? TERRAIN.wall : TERRAIN.grass)));
   return g;
 }
 

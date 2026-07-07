@@ -78,8 +78,8 @@ ballpiece/
         World.ts                # entity store + NARROWED queries (world.with<K>(...) proves components)
         components.ts           # Component data interfaces (plain, serializable) + Components union
         Spawner.ts              # sim-side factory: spawnHero/spawnUnit/spawnPickup/spawnShip from Defs
-      defs/                     # content rows: units, bodies, factions, aiProfiles, layers, ships,
-        ...                     #   accessories, visual, items (ItemRef spine; BASE_KIT lives in units.ts) — data only
+      defs/                     # content rows: units, bodies, factions, aiProfiles, layers, ships, terrains,
+        ...                     #   decks, accessories, visual, items (ItemRef spine; BASE_KIT in units.ts) — data only
       combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier,
         ...                     #   swing (motion registry + shared geom), hitVolume (timed strike volumes),
         ...                     #   phases (windup/active/recover clock), guard (block/parry/feint + posture),
@@ -110,7 +110,7 @@ ballpiece/
         RenderSystem.ts         # (presentation) OWNS the Graphics side-table; render components are data
         FxSystem.ts / NameplateSystem.ts / AccessorySystem.ts / WeaponSpriteSystem.ts / InspectSystem.ts / DebugOverlay.ts   # (presentation)
       draw/                     # (presentation) procedural draw fns + DrawFn type + world renderers
-        actorDraws.ts / accessoryDraws.ts / shipDraws.ts / TerrainRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
+        actorDraws.ts / accessoryDraws.ts / shipDraws.ts / terrainBakes.ts / TerrainRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
       scripts/                  # dev tools run via vite-node (art:template — the artist mannequin SVG)
       scenes/
         BootScene.ts            # asset manifest (import.meta.glob) -> launch World + Hud

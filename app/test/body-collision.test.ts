@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Tile } from '../src/config/constants';
+import { TERRAIN } from '../src/defs/terrains';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
 import { BodyCollisionSystem } from '../src/systems/BodyCollisionSystem';
@@ -12,7 +12,7 @@ function openGrid(): TileGrid {
   const g = new TileGrid();
   for (let y = 0; y < g.h; y++) {
     g.tiles[y] = [];
-    for (let x = 0; x < g.w; x++) g.tiles[y][x] = Tile.Grass;
+    for (let x = 0; x < g.w; x++) g.tiles[y][x] = TERRAIN.grass;
   }
   return g;
 }

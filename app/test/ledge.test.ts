@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { LEDGE_MOVE_MULT, Tile } from '../src/config/constants';
+import { LEDGE_MOVE_MULT } from '../src/config/constants';
+import { TERRAIN } from '../src/defs/terrains';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
 import { MovementSystem } from '../src/systems/MovementSystem';
@@ -17,8 +18,8 @@ const T = 32;
 /** Grass everywhere, with a single StoneWall column at tile x=`wallCol` (a low wall to land on / walk into). */
 function wallGrid(wallCol = 5): TileGrid {
   const g = new TileGrid(12, 12);
-  g.tiles = Array.from({ length: 12 }, () => Array.from({ length: 12 }, () => Tile.Grass));
-  for (let y = 0; y < 12; y++) g.tiles[y][wallCol] = Tile.StoneWall;
+  g.tiles = Array.from({ length: 12 }, () => Array.from({ length: 12 }, () => TERRAIN.grass));
+  for (let y = 0; y < 12; y++) g.tiles[y][wallCol] = TERRAIN.stoneWall;
   return g;
 }
 function actor(world: World, x: number, y: number): Entity {
@@ -30,14 +31,14 @@ function actor(world: World, x: number, y: number): Entity {
 
 describe('TileGrid low-wall walkability', () => {
   it('a stone wall blocks a normal foot actor, but is walkable while onLedge (perched)', () => {
-    expect(TileGrid.walkable(Tile.StoneWall, 'foot', false)).toBe(false); // beside it → blocked
-    expect(TileGrid.walkable(Tile.StoneWall, 'foot', true)).toBe(true); // perched on top → walkable
+    expect(TileGrid.walkable(TERRAIN.stoneWall, 'foot', false)).toBe(false); // beside it → blocked
+    expect(TileGrid.walkable(TERRAIN.stoneWall, 'foot', true)).toBe(true); // perched on top → walkable
   });
   it('isLowWall marks stone walls and trees, not solid buildings or ground', () => {
-    expect(TileGrid.isLowWall(Tile.StoneWall)).toBe(true);
-    expect(TileGrid.isLowWall(Tile.Tree)).toBe(true);
-    expect(TileGrid.isLowWall(Tile.Wall)).toBe(false); // a building wall is tall — not a ledge
-    expect(TileGrid.isLowWall(Tile.Grass)).toBe(false);
+    expect(TileGrid.isLowWall(TERRAIN.stoneWall)).toBe(true);
+    expect(TileGrid.isLowWall(TERRAIN.tree)).toBe(true);
+    expect(TileGrid.isLowWall(TERRAIN.wall)).toBe(false); // a building wall is tall — not a ledge
+    expect(TileGrid.isLowWall(TERRAIN.grass)).toBe(false);
   });
 });
 

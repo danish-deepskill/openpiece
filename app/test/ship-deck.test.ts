@@ -20,7 +20,7 @@ import { TileGrid } from '../src/world/TileGrid';
  *  — deck locomotion now lives in MovementSystem (reads mover.vx/vy as the frame-neutral intent, movement-frames.md). */
 function seaSystem(): { world: World; ships: ShipSystem; move: MovementSystem } {
   const g = new TileGrid(40, 40);
-  g.tiles = Array.from({ length: 40 }, () => Array.from({ length: 40 }, () => 0 /* Tile.Water */));
+  g.tiles = Array.from({ length: 40 }, () => Array.from({ length: 40 }, () => 0 /* TERRAIN.water */));
   const world = new World();
   const collision = new Collision(g);
   return { world, ships: new ShipSystem(world, collision), move: new MovementSystem(world, collision) };

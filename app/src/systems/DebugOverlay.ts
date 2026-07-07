@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { visionOf } from '../ai/perception';
-import { GAME_W, TILE, Tile } from '../config/constants';
+import { GAME_W, TILE } from '../config/constants';
 import { Debug } from '../core/Debug';
 import { events } from '../core/EventBus';
 import { Abilities, abilityRange } from '../combat/Ability';
@@ -97,7 +97,7 @@ export class DebugOverlay {
       g.fillStyle(0xff2b2b, 0.22);
       for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
-          if (this.grid.tileAt(x, y) === Tile.Wall) g.fillRect(x * TILE, y * TILE, TILE, TILE);
+          if (this.grid.terrainAt(x, y).opaque) g.fillRect(x * TILE, y * TILE, TILE, TILE);
         }
       }
     }
