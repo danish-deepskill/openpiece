@@ -14,6 +14,10 @@ const JUMP_SCALE = 0.45;
 /** LEDGE height fake: a smaller, STEADY scale-up while PERCHED atop a low wall (stone wall / ship rail) — you're
  *  one wall-height up, so a fraction of the jump's peak. Reads as "standing on something" (movement-frames.md). */
 const LEDGE_SCALE = 0.15;
+/** Ease time-constant (s) for the ledge step-up/down — the perch elevation GLIDES in/out (settles in ~3τ) instead
+ *  of flipping ±15% in one frame: that one-frame shrink read as a "snap" stepping off the rail onto water/sand,
+ *  even though the position is continuous. Presentation-only smoothing; the sim's onLedge stays a hard flag. */
+const LEDGE_EASE_TAU = 0.06;
 /** SUBMERGE fake: scale-DOWN of a fully-underwater actor (smaller = deeper/below) — the inverse of the jump. A
  *  gentle dip (→ 0.8×), enough to read as "sunk under" without shrinking to a dot. */
 const SUBMERGE_SCALE = 0.2;
@@ -59,6 +63,8 @@ export class RenderSystem {
   /** Computed per-entity DEPTH LIFT this frame (AIR_DEPTH_LIFT while airborne, else 0) — worn layers add it so a
    *  hat/blade rides ABOVE grounded units with the jumping body, instead of being left at ground depth under it. */
   readonly liftById = new Map<number, number>();
+  /** EASED perch factor per entity (0..1, chasing onLedge at LEDGE_EASE_TAU) — render-side state only. */
+  private readonly perchById = new Map<number, number>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -78,7 +84,7 @@ export class RenderSystem {
     return e.transform!.y;
   }
 
-  update(_dt: number): void {
+  update(dt: number): void {
     const now = this.scene.time.now;
     const seen = new Set<number>();
     for (const e of this.world.with('transform', 'render')) {
@@ -150,7 +156,12 @@ export class RenderSystem {
       // overhead camera / below the surface), the mirror of a jump's scale-UP. ONLY a full dive shrinks; a
       // SURFACE swim stays normal size (you're at the top of the water, not under it). Mutually exclusive with air.
       const sink = mv?.submerged ? 1 : 0; // fully submerged shrinks; surface swim = normal size
-      const perched = mv?.onLedge && air === 0 ? 1 : 0; // PERCHED atop a low wall (and not mid-jump) → a steady step-up
+      // PERCHED atop a low wall (and not mid-jump) → a steady step-up — EASED toward its target, so mounting and
+      // stepping off the wall GLIDE over ~3τ instead of popping the full ±15% in one frame (first sight = settled).
+      const perchTarget = mv?.onLedge && air === 0 ? 1 : 0;
+      const prevPerch = this.perchById.get(e.id) ?? perchTarget;
+      const perched = prevPerch + (perchTarget - prevPerch) * (1 - Math.exp(-dt / LEDGE_EASE_TAU));
+      this.perchById.set(e.id, perched);
       const animScale = 1 + JUMP_SCALE * air + LEDGE_SCALE * perched - SUBMERGE_SCALE * sink;
       const lift = air > 0 ? AIR_DEPTH_LIFT : 0; // airborne draws above grounded units (nearer the camera)
       const finalAlpha = alpha * (1 - JUMP_FADE * air); // slight translucency at the jump peak — an extra "up" cue
@@ -177,6 +188,7 @@ export class RenderSystem {
         this.alphaById.delete(id);
         this.scaleById.delete(id);
         this.liftById.delete(id);
+        this.perchById.delete(id);
       }
     }
     for (const [id, img] of this.imgById) {
@@ -186,6 +198,7 @@ export class RenderSystem {
         this.alphaById.delete(id);
         this.scaleById.delete(id);
         this.liftById.delete(id);
+        this.perchById.delete(id);
       }
     }
   }
