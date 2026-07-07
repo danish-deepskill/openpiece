@@ -237,15 +237,99 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     expect(a.onDeck).toBeDefined(); // still aboard — inward move doesn't leave
   });
 
-  it('WALK-OFF is muted during the post-board frame cooldown (no instant re-leave = no ping-pong)', () => {
+  it('the door is DIRECTION-AWARE: off right after on works, and an OUTBOUND walker is never re-caught', () => {
     const { world, move } = seaSystem();
+    const hulls = new HullCollisionSystem(world);
     const ship = makeShip(world, 500, 500, 0);
     const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
     const gp = gangplankCell(grid)!;
     const a = makeActor(world, 0, 0);
-    enterDeck(a, ship.id, gp.lx, gp.ly); // just boarded → frameCd is set
-    walkDeckIntent(move, a, -100, 0, 1); // push outward immediately
-    expect(a.onDeck).toBeDefined(); // still aboard — the cooldown blocks the instant walk-off
+    enterDeck(a, ship.id, gp.lx, gp.ly); // just boarded → frameCd is running
+    walkDeckIntent(move, a, -100, 0, 1); // reverse straight back out (outward = west)
+    expect(a.onDeck).toBeUndefined(); // no 0.4s hold at the door — leaving is DIRECTION, not cooldown
+    a.mover!.vx = -100; // still heading out through the lane
+    a.mover!.vy = 0;
+    hulls.update();
+    expect(a.onDeck).toBeUndefined(); // and the door does not re-catch a walker moving OUT
+  });
+
+  it('GANGPLANK WALK-ON is continuous: an inbound walker boards WHERE ITS FEET ARE (no snap to cell center)', () => {
+    const { world, ships, move } = seaSystem();
+    const hulls = new HullCollisionSystem(world);
+    const ship = makeShip(world, 500, 500, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const gp = gangplankCell(grid)!; // sloop's door faces WEST (outward −x)
+    const start = deckToWorld(ship.transform!, gp.lx - grid.tilePx, gp.ly); // in the lane, outside the plank
+    const a = makeActor(world, start.x, start.y);
+    let prevX = a.transform!.x;
+    let stepAtBoard = 0;
+    for (let i = 0; i < 120 && !a.onDeck; i++) {
+      a.mover!.vx = 100; // walk EAST — inward, through the door
+      a.mover!.vy = 0;
+      move.update(1 / 60);
+      ships.update(1 / 60);
+      hulls.update();
+      if (a.onDeck) stepAtBoard = Math.abs(a.transform!.x - prevX);
+      prevX = a.transform!.x;
+    }
+    expect(a.onDeck).toBeDefined(); // walked in through the door
+    expect(stepAtBoard).toBeLessThan(4); // boarded where it stood — the old code SNAPPED to the cell center
+    expect(a.onDeck!.ly).toBeCloseTo(gp.ly, 0); // kept its lane line, not teleported onto (gp.lx, gp.ly)
+  });
+
+  it('standing STILL in the doorway does nothing — not boarded, not pushed', () => {
+    const { world } = seaSystem();
+    const hulls = new HullCollisionSystem(world);
+    const ship = makeShip(world, 500, 500, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const gp = gangplankCell(grid)!;
+    const w = deckToWorld(ship.transform!, gp.lx, gp.ly);
+    const a = makeActor(world, w.x, w.y); // parked on the plank, no intent
+    hulls.update();
+    expect(a.onDeck).toBeUndefined(); // the door is a passage, not a pressure plate
+    expect(a.transform!.x).toBe(w.x); // and the lane never pushes
+    expect(a.transform!.y).toBe(w.y);
+  });
+
+  it('landing STRADDLING the rail seam (center on the interior, body over the rail) perches instead of freezing', () => {
+    // The reported jump-onto-the-rail freeze: the old rule perched only when the CENTER cell was rail, so a body
+    // half over the rail landed grounded-ILLEGAL — every step overlapped the solid rail and was rejected, and the
+    // deck has no depenetration. Perch-as-needed: grounded rules reject the spot → you grab the rail instead.
+    const { world, ships, move } = seaSystem();
+    const ship = makeShip(world, 500, 500, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const spot = grid.cells.find((c) => c.cx === 2 && c.cy === 2)!; // '.' interior beside the south rail
+    const a = makeActor(world, 0, 0);
+    a.onDeck = { shipId: ship.id, lx: spot.lx, ly: spot.ly + 12 }; // ly 28: center on the interior, body over the rail (r=8 spans 20..36, rail row starts at 32)
+    a.mover!.layer = 'air';
+    a.mover!.airT = 0.01; // about to touch down right here
+    a.mover!.airDur = 0.5;
+    ships.update(1 / 60);
+    move.update(1 / 60); // lands
+    expect(a.mover!.onLedge).toBe(true); // hanging onto the rail — a legal, movable state
+    const y0 = a.onDeck!.ly;
+    walkDeckIntent(move, a, 0, -100, 30); // walk back inboard
+    expect(a.onDeck!.ly).toBeLessThan(y0 - 5); // can actually move (was: every step rejected, frozen)
+    expect(a.mover!.onLedge).toBe(false); // and the perch cleared itself once the body fit without it
+  });
+
+  it('a walker WEDGED into the rail wood beside the door can walk itself FREE (was: frozen solid)', () => {
+    // landed badly: center inside the door LANE (never pushed — the door must not shove people crossing it),
+    // body overlapping the flanking rail's wood tip. Pre-fix, the hull veto rejected EVERY step (each target
+    // still overlapped the wood), and with pushOut lane-exempt nothing ever freed it: a permanent freeze.
+    const { world, move } = seaSystem();
+    const ship = makeShip(world, 500, 500, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const gp = gangplankCell(grid)!;
+    const spot = deckToWorld(ship.transform!, gp.lx - 6, gp.ly - 12); // nudged into the north flanking rail
+    const a = makeActor(world, spot.x, spot.y);
+    const x0 = a.transform!.x;
+    for (let i = 0; i < 40; i++) {
+      a.mover!.vx = -100; // walk OUT, away from the ship
+      a.mover!.vy = 0;
+      move.update(1 / 60);
+    }
+    expect(a.transform!.x).toBeLessThan(x0 - 15); // walked free — embedded bodies are not step-vetoed
   });
 });
 
@@ -292,6 +376,77 @@ describe('land-on-deck boarding (HullCollisionSystem — jump/Geppo over the rai
     expect(a.onDeck).toBeUndefined(); // left the ship — now a world-space (still airborne) walker
     expect(a.mover!.layer).toBe('air'); // still flying (it'll land in the world)
     expect(a.transform!.x).toBeGreaterThan(500); // flew out past the ship center toward the bow
+  });
+});
+
+describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () => {
+  const SIM = 1 / 60;
+  // the sloop's south rail amidships — its outward (sea-facing) side is south. Perch spot for every case below.
+  function perchSetup(): { world: World; ships: ShipSystem; move: MovementSystem; ship: Entity; a: Entity; rail: { lx: number; ly: number } } {
+    const { world, ships, move } = seaSystem();
+    const ship = makeShip(world, 500, 500, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const rail = grid.cells.find((c) => c.cx === 2 && c.cy === 3)!;
+    const a = makeActor(world, 0, 0);
+    a.onDeck = { shipId: ship.id, lx: rail.lx, ly: rail.ly };
+    a.mover!.onLedge = true; // perched on the gunwale
+    ships.update(SIM); // settle parenting so the world transform matches the perch before measuring
+    return { world, ships, move, ship, a, rail };
+  }
+
+  it('AIRBORNE LEAVE hands off at the CURRENT spot — no tick ever moves farther than one flight step', () => {
+    const { ships, move, a } = perchSetup();
+    a.mover!.layer = 'air'; // jump seaward from the perch
+    a.mover!.airT = 0.55;
+    a.mover!.airDur = 0.55;
+    a.mover!.frameCd = 0;
+    let px = a.transform!.x;
+    let py = a.transform!.y;
+    let maxStep = 0;
+    for (let i = 0; i < 90; i++) {
+      a.mover!.vx = 0;
+      a.mover!.vy = 100; // hold south (toward open sea)
+      move.update(SIM);
+      ships.update(SIM);
+      maxStep = Math.max(maxStep, Math.hypot(a.transform!.x - px, a.transform!.y - py));
+      px = a.transform!.x;
+      py = a.transform!.y;
+    }
+    expect(a.onDeck).toBeUndefined(); // left the ship
+    expect(a.mover!.mode).toBe('swim'); // came down in the water
+    expect(py).toBeGreaterThan(564); // past the hull's south edge (500 + rows·tile/2)
+    expect(maxStep).toBeLessThan(4); // ≈ speed·dt — the old exit SNAPPED a full tile (32px) in one tick
+  });
+
+  it('RAIL DROP-OFF: perched + pushing seaward steps down into the water (was an invisible wall)', () => {
+    const { move, a, rail } = perchSetup();
+    a.mover!.frameCd = 0; // past the post-landing beat
+    walkDeckIntent(move, a, 0, 100, 30); // walk south, toward the open sea
+    expect(a.onDeck).toBeUndefined(); // stepped down off the gunwale — not walled
+    expect(a.mover!.onLedge).toBe(false); // off the wall
+    expect(Math.abs(a.transform!.x - (500 + rail.lx))).toBeLessThan(8); // dropped WHERE IT STOOD, not flung
+  });
+
+  it('the drop-off waits out the post-landing beat (landing on the rail holding seaward must not dunk you)', () => {
+    const { move, a } = perchSetup();
+    a.mover!.frameCd = 0.4; // just landed on the rail (enterDeck's anti-ping-pong beat)
+    walkDeckIntent(move, a, 0, 100, 6); // ~0.3s of pushing seaward, still inside the beat
+    expect(a.onDeck).toBeDefined(); // the beat holds the perch — no accidental instant drop
+    walkDeckIntent(move, a, 0, 100, 30); // keep holding past the beat
+    expect(a.onDeck).toBeUndefined(); // now the deliberate step-off happens
+  });
+
+  it('landing on the deck right after an exit BOARDS you mid-cooldown — no push-out fling', () => {
+    const { world } = seaSystem();
+    const hulls = new HullCollisionSystem(world);
+    const ship = makeShip(world, 500, 500, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const interior = grid.cells.find((c) => c.tile === 'deck')!;
+    const w = deckToWorld(ship.transform!, interior.lx, interior.ly);
+    const a = makeActor(world, w.x, w.y); // just LANDED here (grounded, center over the deck)
+    a.mover!.frameCd = 0.3; // still inside the frame-switch beat from the exit moments ago
+    hulls.update();
+    expect(a.onDeck).toBeDefined(); // boarded in place — was: skipped (cooldown) then ejected to the hull edge
   });
 });
 

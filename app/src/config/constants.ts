@@ -94,8 +94,10 @@ export const GEPPO_MOVE_MULT = 1.5;
 /** Descent time (s) when a Geppo hover ENDS — the fall arc, so landing isn't an instant snap to the ground. */
 export const GEPPO_FALL_DUR = 0.3;
 
-/** MOVEMENT FRAMES (docs/design/features/movement-frames.md): seconds after a ship board/leave before the
- *  gangplank/air handoff can re-fire — stops the board↔leave ping-pong at the door. */
+/** MOVEMENT FRAMES (docs/design/features/movement-frames.md): the post-transition BEAT (s). Gates only the rail
+ *  DROP-OFF — landing on the gunwale while still holding seaward must not instantly dunk you; walking off is a
+ *  deliberate second push. The door/leave handoffs need no mute: each pair is direction- or layer-asymmetric
+ *  (walk-on=INWARD vs walk-off=OUTWARD; leave=AIR vs board=GROUND), so they cannot oscillate. */
 export const FRAME_SWITCH_COOLDOWN = 0.4;
 
 /** Follow-camera zoom — higher = closer (moomoo.io-style). 1.0 showed too much world. */

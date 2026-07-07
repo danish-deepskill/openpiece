@@ -10,8 +10,9 @@ import type { Entity } from '../ecs/components';
  */
 
 /** ENTER the deck frame: position becomes deck-LOCAL (parenting owns world pos from here). Normalizes state that
- *  must not survive boarding: you're on dry planks (swim/dive cleared), and the anti-ping-pong cooldown starts so
- *  the door can't instantly hand you back. Idempotent-safe: overwrites an existing onDeck. */
+ *  must not survive boarding: you're on dry planks (swim/dive cleared), and the post-transition BEAT starts (it
+ *  gates only the rail drop-off — landing on the gunwale holding seaward must not instantly dunk you; the door
+ *  handoffs are direction-aware instead of muted). Idempotent-safe: overwrites an existing onDeck. */
 export function enterDeck(e: Entity, shipId: number, lx: number, ly: number): void {
   e.onDeck = { shipId, lx, ly };
   if (e.mover) {
@@ -21,8 +22,8 @@ export function enterDeck(e: Entity, shipId: number, lx: number, ly: number): vo
   }
 }
 
-/** EXIT the deck frame: the actor returns to WORLD space at (wx,wy); world movement resumes next tick. Starts the
- *  same cooldown so the gangplank/land-on handoffs don't instantly re-board (the leave↔board ping-pong). */
+/** EXIT the deck frame: the actor returns to WORLD space at (wx,wy) — callers pass the CURRENT point converted
+ *  (transitions preserve position; lookaheads are triggers, never destinations). Starts the same beat. */
 export function exitDeck(e: Entity, wx: number, wy: number): void {
   delete e.onDeck;
   if (e.transform) {
@@ -32,7 +33,7 @@ export function exitDeck(e: Entity, wx: number, wy: number): void {
   if (e.mover) e.mover.frameCd = FRAME_SWITCH_COOLDOWN;
 }
 
-/** True while the actor is in its post-transition beat — frame handoffs are muted (no board↔leave flapping). */
+/** True while the actor is in its post-transition beat — read by the rail drop-off (the one gated handoff). */
 export function inFrameCooldown(e: Entity): boolean {
   return (e.mover?.frameCd ?? 0) > 0;
 }

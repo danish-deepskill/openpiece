@@ -71,8 +71,9 @@ export interface Mover {
    *  (LEDGE_MOVE_MULT). This is how "land on the low wall and balance across it" works without a z-axis: the state
    *  distinguishes ON-TOP (you jumped up here) from BESIDE (walking into it from ground = still blocked). */
   onLedge?: boolean;
-  /** FRAME-SWITCH cooldown (s): counts down after boarding/leaving a ship; while > 0 the gangplank handoff won't
-   *  re-fire, so you don't ping-pong between deck and world at the door. Ticked down by ShipSystem each tick. */
+  /** FRAME-SWITCH beat (s): counts down after boarding/leaving a ship (set by enterDeck/exitDeck, ticked by
+   *  MovementSystem). Gates only the rail DROP-OFF — landing on the gunwale holding seaward must not instantly
+   *  dunk you. The door/leave handoffs read direction/layer instead of this (asymmetric pairs can't ping-pong). */
   frameCd?: number;
 }
 

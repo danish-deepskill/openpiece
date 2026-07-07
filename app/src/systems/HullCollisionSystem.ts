@@ -1,7 +1,7 @@
-import { deckCellAtLocal, deckOf, deckToWorld, deckWalkable, gangplankCell, gangplankOutward, worldToDeck, type DeckGrid } from '../defs/decks';
+import { deckCellAtLocal, deckOf, deckToWorld, deckWalkable, gangplankCell, gangplankOutward, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
-import { hullBlocksOutside } from '../world/deckCollision';
-import { enterDeck, inFrameCooldown } from '../world/frames';
+import { deckCanOccupy, hullBlocksOutside } from '../world/deckCollision';
+import { enterDeck } from '../world/frames';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 
@@ -20,8 +20,12 @@ export class HullCollisionSystem {
   update(): void {
     for (const ship of this.world.with('ship', 'transform')) {
       const st = ship.transform!;
-      const grid = deckOf(ship.ship!.hull, ShipHulls.get(ship.ship!.hull).deck);
-      const reach = st.r + 24; // a walker must be at least this close to possibly overlap the hull (cheap reject)
+      const hull = ShipHulls.get(ship.ship!.hull);
+      const grid = deckOf(ship.ship!.hull, hull.deck);
+      // cheap distance reject — (length+width)/2 ≥ the grid's half-diagonal. NOT ship.r (the ocean radius ≈ half-
+      // width): that under-covered a long hull's bow/stern corners, leaving a dead zone where landings neither
+      // boarded nor pushed.
+      const reach = (hull.length + hull.width) / 2;
       for (const e of this.world.with('transform', 'mover')) {
         if (e.onDeck || e.mover!.layer === 'air' || e.mover!.mode === 'boat' || e.health?.dead) continue; // aboard / jumping over / a ship / dead
         const t = e.transform!;
@@ -31,16 +35,20 @@ export class HullCollisionSystem {
         const local = worldToDeck(st, t.x, t.y);
         // THE GANGPLANK IS A PASSAGE, not a point. If the walker's CENTER is within the gangplank LANE (the
         // gangplank cell + the approach cell just outside it), it's crossing the door — do NOT push it (even though
-        // its radius overlaps the flanking rails), and BOARD it the moment its center reaches the gangplank cell.
-        // This is why bug'd before: the center-only board check let the radius-based push shove you off the lane
-        // before your center ever reached the plank.
+        // its radius overlaps the flanking rails). The DOOR IS DIRECTION-AWARE + CONTINUOUS: board WHERE THE FEET
+        // ARE (no snap to the cell center — that was a visible pop), only while moving INWARD (loitering in the
+        // doorway or heading out boards nothing — the walk-off's outward twin, so on/off can't oscillate and no
+        // cooldown mute is needed), and only once the BODY FITS on the plank by deck rules (boarding at the outer
+        // lip would wedge the body half over open sea with every deck step rejected). Until it fits, it stays a
+        // world walker in the lane — never pushed — walking in, so the handoff is seamless.
         if (this.inGangplankLane(grid, local.lx, local.ly)) {
           const gp = gangplankCell(grid)!;
-          // BOARD when the center reaches the gangplank cell — snap onto the cell CENTER (a stable inward foothold),
-          // NOT the exact crossing point (which sits at the outer edge and would instantly re-trip the walk-off).
-          // Skip during the frame-switch cooldown (just left the ship → don't instantly re-board = ping-pong).
-          if (!inFrameCooldown(e) && deckCellAtLocal(grid, local.lx, local.ly)?.tile === 'gangplank') {
-            enterDeck(e, ship.id, gp.lx, gp.ly);
+          if (
+            deckCellAtLocal(grid, local.lx, local.ly)?.tile === 'gangplank' &&
+            this.movingInward(e.mover!.vx, e.mover!.vy, st.angle, grid, gp) &&
+            deckCanOccupy(grid, local.lx, local.ly, t.r)
+          ) {
+            enterDeck(e, ship.id, local.lx, local.ly);
           }
           continue; // in the lane → never pushed (the door is open)
         }
@@ -48,9 +56,11 @@ export class HullCollisionSystem {
         // the rail through the AIR (jump/Geppo over the low-wall rail, then landed inside) — that IS boarding, the
         // "leap onto the ship" path (movement-frames / naval-battle design). Board it in place instead of pushing it
         // back out. WALKABLE only — a 'hole' cell is on-hull but NOT standable (boarding into it would stick the
-        // walker inside a blocked cell); non-walkable on-hull cells fall through to the eject below.
+        // walker inside a blocked cell); non-walkable on-hull cells fall through to the eject below. NOT muted by
+        // the frame cooldown: this pair can't ping-pong (the airborne-leave needs AIR, boarding needs GROUND), and
+        // muting it flung a walker who landed back on the deck right after an exit (the embedded-body eject below).
         const cell = deckCellAtLocal(grid, local.lx, local.ly);
-        if (cell && deckWalkable(cell.tile) && !inFrameCooldown(e)) {
+        if (cell && deckWalkable(cell.tile)) {
           enterDeck(e, ship.id, local.lx, local.ly); // keep the exact landing spot on the deck
           continue;
         }
@@ -58,6 +68,16 @@ export class HullCollisionSystem {
         this.pushOut(e, ship, local.lx, local.ly, t.r);
       }
     }
+  }
+
+  /** Is this walker's intent (world-space vx/vy) pointing INTO the ship through the door? The gangplank's outward
+   *  direction is deck-local — rotate it by the ship heading and dot it against the intent. Strictly negative:
+   *  standing still in the doorway boards nothing (the door is a passage, not a pressure plate). */
+  private movingInward(vx: number, vy: number, angle: number, grid: DeckGrid, gp: DeckCell): boolean {
+    const [ox, oy] = gangplankOutward(grid, gp);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return vx * (ox * cos - oy * sin) + vy * (ox * sin + oy * cos) < 0;
   }
 
   /** Is the LOCAL point inside the gangplank LANE — the open corridor through the door? The lane spans the

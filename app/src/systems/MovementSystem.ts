@@ -1,11 +1,10 @@
 import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN, LEDGE_MOVE_MULT, STUN_SLOW, TILE } from '../config/constants';
 import { spendStamina } from '../combat/stamina';
 import { events } from '../core/EventBus';
-import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, worldToDeck } from '../defs/decks';
+import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, tileAt, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
-import { deckCanOccupy, deckTryMove, hullBlocksWorldPoint } from '../world/deckCollision';
+import { deckCanOccupy, deckTryMove, hullBlocksOutside, hullBlocksWorldPoint } from '../world/deckCollision';
 import { enterDeck, exitDeck, inFrameCooldown } from '../world/frames';
-import { TileGrid } from '../world/TileGrid';
 import type { Entity, Mover } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { Collision } from '../world/Collision';
@@ -20,15 +19,34 @@ export function beginFall(m: Mover): void {
   m.fallFrom = GEPPO_HOVER_HEIGHT; // the altitude the descent starts from (the held hover height)
 }
 
+/** Is the (deck-local) push direction toward one of this RAIL cell's SEA-FACING sides? Sea-facing = the orthogonal
+ *  neighbor is off-hull — the same neighbor rule as the drawn gunwale wood, so any authored hull shape works.
+ *  Corners have two sea sides; pushing toward either counts (you can drop off a corner both ways). */
+function railSeaward(grid: DeckGrid, cell: DeckCell, dlx: number, dly: number): boolean {
+  return (
+    (dly < 0 && tileAt(grid, cell.cx, cell.cy - 1) === undefined) ||
+    (dly > 0 && tileAt(grid, cell.cx, cell.cy + 1) === undefined) ||
+    (dlx < 0 && tileAt(grid, cell.cx - 1, cell.cy) === undefined) ||
+    (dlx > 0 && tileAt(grid, cell.cx + 1, cell.cy) === undefined)
+  );
+}
+
 /** Integrates movement intent (mover.vx/vy) and dodge impulses against the Collision rules. */
 export class MovementSystem {
   /** Ships snapshotted ONCE per update (not per entity) for the hull-blocker — see hullBlocked. */
   private ships: Entity[] = [];
-  /** ONE persistent hull-blocker closure (reads the per-tick snapshot) — never allocated per entity per tick. */
+  /** ONE persistent hull-blocker closure (reads the per-tick snapshot) — never allocated per entity per tick.
+   *  A conservative distance reject ((length+width)/2 ≥ the grid's half-diagonal — NOT ship.r, the ocean radius,
+   *  which under-covers a long hull's bow corners) skips the frame transform for the common far-away case. */
   private readonly hullBlocked = (x: number, y: number, r: number): boolean => {
     for (const s of this.ships) {
-      const grid = deckOf(s.ship!.hull, ShipHulls.get(s.ship!.hull).deck);
-      if (hullBlocksWorldPoint(s.transform!, grid, x, y, r)) return true;
+      const st = s.transform!;
+      const d = ShipHulls.get(s.ship!.hull);
+      const reach = (d.length + d.width) / 2 + r;
+      const dx = x - st.x;
+      const dy = y - st.y;
+      if (dx * dx + dy * dy > reach * reach) continue; // nowhere near this hull
+      if (hullBlocksWorldPoint(st, deckOf(s.ship!.hull, d.deck), x, y, r)) return true;
     }
     return false;
   };
@@ -118,9 +136,16 @@ export class MovementSystem {
       } else {
         // WORLD frame. A grounded off-ship walker also can't move INTO a ship hull (a moving wall the static grid
         // can't know) — reject the step so you bump the rail and slide, never teleport. Airborne (jump over) skips
-        // it. ONE persistent closure over the per-tick ship snapshot — no per-entity allocation (hot-loop canon).
-        const hullBlock = !airborne && this.ships.length > 0 ? this.hullBlocked : undefined;
-        if (vx !== 0 || vy !== 0) this.collision.tryMove(t, vx * dt, vy * dt, t.r, m.mode, airborne, m.onLedge, hullBlock);
+        // it. The veto only applies FROM A CLEAR POSITION: an EMBEDDED body (overlapping hull wood — swept by a
+        // moving ship, or landed in the gangplank lane, where pushOut is exempt) must be able to WALK itself free;
+        // vetoing every step while every step still overlaps the wood was the frozen-at-the-rail-tip deadlock.
+        // (The lift is ANY-hull: embedded in ship A un-vetoes ship B too for a tick — harmless while pushOut
+        // self-heals; revisit per-hull when battle boarding parks hulls rail-to-rail.) The embedded probe lives
+        // INSIDE the movement gate — an idle crowd must not pay a per-tick hull sweep for a veto only moves read.
+        if (vx !== 0 || vy !== 0) {
+          const hullBlock = !airborne && this.ships.length > 0 && !this.hullBlocked(t.x, t.y, t.r) ? this.hullBlocked : undefined;
+          this.collision.tryMove(t, vx * dt, vy * dt, t.r, m.mode, airborne, m.onLedge, hullBlock);
+        }
         // STEP OFF the ledge: clear the perch ONLY once your WHOLE BODY has cleared the low wall (you'd fit WITHOUT
         // the perch). Clearing on center-only dropped it while your radius still overlapped → unstick flung you (the
         // step-off teleport). Full-body clearance means onLedge drops only when you're already off — nothing to eject.
@@ -152,16 +177,18 @@ export class MovementSystem {
       const ship = this.world.byId(e.onDeck.shipId);
       if (ship?.ship) {
         const grid = deckOf(ship.ship.hull, ShipHulls.get(ship.ship.hull).deck);
-        m.onLedge = deckCellAtLocal(grid, e.onDeck.lx, e.onDeck.ly)?.tile === 'rail'; // perched on the ship rail
+        // PERCH-AS-NEEDED: perched iff the GROUNDED rules reject the landing spot — center ON the rail, or the
+        // BODY straddling the rail seam with the center on the interior. The old center-cell test missed the
+        // straddle: grounded-illegal with no deck depenetration = every step rejected (the frozen-landing bug).
+        // Any airborne landing spot is perch-legal on deck (the cleared mask IS the air mask), so this resolves.
+        m.onLedge = !deckCanOccupy(grid, e.onDeck.lx, e.onDeck.ly, e.transform!.r, false, false);
       }
       return;
     }
-    // WORLD walker: landed on a world low wall?
-    if (TileGrid.isLowWall(this.collision.tileAtPx(t.x, t.y))) { m.onLedge = true; return; }
-    // …or on a SHIP RAIL (the deck's low wall)? A jump from the world can come down on the rail — adopt into the
-    // deck frame via the ONE transition primitive (enterDeck normalizes swim/dive state — a raw onDeck write here
-    // once let a swimmer land on the rail still labeled 'swim' and DROWN standing on it), then perch. This is the
-    // rail twin of land-on-deck boarding (HullCollisionSystem handles the interior cells).
+    // WORLD walker on a SHIP RAIL (the deck's low wall)? A jump from the world can come down on the rail — adopt
+    // into the deck frame via the ONE transition primitive (enterDeck normalizes swim/dive state — a raw onDeck
+    // write here once let a swimmer land on the rail still labeled 'swim' and DROWN standing on it), then perch.
+    // This is the rail twin of land-on-deck boarding (HullCollisionSystem handles the interior cells).
     for (const ship of this.ships) {
       const grid = deckOf(ship.ship!.hull, ShipHulls.get(ship.ship!.hull).deck);
       const local = worldToDeck(ship.transform!, t.x, t.y);
@@ -171,7 +198,10 @@ export class MovementSystem {
         return;
       }
     }
-    m.onLedge = false;
+    // Same PERCH-AS-NEEDED rule as the deck: perched iff the grounded rules reject where you stand — center on a
+    // low wall, or just the body overlapping one (the old center-tile test left the straddle grounded-illegal and
+    // unstick POPPED it clear next tick; perching keeps the landing continuous and clears itself a step later).
+    m.onLedge = !this.collision.canOccupy(t.x, t.y, e.transform!.r, m.mode, false, false);
   }
 
   /** DECK-FRAME locomotion: apply a WORLD-space velocity (vx,vy — already speed/perch-scaled) to an on-deck actor's
@@ -190,26 +220,50 @@ export class MovementSystem {
     const dly = (vx * sin + vy * cos) * dt;
     const cooldown = inFrameCooldown(e);
     const cell = deckCellAtLocal(grid, e.onDeck.lx, e.onDeck.ly);
-    // GANGPLANK WALK-OFF: grounded on the door, pushing OUTWARD → step off to world space (a full clearance past
-    // the door so the board-lane doesn't re-catch it). Dot-product test — robust to how far it moves this tick.
-    if (cell?.tile === 'gangplank' && !cooldown && !airborne && (dlx !== 0 || dly !== 0)) {
+    // GANGPLANK WALK-OFF: grounded on the door, pushing OUTWARD (dot test) → hand off to world space AT THE
+    // CURRENT SPOT — a pure address-book switch, zero displacement (the old exit placed you a body+tile past the
+    // door: a visible pop). No cooldown mute either: the DOOR IS DIRECTION-AWARE — walking on needs INWARD motion
+    // (HullCollisionSystem), walking off needs OUTWARD — so on/off can't oscillate; each needs the opposite input.
+    if (cell?.tile === 'gangplank' && !airborne && (dlx !== 0 || dly !== 0)) {
       const [ox, oy] = gangplankOutward(grid, cell);
       if (dlx * ox + dly * oy > 0) {
-        const clear = e.transform!.r + grid.tilePx;
-        const w = deckToWorld(ship.transform, e.onDeck.lx + ox * clear, e.onDeck.ly + oy * clear);
+        const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
         exitDeck(e, w.x, w.y);
         return;
       }
     }
-    // AIRBORNE LEAVE: airborne + moving OUTWARD off an OUTER cell (a full tile ahead is off-grid) → fly out to world
-    // space (mirror of land-on-deck boarding). Frees the leap-off; stays airborne (lands in the world later).
-    if (airborne && !cooldown && (dlx !== 0 || dly !== 0)) {
+    // AIRBORNE LEAVE: airborne + moving OUTWARD off an OUTER cell (a full tile ahead is off-grid) → hand off to
+    // world space AT THE CURRENT SPOT (mirror of land-on-deck boarding). The tile lookahead is only the TRIGGER
+    // (a 1-tick lookahead can't reach off-grid from a cell center — the old invisible-block bug); exiting AT the
+    // lookahead point snapped the body a full tile sideways — the "teleported off the ship" pop. Position stays
+    // CONTINUOUS: the remaining flight carries you out, and a short hop that comes down still over the rail just
+    // perches you there (land()'s rail adoption) — honest, and the drop-off below gets you to the water anyway.
+    // No cooldown mute: a jump is EXPLICIT intent (leaving must work right after landing on the rail), and the
+    // leave/board pair is air/ground-asymmetric — it cannot loop.
+    if (airborne && (dlx !== 0 || dly !== 0)) {
       const len = Math.hypot(dlx, dly);
-      const aheadLx = e.onDeck.lx + (dlx / len) * grid.tilePx;
-      const aheadLy = e.onDeck.ly + (dly / len) * grid.tilePx;
-      if (deckCellAtLocal(grid, aheadLx, aheadLy) === undefined) {
-        const w = deckToWorld(ship.transform, aheadLx, aheadLy);
+      if (deckCellAtLocal(grid, e.onDeck.lx + (dlx / len) * grid.tilePx, e.onDeck.ly + (dly / len) * grid.tilePx) === undefined) {
+        const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
         exitDeck(e, w.x, w.y); // stays airborne (layer unchanged) → keeps flying in world space, lands later
+        return;
+      }
+    }
+    // RAIL DROP-OFF: PERCHED on the gunwale (grounded), pushing toward a SEA-FACING side → step down off the ship
+    // into the water — the deck twin of walking off a world stone wall's far side. Without this the perch dead-ends
+    // at an invisible wall (off-hull blocks grounded movement, so the only exits were gangplank/jump). Muted during
+    // the post-transition beat: landing on the rail while still holding seaward must not instantly dunk you.
+    if (!airborne && m.onLedge && cell?.tile === 'rail' && !cooldown && (dlx !== 0 || dly !== 0) && railSeaward(grid, cell, dlx, dly)) {
+      // CONTINUOUS step-off: keep WALKING across the gunwale (the perched move below) until the body is PAST the
+      // wood — only then switch frames, so the world-side hull eject has nothing to shove (exiting while still
+      // over the wood popped you seaward: the "walk off → teleport" report). A body too wide to ever clear the
+      // outer half (r > quarter tile) exits once WALLED at the deck edge and takes the few-px nudge instead.
+      if (
+        !hullBlocksOutside(grid, e.onDeck.lx, e.onDeck.ly, e.transform!.r) ||
+        !deckCanOccupy(grid, e.onDeck.lx + Math.sign(dlx), e.onDeck.ly + Math.sign(dly), e.transform!.r, false, true)
+      ) {
+        const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
+        exitDeck(e, w.x, w.y); // continuous position — you slip off where you stood; the water relabels you a swimmer
+        m.onLedge = false; // off the wall
         return;
       }
     }
