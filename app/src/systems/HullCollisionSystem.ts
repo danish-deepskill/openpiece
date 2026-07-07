@@ -62,6 +62,9 @@ export class HullCollisionSystem {
         const cell = deckCellAtLocal(grid, local.lx, local.ly);
         if (cell && deckWalkable(cell.tile)) {
           enterDeck(e, ship.id, local.lx, local.ly); // keep the exact landing spot on the deck
+          // PERCH-AS-NEEDED, same rule as landings: a leap can come down with the CENTER on walkable deck but
+          // the BODY over the rail — boarded grounded-illegal would freeze; perched it's movable + self-clears.
+          e.mover!.onLedge = !deckCanOccupy(grid, local.lx, local.ly, t.r, false, false);
           continue;
         }
         if (!hullBlocksOutside(grid, local.lx, local.ly, t.r)) continue; // clear — nothing to do

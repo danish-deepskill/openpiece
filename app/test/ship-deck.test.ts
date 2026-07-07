@@ -313,6 +313,47 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     expect(a.mover!.onLedge).toBe(false); // and the perch cleared itself once the body fit without it
   });
 
+  it('a CORNER-rail landing with the body hanging past the hull is NOT adopted (was: a frozen perch)', () => {
+    // The sometimes-stuck corner: center inside the corner rail cell but in its OUTER water corner → the body
+    // spans past the hull edge on TWO sides. Adopting that spot is illegal even by the perched rules (off-hull
+    // blocks everything), so every step was rejected. Feet over the sea = a water landing beside the hull.
+    const { world, move } = seaSystem();
+    const ship = makeShip(world, 500, 500, 0);
+    // sloop SE corner cell (5,3) spans local x [64,96], y [32,64] — land at (92,60): body (r=8) hangs past both
+    const w = deckToWorld(ship.transform!, 92, 60);
+    const a = makeActor(world, w.x, w.y);
+    a.mover!.layer = 'air';
+    a.mover!.airT = 0.01; // about to touch down right here
+    a.mover!.airDur = 0.5;
+    move.update(1 / 60); // lands
+    expect(a.onDeck).toBeUndefined(); // didn't make the gunwale — stayed a world walker in the water
+    const x0 = a.transform!.x;
+    const y0 = a.transform!.y;
+    for (let i = 0; i < 30; i++) {
+      a.mover!.vx = 100; // swim away seaward — must not be held
+      a.mover!.vy = 100;
+      move.update(1 / 60);
+    }
+    expect(Math.hypot(a.transform!.x - x0, a.transform!.y - y0)).toBeGreaterThan(10);
+  });
+
+  it('LEAP-BOARDING with the body over the rail seam perches (a boarded straddle stays movable)', () => {
+    const { world, ships, move } = seaSystem();
+    const hulls = new HullCollisionSystem(world);
+    const ship = makeShip(world, 500, 500, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const spot = grid.cells.find((c) => c.cx === 2 && c.cy === 2)!; // '.' interior beside the south rail
+    const w = deckToWorld(ship.transform!, spot.lx, spot.ly + 12); // center on the interior, body over the rail
+    const a = makeActor(world, w.x, w.y); // just landed here as a WORLD walker (leap-on path)
+    hulls.update(); // boards
+    expect(a.onDeck).toBeDefined();
+    expect(a.mover!.onLedge).toBe(true); // perch-as-needed at the boarding door too — movable, not frozen
+    const y0 = a.onDeck!.ly;
+    ships.update(1 / 60);
+    walkDeckIntent(move, a, 0, -100, 30); // walk inboard
+    expect(a.onDeck!.ly).toBeLessThan(y0 - 5); // moves freely; perch clears itself
+  });
+
   it('a walker WEDGED into the rail wood beside the door can walk itself FREE (was: frozen solid)', () => {
     // landed badly: center inside the door LANE (never pushed — the door must not shove people crossing it),
     // body overlapping the flanking rail's wood tip. Pre-fix, the hull veto rejected EVERY step (each target

@@ -192,7 +192,14 @@ export class MovementSystem {
     for (const ship of this.ships) {
       const grid = deckOf(ship.ship!.hull, ShipHulls.get(ship.ship!.hull).deck);
       const local = worldToDeck(ship.transform!, t.x, t.y);
-      if (deckCellAtLocal(grid, local.lx, local.ly)?.tile === 'rail') {
+      // Adopt ONLY into a LEGAL deck state: the perched body must FIT (cleared mask). At a CORNER, a center
+      // inside the rail cell can still hang the body past the hull edge on two sides — adopting that spot is
+      // illegal even perched (off-hull blocks all), every step rejected: the sometimes-frozen corner landing.
+      // Feet over the sea = you didn't make the gunwale; it's a water landing beside the hull instead.
+      if (
+        deckCellAtLocal(grid, local.lx, local.ly)?.tile === 'rail' &&
+        deckCanOccupy(grid, local.lx, local.ly, e.transform!.r, false, true)
+      ) {
         enterDeck(e, ship.id, local.lx, local.ly);
         m.onLedge = true;
         return;
