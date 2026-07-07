@@ -10,7 +10,7 @@ function fists(world: World, ability: string): Entity {
   return world.create({
     transform: { x: 0, y: 0, angle: 0, r: 10 },
     combatant: { stam: 100, maxStam: 100, combo: 0, comboT: 0, posture: 0, maxPosture: 20 },
-    loadout: { granted: new Set([ability]), cd: new Map(), primary: ability, heavy: '', dash: '', slots: [] },
+    loadout: { granted: new Set([ability]), cd: new Map(), cdMax: new Map(), primary: ability, heavy: '', dash: '', slots: [] },
   });
 }
 

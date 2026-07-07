@@ -2,6 +2,7 @@ import type { ContentId } from '../core/Registry';
 import type { Entity } from '../ecs/components';
 import { Accessories, type AccessorySlot } from './accessories';
 import { Fruits, Weapons } from './layers';
+import { Manuals } from './manuals';
 
 /**
  * The unifying ITEM REFERENCE — one typed pointer that lets weapons, devil fruits, and accessories (which
@@ -12,7 +13,7 @@ import { Fruits, Weapons } from './layers';
  *
  * `{ cat, id }` is plain data (ids at rest) → serialization-safe, the canon for cross-registry refs.
  */
-export type ItemCategory = 'weapon' | 'fruit' | 'accessory'; // extensible: 'style' | 'potential' | 'material' …
+export type ItemCategory = 'weapon' | 'fruit' | 'accessory' | 'manual'; // extensible: 'style' | 'potential' | 'material' …
 
 export interface ItemRef {
   cat: ItemCategory;
@@ -32,6 +33,8 @@ export function itemProblem(ref: ItemRef): string | null {
       return Fruits.has(ref.id) ? null : `fruit '${ref.id}' is not in Fruits`;
     case 'accessory':
       return Accessories.has(ref.id) ? null : `accessory '${ref.id}' is not in Accessories`;
+    case 'manual':
+      return Manuals.has(ref.id) ? null : `manual '${ref.id}' is not in Manuals`;
   }
 }
 
@@ -44,6 +47,8 @@ export function itemName(ref: ItemRef): string {
       return Fruits.get(ref.id).name;
     case 'accessory':
       return Accessories.get(ref.id).name;
+    case 'manual':
+      return Manuals.get(ref.id).name;
   }
 }
 
@@ -56,6 +61,10 @@ export function itemSlot(ref: ItemRef): EquipSlot {
       return 'fruit';
     case 'accessory':
       return Accessories.get(ref.id).slot;
+    case 'manual':
+      // a manual is CONSUMED on read (grants an ability), never equipped — so it has no slot. The equip/displace
+      // path (equippedIn/unequipToBag) must never reach here; takePickup routes 'manual' to the learn branch first.
+      throw new Error(`itemSlot: '${ref.id}' is a manual (consumed on read) — it has no equip slot`);
   }
 }
 

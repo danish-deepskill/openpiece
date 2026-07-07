@@ -28,6 +28,10 @@ export interface UnitPlateView {
   /** Guard strain (combat/guard) — an INVERSE pool: the bar FILLS toward the break. Null for non-combatants. */
   posture: number | null;
   maxPosture: number | null;
+  /** BREATH (the underwater clock) — shown only when BELOW max (i.e. actively swimming/diving), so the bar is
+   *  contextual, not permanent clutter. Null for non-combatants / full-breath units. */
+  breath: number | null;
+  maxBreath: number | null;
   /** The six allocatable attributes (combat/attributes.ts), FINAL values incl. modifiers. */
   attributes: Record<AttributeId, number>;
   atk: number;
@@ -63,6 +67,9 @@ export function unitPlateView(e: Entity): UnitPlateView | null {
     maxStam: e.combatant?.maxStam ?? null,
     posture: e.combatant?.posture ?? null,
     maxPosture: e.combatant?.maxPosture ?? null,
+    // breath: only surface it when it's NOT full (actively spent underwater) — the bar is contextual
+    breath: e.combatant && (e.combatant.breath ?? e.combatant.maxBreath ?? 0) < (e.combatant.maxBreath ?? 0) ? (e.combatant.breath ?? null) : null,
+    maxBreath: e.combatant?.maxBreath ?? null,
     attributes,
     atk: sb?.get('atk') ?? 0,
     def: sb?.get('def') ?? 0,

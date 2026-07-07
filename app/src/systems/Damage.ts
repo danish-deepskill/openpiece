@@ -9,14 +9,19 @@ import type { Entity } from '../ecs/components';
  */
 export class Damage {
 
-  apply(target: Entity, dmg: number, kx: number, ky: number, byPlayer = false): boolean {
+  /** `ignoreDef` = TRUE (environmental) damage — drowning, and future fall/poison/lava: it bypasses armor AND the
+   *  dodge i-frame/invuln guard (you can't armor or dodge-roll away from the sea filling your lungs). godMode
+   *  (the debug tag) still ignores everything. */
+  apply(target: Entity, dmg: number, kx: number, ky: number, byPlayer = false, ignoreDef = false): boolean {
     const h = target.health;
     const t = target.transform;
     // 'state.godMode' = the debug invincibility tag (like 'state.invuln' dodge i-frames, but persistent)
-    if (!h || !t || h.dead || h.iframes > 0 || target.tags?.has('state.invuln') || target.tags?.has('state.godMode')) return false;
+    if (!h || !t || h.dead || target.tags?.has('state.godMode')) return false;
+    if (!ignoreDef && (h.iframes > 0 || target.tags?.has('state.invuln'))) return false; // combat hits respect i-frames; TRUE damage doesn't
 
-    // flat damage reduction from the target's `def` attribute (tier/gear-driven); always lands for ≥1
-    const def = target.attributes?.get('def') ?? 0;
+    // flat damage reduction from the target's `def` attribute (tier/gear-driven) — armor resists strikes, NOT
+    // environmental TRUE damage (drowning). Always lands for ≥1.
+    const def = ignoreDef ? 0 : (target.attributes?.get('def') ?? 0);
     dmg = Math.max(1, dmg - def);
     h.hp -= dmg;
     h.hitFlash = 0.12;

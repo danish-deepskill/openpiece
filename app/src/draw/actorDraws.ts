@@ -190,6 +190,21 @@ const GUARD_BLADE_TILT = 1.35;
 const GUARD_HAND_FWD = 0.45;
 
 /**
+/** SURFACE-SWIM hand position (side ±1) — a continuous BREASTSTROKE: both hands reach FORWARD along the aim, then
+ *  sweep OUT to the sides and back, on a loop. Time-driven (wall-clock — presentation only, so idle still strokes,
+ *  a tread). Same signature as restHand/guardHand so it drops into the hand loop as one more case. */
+function swimHand(angle: number, side: number, r: number): [number, number] {
+  const phase = (performance.now() / 900) % 1; // ~0.9s per stroke, steady
+  const s2 = phase * Math.PI * 2;
+  const reach = (0.5 + 0.5 * Math.cos(s2)) * r * 0.9; // forward: far out front → pulled in
+  const spread = (0.4 + 0.4 * Math.sin(phase * Math.PI)) * r; // sideways: narrow on the reach, wide on the out-sweep
+  return [
+    Math.cos(angle) * reach + Math.cos(angle + Math.PI / 2) * side * spread,
+    Math.sin(angle) * reach + Math.sin(angle + Math.PI / 2) * side * spread,
+  ];
+}
+
+/**
  * Shared humanoid actor: a garb-colored torso + shoulder nubs (they twist with swings) under a skin-toned
  * head that stays on the aim, two hands behind the body (one sweeps/lunges on attack), and — if armed —
  * the weapon held in the lead hand. All proportions come from ANATOMY (the shared anchor contract).
@@ -202,9 +217,16 @@ export const drawActor: DrawFn = (g, e) => {
   const a = t.angle;
   const flashing = !!e.health && e.health.hitFlash > 0;
 
-  // contact shadow — sized to the shoulder-wide anatomy, not just the head (stays FLAT — the shadow doesn't roll)
-  g.fillStyle(0x000000, 0.22);
-  g.fillEllipse(0, r * 0.7, r * 2.1, r * 0.95);
+  // contact shadow — DEAD-CENTER under the body (pure top-down: the "sun" is straight overhead, so the shadow
+  // sits directly beneath the feet, not offset down-screen). Sized to the shoulder-wide anatomy; stays FLAT.
+  // JUMP (docs/design/MOVEMENT_AIR.md): the WHOLE graphics is scaled UP while airborne (RenderSystem), so the
+  // shadow is COUNTER-shrunk + faded here — it recedes on the ground as the body rises (the load-bearing height
+  // cue: a growing body + shrinking shadow = "up in the air", not "zooming at the camera"). Grounded ⇒ shrink 1.
+  const mv = e.mover;
+  const air = mv?.layer === 'air' && mv.airDur ? Math.sin(Math.PI * (1 - (mv.airT ?? 0) / mv.airDur)) : 0;
+  const shadowShrink = 1 - 0.55 * air;
+  g.fillStyle(0x000000, 0.22 * (1 - 0.5 * air));
+  g.fillEllipse(0, 0, r * 2.1 * shadowShrink, r * 0.95 * shadowShrink);
 
   // ROLL — a DEDICATED pose, not a squashed standing figure: while a roll is in flight (mover.rollProg) the
   // upright silhouette is REPLACED by a tucked BALL that spins as it travels. Because the drawn shape is already
@@ -215,6 +237,15 @@ export const drawActor: DrawFn = (g, e) => {
   if (rollP !== null) {
     drawRollPose(g, e, rollP);
     drawOverheadBars(g, e); // HP/stamina/posture readout still shows mid-roll
+    return;
+  }
+
+  // SUBMERGED (diving underwater) — a dedicated FULL-body swim pose (breaststroke), distinct from the surface
+  // look. Gated on the SUBMERGED state (real depth), not the early-flipping mode. Surface swimming keeps the
+  // NORMAL body with only the hands stroking (handled below in the hand loop).
+  if (e.mover?.submerged) {
+    drawSwimPose(g, e);
+    drawOverheadBars(g, e);
     return;
   }
 
@@ -240,6 +271,9 @@ export const drawActor: DrawFn = (g, e) => {
   const footLimb = shape?.limb === 'foot';
   const footKick = !!pose && footLimb && m!.motion !== 'stretch';
   const footStretch = !!pose && footLimb && m!.motion === 'stretch';
+  // SURFACE SWIM: swimming (mode is now TRUTHFUL — set from the tile you're actually over, MovementSystem) and
+  // NOT submerged (that's the full pose) and NOT mid-attack → the idle hands breaststroke instead of hanging.
+  const surfaceSwim = e.mover?.mode === 'swim' && !e.mover.submerged && !pose;
   const actSide = pose && !footLimb && shape ? activeSide(m!, shape.jabs ?? 1) : 0; // which HAND throws (flurry alternates)
   // anatomy + garb (clothing color, the second channel chest armor will later cover) — used by the sleeves
   // in the hand loop below AND the torso/shoulder block after it
@@ -304,6 +338,10 @@ export const drawActor: DrawFn = (g, e) => {
       const sp = wDef.grip.spacing ?? r * 0.5;
       hx = leadX + Math.cos(drawA) * sp;
       hy = leadY + Math.sin(drawA) * sp;
+    } else if (surfaceSwim) {
+      // SURFACE SWIM — the body stays NORMAL; only the hands run a continuous BREASTSTROKE (reach forward → sweep
+      // out → recover), even when idle (a tread). Time-driven (presentation wall-clock — draw/ is not the sim).
+      [hx, hy] = swimHand(drawA, side, r);
     } else {
       [hx, hy] = restHand(drawA, side, r);
     }
@@ -407,6 +445,70 @@ export const drawActor: DrawFn = (g, e) => {
  *   1.00  forward again, rising to the feet              θ=2π    along=+1
  * Body: a tucked torso blob, smallest+lowest at mid-roll. Weapon + hat are hidden (tucked in). One cycle = one roll.
  */
+/**
+ * SWIM pose — a top-down BREASTSTROKE: the body bobs gently while both hands run a symmetric cycle in the swim
+ * direction — reach FORWARD together (0.0), sweep OUT to the sides (0.35), pull back toward the body (0.7),
+ * recover forward (1.0). The stroke phase is POSITION-driven (advances as you actually move — a floating,
+ * non-moving swimmer barely strokes), so it needs no sim clock; presentation-only. Head forward on the aim.
+ */
+function drawSwimPose(g: Phaser.GameObjects.Graphics, e: Entity): void {
+  const t = e.transform!;
+  const rd = e.render!;
+  const r = t.r;
+  const flashing = !!e.health && e.health.hitFlash > 0;
+  const garb = flashing ? 0xffffff : rd.garbColor ?? darken(rd.baseColor);
+  const skin = flashing ? 0xffffff : rd.baseColor;
+  const handR = r * HAND_R_FRAC;
+  const A = ANATOMY;
+  const aim = t.angle;
+  const fx = Math.cos(aim);
+  const fy = Math.sin(aim);
+  const px = -Math.sin(aim); // perpendicular (sideways) to the swim direction
+  const py = Math.cos(aim);
+
+  // stroke phase 0..1, driven by distance travelled (a stroke per ~1.4 body-lengths) so it syncs to real motion
+  const phase = (((t.x + t.y) / (r * 1.4)) % 1 + 1) % 1;
+  const s2 = phase * Math.PI * 2;
+  const bob = Math.sin(s2) * r * 0.06; // gentle up-down (top-down: a small scale-free positional bob)
+
+  // BREASTSTROKE hand path (per side): FORWARD reach + SIDE spread cycle. reach = how far ahead the hands are;
+  // spread = how far out to the sides. Reach peaks at phase 0 (arms out front), spread peaks mid-cycle (sweep out).
+  const reach = (0.55 + 0.45 * Math.cos(s2)) * r * 0.95; // 0.1r (pulled in) → 1.0r (reached forward)
+  const spread = (0.35 + 0.35 * Math.sin(phase * Math.PI)) * r; // narrow at the reach, wide at the out-sweep
+
+  g.save();
+  g.translateCanvas(0, bob);
+
+  // body — a compact torso ellipse along the swim axis + a head forward (reuse the anatomy proportions)
+  g.save();
+  g.rotateCanvas(aim);
+  g.fillStyle(garb, 1);
+  g.fillEllipse(0, 0, A.torsoHalfL * r * 2, A.torsoHalfW * r * 2);
+  g.lineStyle(2, OUTLINE, 1);
+  g.strokeEllipse(0, 0, A.torsoHalfL * r * 2, A.torsoHalfW * r * 2);
+  g.restore();
+
+  // hands (both sides, symmetric) — a fist at the stroke point; no sleeve (arms are in the water)
+  for (const side of [1, -1] as const) {
+    const hx = fx * reach + px * side * spread;
+    const hy = fy * reach + py * side * spread;
+    g.fillStyle(skin, 1);
+    g.fillCircle(hx, hy, handR);
+    g.lineStyle(2, OUTLINE, 1);
+    g.strokeCircle(hx, hy, handR);
+  }
+
+  // head — forward along the aim (the swimmer looks where they're going), on top of the body
+  const hcx = fx * A.headR * r * 0.6;
+  const hcy = fy * A.headR * r * 0.6;
+  g.fillStyle(skin, 1);
+  g.fillCircle(hcx, hcy, A.headR * r);
+  g.lineStyle(2, OUTLINE, 1);
+  g.strokeCircle(hcx, hcy, A.headR * r);
+
+  g.restore();
+}
+
 function drawRollPose(g: Phaser.GameObjects.Graphics, e: Entity, prog: number): void {
   const t = e.transform!;
   const rd = e.render!;
@@ -569,6 +671,19 @@ export const drawPickup: DrawFn = (g, e) => {
       g.fillStyle(0x6b4a2a, 1);
       g.fillCircle(-r, r * 0.7, 3);
     }
+  } else if (cat === 'manual') {
+    // a technique BOOK — a small closed tome (a brown cover + a pages edge + a spine line), distinct from the
+    // fruit orb so a skill book never reads as a Devil Fruit even sitting right beside one.
+    const bw = r * 1.1; // half-width
+    const bh = r * 0.85; // half-height
+    g.fillStyle(0x6b4a2a, 1); // cover (tome brown)
+    g.fillRect(-bw, -bh, bw * 2, bh * 2);
+    g.lineStyle(2, OUTLINE, 0.95);
+    g.strokeRect(-bw, -bh, bw * 2, bh * 2);
+    g.fillStyle(0xe8dcc0, 1); // page block along the fore-edge (right side)
+    g.fillRect(bw - r * 0.28, -bh + 2, r * 0.28, bh * 2 - 4);
+    g.lineStyle(2, 0x3a2a18, 0.9); // spine line (left)
+    g.lineBetween(-bw + r * 0.28, -bh + 2, -bw + r * 0.28, bh - 2);
   } else {
     // fruit (and any category without its own sprite): the collectible orb. Sprite-backed items (accessories
     // with art) never reach here — they render their own texture via Render.sprite (see Spawner.spawnPickup).
@@ -619,8 +734,8 @@ function drawQuadruped(g: Phaser.GameObjects.Graphics, e: Parameters<DrawFn>[1],
     }
   }
 
-  g.fillStyle(0x000000, 0.2); // contact shadow (unrotated)
-  g.fillEllipse(0, r * 0.5, r * 2.4, r * 1.1);
+  g.fillStyle(0x000000, 0.2); // contact shadow — DEAD-CENTER (pure top-down, matching the humanoid shadow)
+  g.fillEllipse(0, 0, r * 2.4, r * 1.1);
   g.save();
   g.rotateCanvas(drawAng); // +x now points where the animal faces (or where it's GORING, mid-swing)
   // legs: four hoof nubs at the body corners

@@ -64,6 +64,7 @@ export class ShipSystem {
   board(e: Entity, ship: Entity): void {
     const hull = ShipHulls.get(ship.ship!.hull);
     e.riding = { shipId: ship.id, seat: 0 }; // the pilot at the helm
+    if (e.mover) { e.mover.mode = 'foot'; e.mover.submerged = false; } // aboard the deck — clear any swim/dive state (you climbed OUT of the water)
     ship.ship!.anchored = false;
     let seat = 1;
     let leftBehind = 0;

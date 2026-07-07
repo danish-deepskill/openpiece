@@ -60,4 +60,14 @@ describe('BodyCollisionSystem', () => {
     sysFor(world).update();
     expect(alive.transform!.x).toBe(300); // no push against a dead body
   });
+
+  it('an AIRBORNE actor jumps OVER units — neither pushes nor is pushed (docs/design/MOVEMENT_AIR.md)', () => {
+    const world = new World();
+    const jumper = body(world, 300, 300, 1);
+    jumper.mover!.layer = 'air'; // mid-jump, overlapping a grounded unit
+    const grounded = body(world, 305, 300, 1); // 5px apart → deep overlap
+    sysFor(world).update();
+    expect(jumper.transform!.x).toBe(300); // the jumper is NOT shoved (it's above the crowd)…
+    expect(grounded.transform!.x).toBe(305); // …and it does NOT shove the grounded unit either
+  });
 });

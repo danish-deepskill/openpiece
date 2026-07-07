@@ -85,6 +85,19 @@ export interface AbilityDef extends Def {
   /** Play the ROLL animation (ball-up + 360° spin, drawActor) for the impulse's duration. A ground roll opts in;
    *  a flash-step / dash leaves it off (it blinks, it doesn't tumble). Presentation-only signal, sim-set. */
   roll?: boolean;
+  /** JUMP: enter the AIR layer for this many seconds (docs/design/MOVEMENT_AIR.md). AbilitySystem sets the
+   *  mover to layer:'air' + airT; MovementSystem lands it. Geppo later = the same field + airKicks (re-launch
+   *  mid-air). Combines freely with selfImpulse (a jump that also carries forward). */
+  jump?: number;
+  /** GEPPO (docs/design/MOVEMENT_AIR.md): a TOGGLE-hover — activating flips the mover's `hovering` on/off. While
+   *  on, MovementSystem keeps the actor airborne (kicking off the air), spends `costStam` per KICK (each bob),
+   *  and auto-lands when the next kick is unaffordable. Distinct from `jump` (a one-shot hop). */
+  geppo?: boolean;
+  /** ANTI-AIR (docs/design/MOVEMENT_AIR.md): chance (0..1) this attack CATCHES a jumper — the exception to the
+   *  100%-jump-dodge. `1` = a hard anti-air (always catches a launcher/upward slash); `0.5` = a gamble; unset/0 =
+   *  a normal ground attack (fully dodged by a jump). The counterplay to jump-spam — and the ONE place a jump-vs-
+   *  attack outcome can be random, on the specific counter-move, not baseline melee. */
+  airCatch?: number;
   launchAt?: number; // with a stretch shape: fire `selfImpulse` at this fraction of the swing (grab → THEN rocket)
   grantEffect?: ContentId; // self-effect on use (e.g. i-frames)
   requireTags?: string[];
@@ -105,6 +118,7 @@ export const Abilities = new Registry<AbilityDef>('Abilities', (a) => {
   if (a.cooldown < 0) return 'cooldown must be ≥ 0';
   if ((a.costStam ?? 0) < 0) return 'costStam must be ≥ 0';
   if (a.shape && a.shape.range < 0) return 'shape.range must be ≥ 0';
+  if (a.airCatch !== undefined && (a.airCatch < 0 || a.airCatch > 1)) return `airCatch must be in [0, 1] (got ${a.airCatch})`;
   const ph = a.shape?.phases;
   if (ph) {
     if (ph.windup < 0 || ph.recover < 0 || !(ph.active > 0)) return 'phases: windup/recover ≥ 0 and active > 0 (an attack with no active phase can never hit)';
@@ -139,6 +153,16 @@ Abilities.registerAll([
   // fills the loadout `dash` slot; future mobility abilities (flashDash, geppo, soru, air-dash…) are sibling
   // rows that fill the SAME slot — each with its own stats + animation, none of them the generic slot itself.
   { id: 'ability.roll', name: 'Roll', cooldown: 2, costStam: 6, selfImpulse: 360, impulseDur: 0.38, roll: true },
+  // JUMP — the base-kit air verb (SPACE): a hop into the AIR layer (docs/design/MOVEMENT_AIR.md). While aloft,
+  // collision clears foot-blocked terrain (jump over water/low walls) AND it FULLY dodges ground attacks
+  // (StrikeResolver) — except anti-air moves (AbilityDef.airCatch). Because it's an EVASIVE tool now, it's COSTLY
+  // (20 stam / 1s cd) so it can't be spammed, and PUNISHABLE on landing (a recovery stun — MovementSystem).
+  { id: 'ability.jump', name: 'Jump', cooldown: 1, costStam: 20, jump: 0.55 },
+  // GEPPO — the Rokushiki "Moon Walk" (LEARNED from manual.geppo). A TOGGLE-hover on SPACE (replaces jump once
+  // learned): tap on → stay airborne, kicking off the air (the jump bob loops + cloud puffs); tap off → land.
+  // `costStam` is the per-KICK cost (each bob) — MovementSystem auto-lands when a kick is unaffordable, so hover
+  // is stamina-bounded (no infinite flight). Airborne → keeps the 100% ground-dodge + terrain/unit pass-over.
+  { id: 'ability.geppo', name: 'Geppo', cooldown: 0, costStam: 0, geppo: true }, // cooldown 0: a TOGGLE must re-activate freely (off must not be blocked by on's cd); space is edge-tapped so no double-fire
   // SPRINT — a sustained movement capability (hold SHIFT / AI charge), NOT a discrete cast: no shape, no
   // cooldown. It's a granted ability so "can this unit sprint" = "is it in its loadout" (the Moat), the same
   // question as any capability; the per-second drain + speed boost are applied by combat/stamina.trySprint.

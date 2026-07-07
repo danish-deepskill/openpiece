@@ -2,6 +2,7 @@ import { equipItem, unequipToBag } from '../combat/equip';
 import { events } from '../core/EventBus';
 import { dist2 } from '../core/math';
 import { itemName } from '../defs/items';
+import { Manuals } from '../defs/manuals';
 import { ShipHulls } from '../defs/ships';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
@@ -40,6 +41,16 @@ export interface VerbDef {
  */
 function takePickup(actor: Entity, target: Entity | undefined, ctx: VerbCtx): void {
   const ref = target!.pickup!.item;
+  // MANUAL (a skill book): READ it → grant the taught ability, then consume. NOT an equip (no slot, no displace,
+  // no bag) — so it routes here BEFORE the equip path (which would throw on a manual's absent slot). The Moat:
+  // any actor that reads it learns the technique; the grant lands in its loadout like any capability.
+  if (ref.cat === 'manual') {
+    const m = Manuals.get(ref.id);
+    actor.loadout?.granted.add(m.teaches);
+    events.emit('notify', { msg: `Learned ${m.name.replace(/ Manual$/, '')}!` });
+    ctx.world.destroy(target!);
+    return;
+  }
   const bag = (actor.inventory ??= { items: [] }); // any actor can own a bag (the Moat)
   const displaced = unequipToBag(actor, ref); // vacate the target slot; returns the old occupant (or undefined)
   if (displaced) bag.items.push(displaced); // the swapped-out item drops into the bag
@@ -69,7 +80,10 @@ export const Verbs: VerbDef[] = [
   {
     id: 'verb.take',
     reach: 20,
-    label: (_a, t) => `${t!.pickup!.item.cat === 'fruit' ? 'Eat' : 'Take'} ${itemName(t!.pickup!.item)}`,
+    label: (_a, t) => {
+      const cat = t!.pickup!.item.cat;
+      return `${cat === 'fruit' ? 'Eat' : cat === 'manual' ? 'Read' : 'Take'} ${itemName(t!.pickup!.item)}`;
+    },
     can: (a, t) => !a.riding && !!t?.pickup,
     run: takePickup,
   },

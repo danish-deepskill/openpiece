@@ -52,6 +52,11 @@ describe('combo chain — press, press, press: three swings, then the lockout', 
 
     expect(e.loadout!.chain).toBeUndefined(); // chain consumed
     expect(e.loadout!.cd.get(root)).toBeGreaterThan(2); // the ROOT carries the finisher's cooldown — the post-combo recovery
+    // cdMax mirrors the DURATION actually set (the finisher's cd, atkSpeed-scaled), NOT slash1's base 0.85 — this
+    // is what the HUD fill divides by, so the amber fills over the WHOLE post-combo recovery (the bug: dividing by
+    // 0.85 clamped the fill to empty for the first ~1.5s, so it only appeared in the last moment).
+    expect(e.loadout!.cdMax.get(root)).toBe(e.loadout!.cd.get(root)); // at t=0 remaining == duration
+    expect(e.loadout!.cdMax.get(root)).toBeGreaterThan(2); // = the finisher's recovery, well above slash1's 0.85 base
     expect(abilities.activate(e, root)).toBe(false); // locked out until it elapses
   });
 

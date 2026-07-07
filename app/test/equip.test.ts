@@ -13,6 +13,7 @@ function makeFighter(): Entity {
     loadout: {
       granted: new Set(['ability.punch', 'ability.roll']),
       cd: new Map(),
+      cdMax: new Map(),
       primary: 'ability.punch',
       heavy: 'ability.kick',
       dash: 'ability.roll',

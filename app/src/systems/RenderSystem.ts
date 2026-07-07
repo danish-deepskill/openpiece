@@ -1,12 +1,24 @@
 import type Phaser from 'phaser';
-import { Tile } from '../config/constants';
+import { GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, Tile } from '../config/constants';
 import { draws, type DrawFn } from '../draw/actorDraws';
 import { drawShip } from '../draw/shipDraws';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { TileGrid } from '../world/TileGrid';
 
-const WADE_ALPHA = 0.5; // a foot unit standing in shallow water renders partly submerged
+const WADE_ALPHA = 0.5; // partly submerged — shared by a shallow wade AND surface swimming (same look at the surface)
+const SUBMERGED_ALPHA = 0.15; // fully UNDERWATER (dived / sunk) — barely visible below the surface
+
+/** JUMP height fake (docs/design/MOVEMENT_AIR.md): peak scale-up of an airborne actor (bigger = higher). */
+const JUMP_SCALE = 0.45;
+/** SUBMERGE fake: scale-DOWN of a fully-underwater actor (smaller = deeper/below) — the inverse of the jump. A
+ *  gentle dip (→ 0.8×), enough to read as "sunk under" without shrinking to a dot. */
+const SUBMERGE_SCALE = 0.2;
+/** Peak translucency at the top of a jump (0 = opaque, 0.3 = 30% see-through) — a secondary "airborne" cue. */
+const JUMP_FADE = 0.3;
+/** Depth bias added to an airborne actor so it draws ABOVE grounded ones (it's nearer the camera). Large enough
+ *  to clear any y-sort gap; airborne actors still sort among themselves by their own y. */
+const AIR_DEPTH_LIFT = 100000;
 
 const GOD_AURA_COLOR = 0xffe66e; // warm gold — reads as "divine/charged", distinct from the green HP / blue stamina bars
 
@@ -62,9 +74,15 @@ export class RenderSystem {
       seen.add(e.id);
       const t = e.transform;
       const rd = e.render;
-      // wading in the shallows → partly submerged (foot units only; ships/pickups don't wade)
-      // riders are pinned to the deck — they don't wade even when the SHIP crosses shallows
-      let alpha = e.mover?.mode === 'foot' && !e.riding && this.grid.tileAtPx(t.x, t.y) === Tile.ShallowWater ? WADE_ALPHA : 1;
+      // SUBMERSION fade: a SWIMMER reads mostly-submerged (the swim STATE, not the tile — mode is the truth);
+      // a foot unit wading the shallows reads partly submerged. Riders (pinned to a deck) never submerge.
+      let alpha = 1;
+      if (!e.riding && e.mover) {
+        // SUBMERGED (dived under) reads faint; SURFACE swim (deep OR shallow) reads the SAME as a shallow wade —
+        // you're at the top of the water either way, so deep swimming shouldn't look more see-through than wading.
+        if (e.mover.submerged) alpha = SUBMERGED_ALPHA;
+        else if (e.mover.mode === 'swim' || (e.mover.mode === 'foot' && this.grid.tileAtPx(t.x, t.y) === Tile.ShallowWater)) alpha = WADE_ALPHA;
+      }
       // brief invulnerability blink, composed on top of the wade fade
       if (e.health && e.health.iframes > 0 && Math.floor(now / 50) % 2 === 0) alpha *= 0.5;
       this.alphaById.set(e.id, alpha);
@@ -89,8 +107,37 @@ export class RenderSystem {
       }
       gfx.setPosition(t.x, t.y);
       gfx.setRotation(rd.rotateToAngle ? t.angle : 0);
-      gfx.setDepth(depth);
-      gfx.setAlpha(alpha);
+      // JUMP height fake (docs/design/MOVEMENT_AIR.md): while airborne, scale the WHOLE actor UP on a sine arc
+      // (bigger = higher = nearer the camera) — the shadow is shrunk separately inside drawActor. Grounded → 1.
+      // A big depth bias lifts airborne actors above grounded ones (they still y-sort among themselves).
+      // GEPPO hover: a HELD altitude with a small repeated bob per air-kick — a high base scale + a `hoverT`-phased
+      // wobble (reads as "floating, kicking off the air"), instead of the single rise-and-fall of a one-shot jump.
+      const mv = e.mover;
+      let air = 0;
+      if (mv && (mv.fallT ?? 0) > 0 && mv.fallDur) {
+        // GEPPO FALL: descend from the hover height → 0 over the fall window (ease-in, so it accelerates down like
+        // a real drop) — this is what stops the landing from snapping instantly to the ground.
+        const p = 1 - (mv.fallT ?? 0) / mv.fallDur; // 0 → 1 across the fall
+        air = (mv.fallFrom ?? GEPPO_HOVER_HEIGHT) * (1 - p * p); // ease-in descent to 0
+      } else if (mv?.layer === 'air') {
+        if (mv.hovering) {
+          // GEPPO: the FIRST kick is a JUMP LAUNCH — ease UP from the ground (0 → hover height) over the first
+          // GEPPO_KICK_INTERVAL, so he kicks off the floor instead of snapping straight to hover altitude. AFTER
+          // that first kick, settle into the held-high bob (a small wobble around 0.7 per subsequent air-kick).
+          const elapsed = mv.hoverElapsed ?? 0;
+          const bob = 0.7 + 0.3 * Math.sin((Math.PI * 2 * (mv.hoverT ?? 0)) / GEPPO_KICK_INTERVAL);
+          air = elapsed < GEPPO_KICK_INTERVAL
+            ? bob * Math.sin((Math.PI / 2) * (elapsed / GEPPO_KICK_INTERVAL)) // launch ramp: 0 → the bob height
+            : bob; // settled hover
+        } else if (mv.airDur) air = Math.sin(Math.PI * (1 - (mv.airT ?? 0) / mv.airDur)); // a one-shot jump's rise-and-fall
+      }
+      // SUBMERGE — the inverse of the jump: sinking UNDER the water reads as scaling DOWN (farther from the
+      // overhead camera / below the surface), the mirror of a jump's scale-UP. ONLY a full dive shrinks; a
+      // SURFACE swim stays normal size (you're at the top of the water, not under it). Mutually exclusive with air.
+      const sink = mv?.submerged ? 1 : 0; // fully submerged shrinks; surface swim = normal size
+      gfx.setScale(1 + JUMP_SCALE * air - SUBMERGE_SCALE * sink);
+      gfx.setDepth(air > 0 ? depth + AIR_DEPTH_LIFT : depth);
+      gfx.setAlpha(alpha * (1 - JUMP_FADE * air)); // slight translucency at the peak — an extra "up off the ground" cue
       gfx.clear();
       // GOD-MODE AURA (debug tell): a pulsing golden glow UNDER the body so you can SEE the tag is live. Purely
       // presentational — reads the same 'state.godMode' tag the sim gates on, so it follows possession (the

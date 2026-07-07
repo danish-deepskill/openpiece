@@ -229,6 +229,7 @@ export function generateLevel(rng: Rng): LevelLayout {
     { item: { cat: 'weapon', id: 'weapon.sword' }, x: cutlassHouse.x - 22, y: cutlassHouse.y }, // the 2H combo blade, left of the cutlass
     { item: { cat: 'accessory', id: 'accessory.strawHat' }, x: cutlassHouse.x + 22, y: cutlassHouse.y }, // beside the cutlass
     { item: { cat: 'fruit', id: 'fruit.gomu' }, ...inside(houses[2]) },
+    { item: { cat: 'manual', id: 'manual.geppo' }, x: inside(houses[2]).x + 24, y: inside(houses[2]).y }, // the Geppo book, beside the Gomu fruit — Read (E) to learn the hover
   ];
 
   // enemy-isle stone ring (the assault funnels through its gaps) — placed on the enemy island's grass

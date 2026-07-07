@@ -20,7 +20,7 @@ interface Keys {
   J: Phaser.Input.Keyboard.Key; K: Phaser.Input.Keyboard.Key; L: Phaser.Input.Keyboard.Key; U: Phaser.Input.Keyboard.Key; I: Phaser.Input.Keyboard.Key; R: Phaser.Input.Keyboard.Key;
   Q: Phaser.Input.Keyboard.Key; F: Phaser.Input.Keyboard.Key; E: Phaser.Input.Keyboard.Key; G: Phaser.Input.Keyboard.Key;
   C: Phaser.Input.Keyboard.Key; B: Phaser.Input.Keyboard.Key; T: Phaser.Input.Keyboard.Key; SHIFT: Phaser.Input.Keyboard.Key;
-  ALT: Phaser.Input.Keyboard.Key; Y: Phaser.Input.Keyboard.Key; N: Phaser.Input.Keyboard.Key;
+  ALT: Phaser.Input.Keyboard.Key; Y: Phaser.Input.Keyboard.Key; N: Phaser.Input.Keyboard.Key; SPACE: Phaser.Input.Keyboard.Key;
   ONE: Phaser.Input.Keyboard.Key; TWO: Phaser.Input.Keyboard.Key; THREE: Phaser.Input.Keyboard.Key; // ability slots — number row, in left-hand reach of WASD
   UP: Phaser.Input.Keyboard.Key; DOWN: Phaser.Input.Keyboard.Key; LEFT: Phaser.Input.Keyboard.Key; RIGHT: Phaser.Input.Keyboard.Key;
 }
@@ -37,7 +37,7 @@ const AUTO_AIM_RANGE = 700;
  * Drives whichever entity holds the `control` tag. Movement sets `mover` intent; combat keys activate the
  * entity's loadout abilities through the AbilitySystem (so the four-layer build decides what each key does).
  */
-type TapKey = 'E' | 'T' | 'Q' | 'C' | 'R' | 'G' | 'F' | 'ALT' | 'Y' | 'N';
+type TapKey = 'E' | 'T' | 'Q' | 'C' | 'R' | 'G' | 'F' | 'ALT' | 'Y' | 'N' | 'SPACE';
 
 export class InputSystem {
   private readonly keys: Keys;
@@ -66,7 +66,7 @@ export class InputSystem {
     private readonly inspect: InspectSystem,
   ) {
     this.keys = scene.input.keyboard!.addKeys(
-      'W,A,S,D,J,K,L,U,I,Q,F,E,G,C,B,R,T,SHIFT,ALT,Y,N,ONE,TWO,THREE,UP,DOWN,LEFT,RIGHT',
+      'W,A,S,D,J,K,L,U,I,Q,F,E,G,C,B,R,T,SHIFT,ALT,Y,N,SPACE,ONE,TWO,THREE,UP,DOWN,LEFT,RIGHT',
     ) as unknown as Keys;
     scene.input.mouse?.disableContextMenu();
     // MOUSELOOK: accumulate the raw pointer-lock delta from the actual pointermove EVENT — it fires only on
@@ -94,7 +94,7 @@ export class InputSystem {
    *  accumulated from the pointermove EVENT in the ctor, not polled here — a poll of the stale movementX kept
    *  spinning the view after a mouse lift.) */
   sample(): void {
-    for (const k of ['E', 'T', 'Q', 'C', 'R', 'G', 'F', 'ALT', 'Y', 'N'] as const) {
+    for (const k of ['E', 'T', 'Q', 'C', 'R', 'G', 'F', 'ALT', 'Y', 'N', 'SPACE'] as const) {
       if (Phaser.Input.Keyboard.JustDown(this.keys[k])) this.tapped.add(k);
     }
   }
@@ -221,6 +221,14 @@ export class InputSystem {
 
     // abilities (the loadout decides what each key does)
     if (this.tap('Q') && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.dash);
+    // SPACE — contextual vertical action:
+    //   SWIMMING → toggle DIVE (submerge/surface); you can't jump/Geppo out of the sea, so space dives instead.
+    //   otherwise → GEPPO (toggle-hover) once LEARNED, else the plain JUMP. activate() no-ops if ungranted/on cd.
+    if (this.tap('SPACE')) {
+      if (e.mover?.mode === 'swim') e.mover.submerged = !e.mover.submerged; // dive / surface toggle
+      else this.abilities.activate(e, e.loadout.granted.has('ability.geppo') ? 'ability.geppo' : 'ability.jump');
+    }
+
     const lmb = ptr.leftButtonDown() && !this.inspect.modifierHeld; // V+click = inspect pick, never a swing
     if ((lmb || this.down('J')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.primary); // light: LMB / J
     if ((ptr.rightButtonDown() || this.down('K')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.heavy); // heavy: RMB / K

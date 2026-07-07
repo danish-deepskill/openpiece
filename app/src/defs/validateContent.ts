@@ -5,6 +5,7 @@ import { Registry, type ContentId } from '../core/Registry';
 import { Accessories } from './accessories';
 import { AIProfiles } from './aiProfiles';
 import { Fruits, Styles, Weapons } from './layers';
+import { Manuals } from './manuals';
 import { Traits } from './traits';
 import { BASE_KIT, Units } from './units';
 // side-effect imports: these families have no cross-ref fields pulled in above, so without these lines
@@ -88,6 +89,8 @@ export function validateAllContent(): void {
     for (const s of f.slots) check(f.id, 'slots', s, Abilities);
   }
   for (const s of Styles.all()) check(s.id, 'dash', s.dash, Abilities);
+  // a manual (skill book) must teach a REGISTERED ability (a typo'd `teaches` would grant a dead id on read)
+  for (const m of Manuals.all()) check(m.id, 'teaches', m.teaches, Abilities);
   // engine-referenced well-known ids (the DefOf idiom): code holds these strings, so the sweep guards them
   check('BASE_KIT', 'primary', BASE_KIT.primary, Abilities);
   check('BASE_KIT', 'heavy', BASE_KIT.heavy, Abilities);

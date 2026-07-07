@@ -51,6 +51,17 @@ export const BOAT_SPEED = 225;
 /** Terrain modifiers: a unit's move speed on that ground, as a fraction of normal (see TileGrid.speedMul). */
 export const SHALLOW_MOVE_MULT = 0.5; // wading coastal shallows
 export const SAND_MOVE_MULT = 0.75; // trudging across sand/desert — heavier going than grass
+export const SWIM_MOVE_MULT = 0.5; // swimming deep water — SAME pace as a shallow wade (no speed change across the water)
+/** Surface swimming drains stamina at this rate (per sec) — swimming is exertion, like sprint/Geppo. */
+export const SWIM_STAM_DRAIN = 12;
+/** BREATH pool (the underwater clock) + its drain per sec while SUBMERGED. Empty breath = drowning. */
+export const MAX_BREATH = 100;
+export const BREATH_DRAIN = 20; // ~5s underwater before drowning starts
+export const BREATH_REFILL = 40; // breath recovers fast once you surface / reach land
+/** Drowning: a DISCRETE hit of this much health, applied once every DROWN_INTERVAL while submerged with no
+ *  breath — a clean chunked deduction (one "−N" popup), not a per-frame fractional slide. */
+export const DROWN_DAMAGE = 12;
+export const DROWN_INTERVAL = 1; // seconds between drown ticks (1 hit/sec)
 
 /** Stamina regen pauses this long after ANY spend (attack/ability/sprint), then resumes — so it never refills mid-fight. */
 export const STAM_REGEN_DELAY = 1.0;
@@ -76,6 +87,22 @@ export const PARRY_KNOCKBACK_MULT = 0.35;
 /** Hitstun: while stunned, movement scales to this (a stagger, not a full freeze); attacks are blocked entirely. */
 export const STUN_SLOW = 0.45;
 
+/** Landing recovery (s) after a JUMP — a brief stun that makes the jump-dodge PUNISHABLE (an enemy who waited
+ *  out your hop catches you landing). docs/design/MOVEMENT_AIR.md. */
+export const JUMP_LAND_STUN = 0.35;
+
+/** GEPPO hover (docs/design/MOVEMENT_AIR.md): one air-KICK every this-many seconds (the bob cadence) — a longer,
+ *  floatier beat than a ground hop (each kick is a sustained air-jump, ~2× a normal jump's feel). */
+export const GEPPO_KICK_INTERVAL = 0.8;
+/** …costing this much stamina — so hover is stamina-bounded (auto-lands when a kick is unaffordable). */
+export const GEPPO_KICK_STAM = 8;
+/** The held hover altitude (air-scale) — the height a Geppo fall descends FROM (presentation). */
+export const GEPPO_HOVER_HEIGHT = 0.7;
+/** Move-speed multiplier while HOVERING with Geppo — skating through the air is faster than a ground walk. */
+export const GEPPO_MOVE_MULT = 1.5;
+/** Descent time (s) when a Geppo hover ENDS — the fall arc, so landing isn't an instant snap to the ground. */
+export const GEPPO_FALL_DUR = 0.3;
+
 /** Follow-camera zoom — higher = closer (moomoo.io-style). 1.0 showed too much world. */
 export const CAMERA_ZOOM = 2;
 
@@ -91,7 +118,7 @@ export const FX_COLOR = {
 
 /** HUD view-model shapes shared by the WorldScene writer and HudScene reader (one type, both ends). */
 export interface MinimapDot { x: number; y: number; c: number; r: number }
-export interface AbilityBarEntry { key: string; id: string; cd: number }
+export interface AbilityBarEntry { key: string; id: string; cd: number; cdMax: number }
 
 /** Registry keys the WorldScene publishes and the HudScene reads. */
 export const RegKey = {

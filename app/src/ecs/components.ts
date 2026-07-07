@@ -9,7 +9,12 @@ import type { ContentId } from '../core/Registry';
 import type { AIProfileDef } from '../defs/aiProfiles';
 import type { Waypoint } from '../world/Pathfinder';
 
-export type MoveMode = 'foot' | 'boat';
+export type MoveMode = 'foot' | 'boat' | 'swim';
+
+/** Vertical DOMAIN — a discrete two-layer state (design: docs/design/MOVEMENT_AIR.md), the peer of MoveMode.
+ *  'ground' (default) obeys foot collision; 'air' clears foot-blocked terrain (jump over water/walls) and is the
+ *  domain aerial combat filters on. Deliberately NOT a continuous height — the arc is faked in presentation. */
+export type Layer = 'ground' | 'air';
 
 export interface Transform {
   x: number;
@@ -33,6 +38,33 @@ export interface Mover {
    *  Sim-set + serializable (presentation READS it, never writes). Absent/0 ⇒ not rolling. */
   rollT?: number;
   rollDur?: number;
+  /** VERTICAL LAYER (docs/design/MOVEMENT_AIR.md): 'ground' (default/undefined) or 'air' while a jump is aloft.
+   *  Read by collision (air clears foot-blocked terrain) + later by combat targeting (layer-match). */
+  layer?: Layer;
+  /** Airborne time remaining (s) — MovementSystem ticks it down; hits 0 → land (layer back to 'ground'). The
+   *  presentation scale+shadow arc eases over this window (airDur holds the total for the draw's progress). */
+  airT?: number;
+  airDur?: number;
+  /** GEPPO hover (docs/design/MOVEMENT_AIR.md): while true, the actor STAYS airborne (kicking off the air) —
+   *  MovementSystem refreshes airT each tick so it never lands on its own, spends stamina per KICK (each bob),
+   *  and auto-clears (lands) when it can't afford the next kick. Toggled by ability.geppo. */
+  hovering?: boolean;
+  /** SUBMERGED (docs/design/MOVEMENT_AIR.md): underwater — only meaningful while mode==='swim'. Entered by
+   *  SINKING (surface swim ran out of stamina) or a deliberate DIVE toggle. While submerged, BREATH drains
+   *  (not stamina) and empty breath drowns you. Cleared on surfacing (stamina recovers / reaching land). */
+  submerged?: boolean;
+  /** Hover-bob phase (s) — accumulates while hovering to drive the repeated jump bob + a stamina kick + a cloud
+   *  puff once per cycle. Presentation reads it for the bob; the sim uses the cycle edge for the kick cost. */
+  hoverT?: number;
+  /** Total time hovering (s) since toggle-on — lets the presentation play a JUMP LAUNCH (rise from the ground)
+   *  over the FIRST kick, THEN settle into the held hover bob, instead of snapping straight to hover height. */
+  hoverElapsed?: number;
+  /** GEPPO FALL: when a hover ENDS (toggle off / out of stamina), a short DESCENT window (s) instead of an
+   *  instant snap to the ground. The presentation eases the scale down from `fallFrom` → 0 over it; the actual
+   *  land (+ landing stun) fires when it reaches 0. fallDur holds the total for the draw's progress. */
+  fallT?: number;
+  fallDur?: number;
+  fallFrom?: number; // the air-scale height the fall STARTS from (the hover altitude at the moment it ended)
 }
 
 export interface Health {
@@ -204,6 +236,13 @@ export interface Combatant {
   //                    flip read as inconsistent); this holds the last pick so the next flips to the other
   regenT?: number; // stamina-regen delay remaining (s): set on every spend, ticks down; regen only at 0
   stunT?: number; // hitstun remaining (s): while > 0 the unit can't attack and moves slowed (a stagger)
+  /** BREATH (0 → maxBreath) — the UNDERWATER clock (docs/design/MOVEMENT_AIR.md), distinct from stamina: surface
+   *  swimming spends STAMINA, but going SUBMERGED holds your breath and drains THIS. Empty breath while under =
+   *  drowning (health damage). Refills at the surface / on land. The load-bearing resource for future underwater
+   *  combat + a dive mode. Absent ⇒ full (lazy-seeded on first submerge). */
+  breath?: number;
+  maxBreath?: number;
+  drownT?: number; // countdown to the next DROWN tick (s) — so drowning deducts in clean per-second chunks, not a per-frame slide
 }
 
 /**
@@ -259,6 +298,11 @@ export interface Inventory {
 export interface Loadout {
   granted: Set<ContentId>;
   cd: Map<ContentId, number>;
+  /** The DURATION each active cooldown was set to (parallel to `cd`, which holds the REMAINING time). The HUD
+   *  fill needs the original duration to compute progress — and it can't derive it from the ability's base
+   *  `def.cooldown` because (a) it's scaled by atkSpeed and (b) a combo root is locked for the FINISHER's cd,
+   *  not its own. Written wherever cd is set; read only for the fill fraction (1 − cd/cdMax). */
+  cdMax: Map<ContentId, number>;
   primary: ContentId; // J / left-click — light attack
   heavy: ContentId; // right-click — heavy attack (base kit: a kick)
   dash: ContentId; // Shift

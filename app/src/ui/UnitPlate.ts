@@ -58,6 +58,9 @@ export class UnitPlate {
     if (v.stam !== null && v.maxStam !== null) this.bar(g, this.x + 12, this.y + 48, this.w - 114, 6, v.stam, v.maxStam, 0x5ea0d8);
     // posture is an INVERSE bar: it FILLS amber toward the guard break (empty = composed) — combat/guard
     if (v.posture !== null && v.maxPosture !== null && v.maxPosture > 0) this.bar(g, this.x + 12, this.y + 57, this.w - 114, 3, v.posture, v.maxPosture, 0xe8a33d);
+    // BREATH — a CONTEXTUAL bar (only present when underwater): a cyan air-gauge that empties as you hold your
+    // breath (drowning at 0). Slots just under the posture line so it never displaces the permanent bars.
+    if (v.breath !== null && v.maxBreath !== null && v.maxBreath > 0) this.bar(g, this.x + 12, this.y + 62, this.w - 114, 4, v.breath, v.maxBreath, 0x3fd4e8);
 
     this.name.setText(v.name);
     this.tier.setText(v.tier).setColor(v.tierColor).setPosition(this.name.x + this.name.width + 8, this.tier.y);

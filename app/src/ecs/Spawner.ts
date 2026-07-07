@@ -95,7 +95,7 @@ export class Spawner {
     const canDash = ti >= tierIndex(DASH_MIN_TIER);
     // the primary starts as the base-kit fist; a STYLE (giveStyle) then a WEAPON (giveWeapon) override it
     // below in precedence order. No per-unit attack field — the attack comes from an equipped layer.
-    const granted = new Set<string>([BASE_KIT.primary]);
+    const granted = new Set<string>([BASE_KIT.primary, 'ability.jump']); // jump = a fundamental movement verb (SPACE), granted to all (like guard); AI just won't call it until it has jump logic
     if (canDash) granted.add('ability.roll');
     // guard is a FUNDAMENTAL verb (COMBAT.md): every real fighter is granted block/parry, so "can this unit
     // guard" = "is it in its loadout" (the Moat — same question as any ability). Non-fighters opt out via noGuard.
@@ -108,7 +108,7 @@ export class Spawner {
       combatant: defaultCombatant(maxStam, Math.round(attributes.get('maxPosture'))),
       attributes,
       tags: new TagSet(),
-      loadout: { granted, cd: new Map(), primary: BASE_KIT.primary, heavy: '', dash: canDash ? 'ability.roll' : '', slots: [] },
+      loadout: { granted, cd: new Map(), cdMax: new Map(), primary: BASE_KIT.primary, heavy: '', dash: canDash ? 'ability.roll' : '', slots: [] },
       effects: { active: [], seq: 0 }, // EVERY actor can carry effects (dodge i-frames…) — the Moat, not hero-only
       ai: { brain: actorBrain, bb: { state: 'wander', home: { x, y }, wanderT: this.rng.range(0, 2), boss: !!u.boss, profile, canSprint, betrayHpFrac: u.betrayHpFrac ?? profile.betrayHpFrac, lastSeenX: x, lastSeenY: y, lostT: 0 } },
       // look = the BODY's rig (draw) + skin, with the unit's OUTFIT (garb) layered on; garb omitted ⇒ the

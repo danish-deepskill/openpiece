@@ -1,11 +1,13 @@
 import { Abilities, abilityRange, type AbilityDef } from '../combat/Ability';
 import { phaseAt, resolvePhases } from '../combat/phases';
+import { beginFall } from './MovementSystem';
 import { spendStamina } from '../combat/stamina';
 import { harmableBy } from '../combat/targeting';
 import { events } from '../core/EventBus';
 import { angleDiff, dist, norm } from '../core/math';
 import type { Rng } from '../core/Rng';
-import type { Entity } from '../ecs/components';
+import type { ContentId } from '../core/Registry';
+import type { Entity, Loadout } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { EffectSystem } from './EffectSystem';
 import type { StrikeResolver } from './StrikeResolver';
@@ -13,6 +15,14 @@ import type { StrikeResolver } from './StrikeResolver';
 /** Per-strike aim error (rad), centred toward 0 — natural imprecision so combat isn't a perfect lock.
  *  (Could become a per-unit `accuracy` stat later: skilled fighters tighten this.) */
 const AIM_SPREAD = 0.18;
+
+/** Set an ability's cooldown REMAINING and record its DURATION (cdMax) in one place, so the two never drift —
+ *  the HUD fill reads (1 − cd/cdMax) and MUST see the actual duration set (atkSpeed-scaled, or a combo root
+ *  locked for the finisher's cd), not the ability's base def.cooldown. */
+function setCooldown(lo: Loadout, id: ContentId, seconds: number): void {
+  lo.cd.set(id, seconds);
+  lo.cdMax.set(id, seconds);
+}
 
 /**
  * Resolves abilities for any actor with a `loadout` — the single attack path (the old CombatSystem folded
@@ -139,13 +149,13 @@ export class AbilitySystem {
     if (!god && d.costStam && e.combatant) spendStamina(e.combatant, d.costStam); // spend + regen pause, one rule
     // attack speed is a tier stat: effective recovery = base cooldown / atkSpeed (default 1)
     const atkSpeed = Math.max(0.1, e.attributes?.get('atkSpeed') ?? 1);
-    lo!.cd.set(actual, god ? 0 : d.cooldown / atkSpeed); // `!` safe: ready() above returns false when loadout is absent
+    setCooldown(lo!, actual, god ? 0 : d.cooldown / atkSpeed); // `!` safe: ready() above returns false when loadout is absent
     // chain bookkeeping: arm the next step — or, on a chain's FINAL step, lock the ROOT for this step's
     // cooldown too (the post-combo recovery; without it the chain would restart the instant it finishes)
     if (lo) {
       if (d.comboNext) lo.chain = { root: id, next: d.comboNext, until: d.comboWindow ?? 0.9 };
       else {
-        if (actual !== id) lo.cd.set(id, god ? 0 : d.cooldown / atkSpeed); // lock the chain ROOT for the finisher's recovery (god mode: no lock)
+        if (actual !== id) setCooldown(lo, id, god ? 0 : d.cooldown / atkSpeed); // lock the chain ROOT for the FINISHER's cd (not slash1's own) — cdMax records THIS duration so the HUD fill is correct
         if (lo.chain?.root === id) delete lo.chain;
       }
     }
@@ -162,6 +172,32 @@ export class AbilitySystem {
       const dur = d.impulseDur ?? 0.16;
       this.impulse(e, d.selfImpulse, dur);
       if (d.roll && e.mover) { e.mover.rollT = dur; e.mover.rollDur = dur; } // start the roll-anim clock (drawActor reads it)
+    }
+    // JUMP: enter the AIR layer for `jump` seconds (MovementSystem lands it). Refreshes airT if already aloft —
+    // the seed for Geppo (a re-launch mid-air just resets the timer). airDur holds the total for the draw's arc.
+    if (d.jump && e.mover) {
+      e.mover.layer = 'air';
+      e.mover.airT = d.jump;
+      e.mover.airDur = d.jump;
+    }
+    // GEPPO: TOGGLE the hover. On → go airborne + start hovering (MovementSystem keeps it up, spends per-kick
+    // stamina, auto-lands when broke). Off → clear hovering (MovementSystem lands it next tick, applying the
+    // landing stun like a jump). The toggle itself is free; the cost is the per-kick drain while aloft.
+    if (d.geppo && e.mover) {
+      if (e.mover.hovering) {
+        beginFall(e.mover); // toggle OFF — DESCEND (a smooth fall arc), not an instant snap; land + stun at the bottom
+      } else {
+        e.mover.hovering = true;
+        e.mover.layer = 'air';
+        e.mover.hoverT = 0;
+        e.mover.hoverElapsed = 0; // start the launch: presentation rises from the ground over the first kick
+        e.mover.fallT = 0; // cancel any in-progress fall (re-toggling Geppo mid-descent kicks back up)
+        // DOUBLE-KICK launch: a cloud puff RIGHT HERE (the kick off the GROUND to get airborne) — the first air
+        // kick's puff follows ~a beat later (MovementSystem's per-kick cadence). Reads as "kick off floor → kick
+        // off air", the Geppo launch, distinct from a single-puff plain jump.
+        const t = e.transform;
+        if (t) events.emit('fx:ring', { x: t.x, y: t.y, radius: t.r * 1.2, color: 0xffffff, life: 0.28 });
+      }
     }
     return true;
   }

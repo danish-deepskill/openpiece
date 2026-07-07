@@ -113,8 +113,11 @@ export class HudScene extends Phaser.Scene {
       g.fillStyle(0x140c06, 0.82);
       g.fillRoundedRect(bx, by, ABIL_W, ABIL_H, 6);
       // COOLDOWN FILL: an amber overlay that fills bottom→top as the ability recovers (empty = on cd, full =
-      // ready). `ready` = 1 − cd/cooldown, so it visibly climbs back up over the recovery. Clear at a glance.
-      const ready = onCd ? Math.max(0, 1 - entry.cd / def!.cooldown) : 1;
+      // ready). `ready` = 1 − cd/cdMax — using the DURATION the cd was ACTUALLY set to (entry.cdMax), NOT the
+      // ability's base def.cooldown. The two differ: cd is atkSpeed-scaled, and a combo root is locked for the
+      // FINISHER's cd (2.4s) while the slot shows slash1 (base 0.85) — dividing by 0.85 clamped the fill to 0
+      // for the first ~1.5s (the "fill only appears in the last moment" bug). cdMax records the real duration.
+      const ready = onCd && entry.cdMax > 0 ? Math.max(0, 1 - entry.cd / entry.cdMax) : onCd ? 0 : 1;
       if (ready > 0) {
         const fh = ABIL_H * ready;
         g.fillStyle(onCd ? 0x8a6a2c : 0x2a6a3a, onCd ? 0.55 : 0.4); // amber while filling, green tint when ready

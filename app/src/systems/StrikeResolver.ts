@@ -40,6 +40,18 @@ export class StrikeResolver {
       events.emit('fx:burst', { x: ot.x, y: ot.y, color: FX_COLOR.phase, n: 6, speed: 110 });
       return false;
     }
+    // AIRBORNE DODGE (docs/design/MOVEMENT_AIR.md): a jump FULLY (100%) evades a grounded attacker by default —
+    // a deterministic, readable dodge ("I jumped → I dodged"). The EXCEPTION is an ANTI-AIR attack: `airCatch`
+    // (0..1) is ITS chance to catch the jumper anyway (1 = always catches, 0.5 = a gamble). So any randomness
+    // lives on the specific counter-move, NOT on baseline melee. Rolled on the seeded `combat` stream (replays
+    // agree). Only a ground→air mismatch applies: two grounded or two airborne fighters trade normally.
+    if (o.mover?.layer === 'air' && e.mover?.layer !== 'air') {
+      const caught = (d.airCatch ?? 0) > 0 && this.rng.next() < d.airCatch!; // an anti-air move rolls its own catch
+      if (!caught) {
+        events.emit('fx:burst', { x: ot.x, y: ot.y, color: FX_COLOR.phase, n: 6, speed: 110 });
+        return false; // whiffed under the jumper (a normal ground attack; or the anti-air missed its roll)
+      }
+    }
     // GUARD — posture damage is the ability's own `posture` if authored (a fruit power like Gomu, or the bull's
     // gore, has no weapon class, so the weight table would under-rate it as a bare 'light' hit), else it scales
     // by the attacker's combat WEIGHT (kit rule: a punch thrown while a sword is sheathed rattles a guard like a

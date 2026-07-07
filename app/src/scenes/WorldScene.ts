@@ -23,6 +23,7 @@ import { AimReticle } from '../systems/AimReticle';
 import { AccessorySystem } from '../systems/AccessorySystem';
 import { MeleeSystem } from '../systems/MeleeSystem';
 import { MovementSystem } from '../systems/MovementSystem';
+import { SwimSystem } from '../systems/SwimSystem';
 import { BodyCollisionSystem } from '../systems/BodyCollisionSystem';
 import { InteractionSystem } from '../systems/InteractionSystem';
 import { DialogueSystem } from '../systems/DialogueSystem';
@@ -50,6 +51,7 @@ export class WorldScene extends Phaser.Scene {
   private dialogueSys!: DialogueSystem;
   private aiSys!: AISystem;
   private moveSys!: MovementSystem;
+  private swimSys!: SwimSystem;
   private bodySys!: BodyCollisionSystem;
   private meleeSys!: MeleeSystem;
   private combatantSys!: CombatantSystem;
@@ -148,6 +150,7 @@ export class WorldScene extends Phaser.Scene {
     this.inputSys = new InputSystem(this, world, query, abilities, ships, this.director, this.interactionSys, this.dialogueSys, this.inspectSys);
     this.aiSys = new AISystem(world, ctx);
     this.moveSys = new MovementSystem(world, collision);
+    this.swimSys = new SwimSystem(world, damage);
     this.bodySys = new BodyCollisionSystem(world, query, collision);
     this.renderSys = new RenderSystem(this, world, level.grid);
     this.weaponSpriteSys = new WeaponSpriteSystem(this, world, this.renderSys);
@@ -231,6 +234,7 @@ export class WorldScene extends Phaser.Scene {
       this.squadSys.update(); // assign focus + attack tokens before brains run
       this.aiSys.update(dt);
       this.moveSys.update(dt);
+      this.swimSys.update(dt); // water upkeep AFTER movement sets mode/submerged: swim stamina, breath, drowning
       this.bodySys.update(); // resolve body-vs-body overlap (weighted) after movement integrates
       this.shipSys.update(dt); // integrate hulls + pin riders AFTER foot movement (deck position wins)
       this.meleeSys.update(dt); // resolve active swings by contact against current positions
@@ -264,7 +268,7 @@ export class WorldScene extends Phaser.Scene {
         { key: '3', id: lo.slots[2] },
       ] as Array<{ key: string; id?: string }>)
         .filter((x) => !!x.id && lo.granted.has(x.id))
-        .map((x) => ({ key: x.key, id: x.id as string, cd: lo.cd.get(x.id as string) ?? 0 }));
+        .map((x) => ({ key: x.key, id: x.id as string, cd: lo.cd.get(x.id as string) ?? 0, cdMax: lo.cdMax.get(x.id as string) ?? 0 }));
       r.set(RegKey.AbilityBar, entries);
     }
     r.set(RegKey.Prompt, this.dialogueSys.active || !e ? '' : this.interactionSys.prompt(e)); // hide while talking

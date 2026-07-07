@@ -109,9 +109,10 @@ export function refreshLoadout(e: Entity): void {
   const lo = e.loadout;
   if (!eq || !lo) return;
 
-  // Base kit everyone has: a fist (light), a kick (heavy), a roll (the base mobility move), and the GUARD verbs (block/parry — a
-  // fundamental capability, COMBAT.md). (Haki/Armament is A-tier+ — granted later.)
-  const granted = new Set<ContentId>([BASE_KIT.primary, BASE_KIT.heavy, BASE_KIT.dash, ...GUARD_KIT]);
+  // Base kit everyone has: a fist (light), a kick (heavy), a roll (the base mobility move), the GUARD verbs
+  // (block/parry — a fundamental capability, COMBAT.md), and JUMP (the base air verb — MOVEMENT_AIR.md).
+  // (Haki/Armament is A-tier+ — granted later.)
+  const granted = new Set<ContentId>([BASE_KIT.primary, BASE_KIT.heavy, BASE_KIT.dash, 'ability.jump', ...GUARD_KIT]);
   // PRESERVE the tier-gated sprint grant across a re-derive: the Spawner is the ONE authority that decides who
   // can sprint (SPRINT_MIN_TIER), so a loadout rebuild (equip/unequip) must not silently strip a capability
   // that isn't tied to equipment. Without this, equipping a weapon would revoke the hero's sprint.
@@ -174,9 +175,12 @@ export function equippedIn(e: Entity, ref: ItemRef): ItemRef | undefined {
 }
 
 /** Equip any ItemRef by dispatching to the right existing path (weapon/fruit → equip(); accessory →
- *  wearAccessory). The ONE generic entry point pickups + a future inventory-equip verb call. */
+ *  wearAccessory). The ONE generic entry point pickups + a future inventory-equip verb call. A 'manual' is NOT
+ *  equippable (it's consumed on read → grants an ability); takePickup routes it to the learn branch, so it must
+ *  never reach here. */
 export function equipItem(e: Entity, ref: ItemRef): void {
   if (ref.cat === 'accessory') wearAccessory(e, ref.id);
+  else if (ref.cat === 'manual') throw new Error(`equipItem: '${ref.id}' is a manual (consumed on read) — not equippable`);
   else equip(e, ref.cat, ref.id); // 'weapon' | 'fruit'
 }
 
@@ -186,7 +190,7 @@ export function unequipToBag(e: Entity, ref: ItemRef): ItemRef | undefined {
   const cur = equippedIn(e, ref);
   if (!cur) return undefined;
   if (cur.cat === 'accessory') removeAccessory(e, Accessories.get(cur.id).slot);
-  else unequip(e, cur.cat, cur.id);
+  else if (cur.cat !== 'manual') unequip(e, cur.cat, cur.id); // equippedIn never returns a manual (they aren't equipped); the guard narrows the union for TS
   return cur;
 }
 
