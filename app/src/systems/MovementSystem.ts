@@ -1,8 +1,9 @@
 import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN, LEDGE_MOVE_MULT, STUN_SLOW, TILE } from '../config/constants';
 import { spendStamina } from '../combat/stamina';
 import { events } from '../core/EventBus';
-import { deckCanOccupy, deckCellAtLocal, deckOf, deckToWorld, deckTryMove, gangplankOutward, hullBlocksWorldPoint, worldToDeck } from '../defs/decks';
+import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, worldToDeck } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
+import { deckCanOccupy, deckTryMove, hullBlocksWorldPoint } from '../world/deckCollision';
 import { enterDeck, exitDeck, inFrameCooldown } from '../world/frames';
 import { TileGrid } from '../world/TileGrid';
 import type { Entity, Mover } from '../ecs/components';

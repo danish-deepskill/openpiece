@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { deckCanOccupy, deckOf, deckToWorld, gangplankCell, helmSpot, hullBlocksWorldPoint } from '../src/defs/decks';
+import { deckOf, deckToWorld, gangplankCell, helmSpot } from '../src/defs/decks';
 import { ShipHulls } from '../src/defs/ships';
+import { deckCanOccupy, hullBlocksWorldPoint } from '../src/world/deckCollision';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
 import { ShipSystem } from '../src/systems/ShipSystem';

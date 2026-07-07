@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DECK_TILE_PX, deckCanOccupy, deckCellAtLocal, deckHullError, deckHullSize, deckOf, deckToWorld, deckTryMove, deckWalkable, helmSpot, parseDeck, worldToDeck, type DeckTile } from '../src/defs/decks';
+import { DECK_TILE_PX, deckCellAtLocal, deckHullError, deckHullSize, deckOf, deckToWorld, deckWalkable, helmSpot, parseDeck, worldToDeck, type DeckTile } from '../src/defs/decks';
 import { ShipHulls } from '../src/defs/ships';
+import { deckCanOccupy, deckTryMove } from '../src/world/deckCollision';
 
 /**
  * DECK PARSING (step 1 of the walkable-ship pillar) — the compact string rows a hull authors become a ship-LOCAL

@@ -92,7 +92,10 @@ ballpiece/
       world/
         TileGrid.ts             # tile data + walkable(mode) + terrain speed
         WorldGen.ts             # seeded two-island gen -> TileGrid + placements (pure fn of the seed)
-        Collision.ts            # circle-vs-tile move resolve (canOccupy/tryMove)
+        GridCollider.ts         # THE circle-vs-grid engine: quarter-mask oracle + MoveCtx (one sweep, every frame)
+        Collision.ts            # world-frame facade over GridCollider (terrain-def oracle; entity-level API)
+        deckCollision.ts        # deck-frame colliders per hull (walk rule + hull-solid-as-drawn from outside)
+        frames.ts               # frame transitions (enterDeck/exitDeck/inFrameCooldown) — the ONE world<->deck handoff
         Pathfinder.ts           # grid A* + line-of-sight
         SpatialQuery.ts         # nearest()/within() neighbor queries (swap-in grid later)
       systems/                  # sim systems are Phaser-free; presentation systems take `scene` FIRST

@@ -1,5 +1,6 @@
-import { deckCellAtLocal, deckOf, deckToWorld, deckWalkable, gangplankCell, gangplankOutward, hullBlocksOutside, worldToDeck, type DeckGrid } from '../defs/decks';
+import { deckCellAtLocal, deckOf, deckToWorld, deckWalkable, gangplankCell, gangplankOutward, worldToDeck, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
+import { hullBlocksOutside } from '../world/deckCollision';
 import { enterDeck, inFrameCooldown } from '../world/frames';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';

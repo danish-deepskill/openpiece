@@ -1,45 +1,38 @@
 import { TILE, WORLD_H, WORLD_W } from '../config/constants';
 import type { TerrainDef } from '../defs/terrains';
 import type { MoveMode } from '../ecs/components';
+import { GridCollider, Q_CLEAR, Q_SOLID, type MoveCtx } from './GridCollider';
 import { TileGrid } from './TileGrid';
 
-/** Circle-vs-tile movement resolution. Walls are tiles now, so this is the single collision rule. */
+/** WORLD-frame collision: the terrain grid plugged into the ONE GridCollider engine (deck grids plug into the
+ *  same engine in world/deckCollision.ts — one sweep, per-frame oracles). This facade keeps the entity-level API
+ *  (positional mode/airborne/onLedge) systems speak, adapting it to the collider's MoveCtx. */
 export class Collision {
-  constructor(private readonly grid: TileGrid) {}
+  private readonly collider: GridCollider;
+  /** ONE scratch ctx reused across queries (hot loop — no per-call allocation; never retained by the collider). */
+  private readonly ctx: MoveCtx = { mode: 'foot', airborne: false, onLedge: false };
 
-  /** Can a circle of radius r sit at (x,y) in this nav mode? EXACT circle-vs-AABB (not point sampling): for every
-   *  BLOCKING tile the circle's bounding box overlaps, the closest point on that tile's box to the circle center
-   *  must be ≥ r away — so a wall touching the circle at ANY angle (including a diagonal CORNER) blocks it, with no
-   *  sample-point gaps to tune. `airborne` (a jumper — MOVEMENT_AIR.md) clears foot-blocked TERRAIN but still
-   *  respects world bounds (no leaving the map). */
-  canOccupy(x: number, y: number, r: number, mode: MoveMode, airborne = false, onLedge = false): boolean {
-    if (x < r || y < r || x > WORLD_W - r || y > WORLD_H - r) return false; // world bounds (center kept r off the edge)
-    const passable = (t: number): boolean => (airborne ? TileGrid.airWalkable(t) : TileGrid.walkable(t, mode, onLedge));
-    // only the tiles the circle's bounding box could touch — a small window, not the whole grid
-    const tx0 = Math.floor((x - r) / TILE);
-    const tx1 = Math.floor((x + r) / TILE);
-    const ty0 = Math.floor((y - r) / TILE);
-    const ty1 = Math.floor((y + r) / TILE);
-    const r2 = r * r;
-    for (let ty = ty0; ty <= ty1; ty++) {
-      for (let tx = tx0; tx <= tx1; tx++) {
-        if (passable(this.grid.tileAt(tx, ty))) continue; // only blocking tiles matter
-        // closest point on this tile's box [tx·TILE,(tx+1)·TILE) to the circle center, then compare its distance
-        const nx = Math.max(tx * TILE, Math.min(x, (tx + 1) * TILE));
-        const ny = Math.max(ty * TILE, Math.min(y, (ty + 1) * TILE));
-        const dx = x - nx;
-        const dy = y - ny;
-        if (dx * dx + dy * dy < r2) return false; // the circle overlaps this wall → can't sit here
-      }
-    }
-    return true;
+  constructor(private readonly grid: TileGrid) {
+    this.collider = new GridCollider(
+      // bounds = the map edge: the center stays r inside even AIRBORNE (no jumping off the map)
+      { cellPx: TILE, originX: 0, originY: 0, bounds: { w: WORLD_W, h: WORLD_H } },
+      (cx, cy, ctx) => {
+        const t = this.grid.tileAt(cx, cy); // out-of-range reads endless sea (TileGrid's rule)
+        const passable = ctx.airborne ? TileGrid.airWalkable(t) : TileGrid.walkable(t, ctx.mode, ctx.onLedge);
+        // terrain blocks FULL-cell today; sub-tile shapes are one TerrainDef field away (quarter-mask oracle)
+        return passable ? Q_CLEAR : Q_SOLID;
+      },
+    );
   }
 
-  /** Axis-separated move so sliding along walls feels right. Mutates {x,y}. `onLedge` = perched atop a low wall,
-   *  so low-wall tiles are walkable (you balance across them). `blocked` = an OPTIONAL extra obstacle predicate
-   *  (a MOVING one the static grid can't know — a ship hull): a step is taken only if the tile grid AND `blocked`
-   *  both allow the target. Takes (x, y, r) so callers can share ONE persistent closure across every body size
-   *  (no per-entity allocation). Keeps Collision pure geometry — the caller supplies the ship check. */
+  /** Can a circle of radius r sit at (x,y) in this nav mode? `airborne` (a jumper — MOVEMENT_AIR.md) clears
+   *  foot-blocked TERRAIN but still respects world bounds; `onLedge` = perched atop a low wall (walkable). */
+  canOccupy(x: number, y: number, r: number, mode: MoveMode, airborne = false, onLedge = false): boolean {
+    return this.collider.canOccupy(x, y, r, this.use(mode, airborne, onLedge));
+  }
+
+  /** Axis-separated move so sliding along walls feels right. Mutates {x,y}. `blocked` = an OPTIONAL moving-obstacle
+   *  predicate (a ship hull) — see GridCollider.tryMove. */
   tryMove(
     t: { x: number; y: number },
     dx: number,
@@ -50,32 +43,13 @@ export class Collision {
     onLedge = false,
     blocked?: (x: number, y: number, r: number) => boolean,
   ): void {
-    if (dx !== 0 && this.canOccupy(t.x + dx, t.y, r, mode, airborne, onLedge) && !blocked?.(t.x + dx, t.y, r)) t.x += dx;
-    if (dy !== 0 && this.canOccupy(t.x, t.y + dy, r, mode, airborne, onLedge) && !blocked?.(t.x, t.y + dy, r)) t.y += dy;
+    this.collider.tryMove(t, dx, dy, r, this.use(mode, airborne, onLedge), blocked);
   }
 
-  /** DEPENETRATION — if a body is STUCK inside solid (spawned in a wall, landed on a tree, shoved into stone),
-   *  SNAP it to the nearest clear spot. A ring search outward from the current center for the closest occupiable
-   *  position; mutates {x,y}. No-op when already clear (the common case — one cheap canOccupy). Called each tick
-   *  in the movement step, for EVERY body (the Moat): covers spawn, jump-land, knockback, future teleports. */
+  /** DEPENETRATION — snap a STUCK body (spawned in a wall, landed on a tree, shoved into stone) to the nearest
+   *  clear spot; no-op when already clear. Called each tick for EVERY body (the Moat) — see GridCollider.unstick. */
   unstick(t: { x: number; y: number }, r: number, mode: MoveMode, airborne = false, onLedge = false): void {
-    if (this.canOccupy(t.x, t.y, r, mode, airborne, onLedge)) return; // already clear (or validly perched) — nothing to do
-    const step = TILE * 0.5; // search granularity (half a tile — fine enough vs. body/tile sizes)
-    for (let ring = 1; ring <= 12; ring++) {
-      const rad = ring * step;
-      // sample 8 directions at this radius, nearest ring first → the closest clear spot wins
-      for (let k = 0; k < 8; k++) {
-        const a = (k / 8) * Math.PI * 2;
-        const cx = t.x + Math.cos(a) * rad;
-        const cy = t.y + Math.sin(a) * rad;
-        if (this.canOccupy(cx, cy, r, mode, airborne, onLedge)) {
-          t.x = cx;
-          t.y = cy;
-          return;
-        }
-      }
-    }
-    // no clear spot within the search radius (should never happen in an open world) — leave it put
+    this.collider.unstick(t, r, this.use(mode, airborne, onLedge));
   }
 
   /** Movement multiplier for the terrain under (x,y) — e.g. 0.5 while wading shallows. */
@@ -96,5 +70,13 @@ export class Collision {
   /** The terrain DEF under a world point — the decoded row for semantic reads (`.water === 'deep'`). */
   terrainAtPx(x: number, y: number): TerrainDef {
     return this.grid.terrainAtPx(x, y);
+  }
+
+  /** Load the scratch ctx for one query — entity-level positional args in, the collider's MoveCtx out. */
+  private use(mode: MoveMode, airborne: boolean, onLedge: boolean): MoveCtx {
+    this.ctx.mode = mode;
+    this.ctx.airborne = airborne;
+    this.ctx.onLedge = onLedge;
+    return this.ctx;
   }
 }

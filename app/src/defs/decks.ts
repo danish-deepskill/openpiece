@@ -7,8 +7,9 @@ import { TILE } from '../config/constants';
  * step 2's `world = ship.pos + rotate(local, ship.angle)` composition is a straight add+rotate. Content-is-data:
  * a new deck layout is a new `deck` string array on the hull def, no code (only a NEW glyph needs a row here).
  *
- * Step 1 (now) uses this ONLY to RENDER the deck as tiles. The same grid feeds step 2's deck collision + step 4's
- * helm/cannon station lookup — one parse, three consumers — which is why the tiles already carry local coords.
+ * This module is the deck's PARSE + GEOMETRY: grid, local↔world transforms, cell/station lookups, hull validators.
+ * Deck COLLISION lives in world/deckCollision.ts (the shared GridCollider engine, one sweep for every frame) — it
+ * consumes this grid; render (draw/shipDraws) and station lookups consume it too. One parse, three consumers.
  */
 
 /** A deck cell kind. `deck`/`helm`/`cannon` are walkable (stations are walkable deck you stand ON); `rail` walls
@@ -194,73 +195,6 @@ export function deckCellAtLocal(grid: DeckGrid, lx: number, ly: number): DeckCel
   const cx = Math.floor((lx + (grid.cols * grid.tilePx) / 2) / grid.tilePx);
   const cy = Math.floor((ly + (grid.rows * grid.tilePx) / 2) / grid.tilePx);
   return grid.cells.find((c) => c.cx === cx && c.cy === cy);
-}
-
-/** DECK COLLISION — can a circle of radius r sit at deck-LOCAL (lx,ly)? The deck's own circle-vs-AABB, mirroring
- *  world `Collision.canOccupy` but over the deck grid in LOCAL coords: a WALKABLE cell (deck/helm/cannon) is
- *  passable; a RAIL cell or OFF-GRID (open sea past the hull) blocks — UNLESS `airborne`, which clears the rail
- *  (the rail is a LOW WALL: jump/Geppo hops over it to leap off, per MOVEMENT_AIR.md). Off-grid still blocks even
- *  airborne (you can't hover onto empty sea — you'd fall). Grid cells are ship-centered, so a cell spans
- *  [c.lx−t/2, c.lx+t/2] × [c.ly−t/2, c.ly+t/2]; we test every cell the circle's bbox overlaps. */
-export function deckCanOccupy(grid: DeckGrid, lx: number, ly: number, r: number, airborne = false, onLedge = false): boolean {
-  return !overlapsCell(grid, lx, ly, r, (cell) => {
-    if (!cell) return true; // off-grid (open sea) blocks in BOTH foot and air — no floor to stand/land on
-    if (deckWalkable(cell.tile)) return false; // deck/helm/cannon/gangplank — walkable
-    // the RAIL is a LOW WALL: clearable while AIRBORNE (jump over it) AND standable while ON A LEDGE (you jumped
-    // onto it → perched, walkable-but-slow) — otherwise it blocks (you can't walk into the rail from the deck).
-    return !((airborne || onLedge) && cell.tile === 'rail');
-  });
-}
-
-/** From OUTSIDE the ship, does a world-space circle at deck-LOCAL (lx,ly) overlap the SOLID hull? The hull is
- *  solid from outside on EVERY cell (rail AND deck interior — you can't stand on the deck without boarding) EXCEPT
- *  the GANGPLANK, the one door you walk through. Off-grid (not the ship) is free. This is the world-collision
- *  passability (distinct from deckCanOccupy's walk rule); HullCollisionSystem uses it to keep world walkers out. */
-export function hullBlocksOutside(grid: DeckGrid, lx: number, ly: number, r: number): boolean {
-  return overlapsCell(grid, lx, ly, r, (cell) => cell !== undefined && cell.tile !== 'gangplank');
-}
-
-/** Does a ship (at world `pose`, hull `grid`) BLOCK a world-space circle at (wx,wy)? The hull is a MOVING wall to
- *  off-ship walkers: transform the point into the deck frame and test the solid footprint. Used by MovementSystem
- *  to REJECT a step that would enter the hull (a true wall-stop — you bump the rail and slide, no teleport). The
- *  GANGPLANK is passable (the door) so you can walk in; the interior is solid from outside (board by air, not walk). */
-export function hullBlocksWorldPoint(pose: ShipPose, grid: DeckGrid, wx: number, wy: number, r: number): boolean {
-  const local = worldToDeck(pose, wx, wy);
-  return hullBlocksOutside(grid, local.lx, local.ly, r);
-}
-
-/** Shared circle-vs-deck-grid sweep: true if the circle at LOCAL (lx,ly) overlaps ANY cell for which `blocks` is
- *  true. `blocks` is called with the cell (or undefined for off-grid). Exact closest-point-per-cell (no sampling
- *  gaps), mirroring world Collision. Cells are ship-centered, so a cell spans [c.lx±t/2]×[c.ly±t/2]. */
-function overlapsCell(grid: DeckGrid, lx: number, ly: number, r: number, blocks: (cell: DeckCell | undefined) => boolean): boolean {
-  const t = grid.tilePx;
-  const halfW = (grid.cols * t) / 2;
-  const halfH = (grid.rows * t) / 2;
-  const cx0 = Math.floor((lx - r + halfW) / t);
-  const cx1 = Math.floor((lx + r + halfW) / t);
-  const cy0 = Math.floor((ly - r + halfH) / t);
-  const cy1 = Math.floor((ly + r + halfH) / t);
-  const r2 = r * r;
-  for (let cy = cy0; cy <= cy1; cy++) {
-    for (let cx = cx0; cx <= cx1; cx++) {
-      if (!blocks(grid.cells.find((c) => c.cx === cx && c.cy === cy))) continue; // only blocking cells matter
-      const bx0 = cx * t - halfW;
-      const by0 = cy * t - halfH;
-      const nx = Math.max(bx0, Math.min(lx, bx0 + t));
-      const ny = Math.max(by0, Math.min(ly, by0 + t));
-      const dx = lx - nx;
-      const dy = ly - ny;
-      if (dx * dx + dy * dy < r2) return true; // circle overlaps a blocking cell
-    }
-  }
-  return false;
-}
-
-/** Axis-separated deck move (slide along the rail feels right), mutating an {lx,ly} local position. Mirrors world
- *  `Collision.tryMove` but on the deck grid. `airborne` lets a jumper cross the rail (to leap off the ship). */
-export function deckTryMove(pos: { lx: number; ly: number }, dlx: number, dly: number, grid: DeckGrid, r: number, airborne = false, onLedge = false): void {
-  if (dlx !== 0 && deckCanOccupy(grid, pos.lx + dlx, pos.ly, r, airborne, onLedge)) pos.lx += dlx;
-  if (dly !== 0 && deckCanOccupy(grid, pos.lx, pos.ly + dly, r, airborne, onLedge)) pos.ly += dly;
 }
 
 /** The gangplank's OUTWARD unit direction (toward open sea) — whichever orthogonal neighbor is off-grid. Used by
