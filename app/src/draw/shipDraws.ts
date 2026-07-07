@@ -8,14 +8,15 @@ const RAIL_WOOD = 0x6b4522; // the gunwale wood — a rail tile's INNER half is 
 const RAIL_EDGE = 0x3a2410; // the gunwale's outline
 const HELM_TINT = 0x8a6a3a; // the helm station tile, a touch darker than plank so it reads
 const CANNON_TILE = 0x4a4a52; // an iron gun tile
+const GANGPLANK_WOOD = 0x9a7038; // the gangplank board — a distinct darker plank, the board/leave door in the rail
 
 /** How far (fraction of a tile) a rail tile's wood is pulled BACK from each sea-facing side — the "half rail":
  *  the outer half of a rail tile is left undrawn so the sea shows through; the inner half is the wood gunwale. */
 const RAIL_INSET = 0.5;
 
 /** Per-tile deck-surface fill for the WALKABLE tiles only (rail is drawn separately as a half-tile gunwale, so it
- *  is NOT in here — a rail tile gets no deck floor). Stations tint over the plank. */
-const SURFACE_FILL: Partial<Record<DeckTile, number>> = { deck: DECK_PLANK, helm: HELM_TINT, cannon: CANNON_TILE, hole: 0x241a10 };
+ *  is NOT in here — a rail tile gets no deck floor). Stations tint over the plank; the gangplank is its own board. */
+const SURFACE_FILL: Partial<Record<DeckTile, number>> = { deck: DECK_PLANK, helm: HELM_TINT, cannon: CANNON_TILE, hole: 0x241a10, gangplank: GANGPLANK_WOOD };
 
 /**
  * Oriented ship (bow at +x in LOCAL space; RenderSystem rotates the Graphics to the heading). The hull IS the

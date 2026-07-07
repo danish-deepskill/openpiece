@@ -3,28 +3,26 @@ import { events } from '../core/EventBus';
 import { dist2 } from '../core/math';
 import { itemName } from '../defs/items';
 import { Manuals } from '../defs/manuals';
-import { ShipHulls } from '../defs/ships';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { DialogueSystem } from './DialogueSystem';
-import type { ShipSystem } from './ShipSystem';
 
 /** Services a verb's `run` may need to carry out its effect. */
 export interface VerbCtx {
   world: World;
-  ships: ShipSystem;
   dialogue: DialogueSystem;
 }
 
 /**
- * One thing an actor can DO — to a nearby entity (`take`, `board`, `talk`, `open`, `harvest`) or to itself
- * (`disembark`). Availability is decided by `can()` querying the actor + target's COMPONENTS, so a verb
- * applies to ANY entity that qualifies — the Moat for interaction: no per-object code, no `if (name === …)`.
- * A new interaction is a new VerbDef, never a new branch in the input/scene code.
+ * One thing an actor can DO — to a nearby entity (`take`, `talk`, `open`, `harvest`) or to itself. Availability
+ * is decided by `can()` querying the actor + target's COMPONENTS, so a verb applies to ANY entity that
+ * qualifies — the Moat for interaction: no per-object code, no `if (name === …)`. A new interaction is a new
+ * VerbDef, never a new branch in the input/scene code. (Ship boarding/leaving is NOT a verb — you walk the
+ * gangplank; the wheel is E-on-helm in InputSystem.)
  */
 export interface VerbDef {
   id: string;
-  /** The on-screen prompt label, e.g. "Equip Cutlass" / "Board the Sloop". */
+  /** The on-screen prompt label, e.g. "Equip Cutlass" / "Talk to Maro". */
   label: (actor: Entity, target: Entity | undefined) => string;
   /** Extra reach (px) beyond the two body radii (target verbs). Default 24. */
   reach?: number;
@@ -61,22 +59,10 @@ function takePickup(actor: Entity, target: Entity | undefined, ctx: VerbCtx): vo
   ctx.world.destroy(target!); // RenderSystem's orphan sweep destroys the gfx
 }
 
-/** The base verb set. Content/systems append more (talk, open, harvest, sit, read) — each is one entry. */
+/** The base verb set. Content/systems append more (talk, open, harvest, sit, read) — each is one entry.
+ *  NOTE: boarding/leaving a ship is NOT a verb — you WALK across the gangplank (HullCollisionSystem does the
+ *  world↔deck frame handoff), and take/release the wheel with E on the helm (InputSystem). */
 export const Verbs: VerbDef[] = [
-  {
-    id: 'verb.disembark',
-    self: true,
-    label: () => 'Disembark',
-    can: (a) => !!a.onDeck,
-    run: (a, _t, ctx) => ctx.ships.disembark(a),
-  },
-  {
-    id: 'verb.board',
-    reach: 38,
-    label: (_a, t) => `Board the ${ShipHulls.get(t!.ship!.hull).name}`,
-    can: (a, t) => !a.onDeck && !!t?.ship,
-    run: (a, t, ctx) => ctx.ships.board(a, t!),
-  },
   {
     id: 'verb.take',
     reach: 20,
@@ -121,19 +107,17 @@ export function recruit(actor: Entity, target: Entity): void {
 
 /**
  * Resolves "what can I interact with right now?" for an actor — the single source of truth for BOTH the HUD
- * prompt and the E-press, so they can never disagree. Self-verbs (disembark) win; otherwise the nearest entity
- * offering an available verb. O(N) scan today (small N); sits behind the same seam as SpatialQuery to swap for
- * a grid at scale.
+ * prompt and the E-press, so they can never disagree. Self-verbs win; otherwise the nearest entity offering an
+ * available verb. O(N) scan today (small N); sits behind the same seam as SpatialQuery to swap for a grid at scale.
  */
 export class InteractionSystem {
   private readonly ctx: VerbCtx;
   constructor(
     private readonly world: World,
-    ships: ShipSystem,
     dialogue: DialogueSystem,
     private readonly verbs: VerbDef[] = [...Verbs],
   ) {
-    this.ctx = { world, ships, dialogue };
+    this.ctx = { world, dialogue };
   }
 
   /** Register another verb (e.g. a content pack's 'talk' / 'open'). */
@@ -143,7 +127,7 @@ export class InteractionSystem {
 
   /** The best available (verb, target) for this actor, or undefined. */
   private best(actor: Entity): { verb: VerbDef; target: Entity | undefined } | undefined {
-    // self-verbs first (disembark is always offered while aboard a ship, regardless of what's nearby)
+    // self-verbs first (offered regardless of what's nearby)
     for (const verb of this.verbs) {
       if (verb.self && verb.can(actor, undefined, this.ctx)) return { verb, target: undefined };
     }

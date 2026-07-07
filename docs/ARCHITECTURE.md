@@ -104,8 +104,8 @@ ballpiece/
         StrikeResolver.ts       # (service) a confirmed hit -> damage/combo/stun; Damage.ts applies it
         BodyCollisionSystem.ts  # body-vs-body shove (mass-weighted)
         CombatantSystem.ts      # stamina delayed-regen, combo decay, hitstun
-        EffectSystem.ts / SquadSystem.ts / ShipSystem.ts / DoorSystem.ts / DialogueSystem.ts
-        InteractionSystem.ts    # generic verb engine (talk/take/board/disembark)
+        EffectSystem.ts / SquadSystem.ts / ShipSystem.ts / HullCollisionSystem.ts / DoorSystem.ts / DialogueSystem.ts
+        InteractionSystem.ts    # generic verb engine (talk/take/…; ship boarding is WALKING, not a verb)
         GameDirector.ts         # game state, objectives, death cleanup, possession
         RenderSystem.ts         # (presentation) OWNS the Graphics side-table; render components are data
         FxSystem.ts / NameplateSystem.ts / AccessorySystem.ts / WeaponSpriteSystem.ts / InspectSystem.ts / DebugOverlay.ts   # (presentation)

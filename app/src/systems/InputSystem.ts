@@ -127,23 +127,33 @@ export class InputSystem {
       if (this.tap('Y')) this.dialogue.choose(true);
       else if (this.tap('N')) this.dialogue.choose(false);
     }
-    // E: advance an open dialogue first; otherwise resolve the best interaction verb (board/disembark/take/talk/…)
+    // E: advance an open dialogue first; on the HELM tile → TAKE/RELEASE the wheel (deliberate, so you never steer
+    // by accidentally walking over it); otherwise resolve the best interaction verb (take/talk/…). Boarding is NOT
+    // a verb — you walk across the gangplank (HullCollisionSystem does the handoff).
     else if (ePressed) {
-      if (!this.dialogue.advance()) this.interactions.interact(e);
-    }
-
-    // aboard a ship — piloting is POSITIONAL: on the HELM tile, WASD steers the ship; anywhere else on the deck,
-    // WASD WALKS your local deck spot (world-space intent, deck collision walls the rails). Foot controls skipped.
-    if (e.onDeck) {
-      if (this.ships.atHelm(e)) {
-        const fwd = (this.down('W') || this.down('UP') ? 1 : 0) - (this.down('S') || this.down('DOWN') ? 1 : 0);
-        const turn = (this.down('D') || this.down('RIGHT') ? 1 : 0) - (this.down('A') || this.down('LEFT') ? 1 : 0);
-        this.ships.pilot(e, fwd, turn, dt);
+      if (this.dialogue.advance()) {
+        // dialogue consumed the press
+      } else if (e.onDeck && this.ships.atHelm(e)) {
+        e.onDeck.piloting = !e.onDeck.piloting; // take or release the wheel
+        // taking the wheel WEIGHS ANCHOR; releasing drops it — the anchor follows the helm now that boarding is
+        // walking (the old board/disembark verbs owned this flag before they were removed)
+        const ship = this.world.byId(e.onDeck.shipId);
+        if (ship?.ship) ship.ship.anchored = !e.onDeck.piloting;
+        events.emit('notify', { msg: e.onDeck.piloting ? 'Took the wheel — WASD to steer, E to release.' : 'Released the wheel.' });
       } else {
-        const wdx = (this.down('D') || this.down('RIGHT') ? 1 : 0) - (this.down('A') || this.down('LEFT') ? 1 : 0);
-        const wdy = (this.down('S') || this.down('DOWN') ? 1 : 0) - (this.down('W') || this.down('UP') ? 1 : 0);
-        this.ships.walkDeck(e, wdx, wdy, dt); // walk the deck in screen/world space
+        this.interactions.interact(e);
       }
+    }
+    // stepping OFF the helm tile releases the wheel automatically (you can't steer from across the deck)
+    if (e.onDeck?.piloting && !this.ships.atHelm(e)) e.onDeck.piloting = false;
+
+    // PILOTING: only while you've TAKEN THE WHEEL (E on the helm) does WASD steer the ship — hands on the wheel, no
+    // walk/aim. Otherwise the FULL action path below runs the same on a deck as on land (aim/attack/abilities/jump/
+    // guard): a deck is not a special mode (the Moat). Only LOCOMOTION differs by frame (movement-frames.md).
+    if (e.onDeck?.piloting) {
+      const fwd = (this.down('W') || this.down('UP') ? 1 : 0) - (this.down('S') || this.down('DOWN') ? 1 : 0);
+      const turn = (this.down('D') || this.down('RIGHT') ? 1 : 0) - (this.down('A') || this.down('LEFT') ? 1 : 0);
+      this.ships.pilot(e, fwd, turn, dt);
       m.vx = 0;
       m.vy = 0;
       return;
@@ -205,25 +215,30 @@ export class InputSystem {
     if (c?.blocking) speed *= BLOCK_MOVE_MULT; // bracing is not a walk — and it forfeits the sprint
     else if (this.down('SHIFT') && moving) speed = trySprint(e, speed, dt); // trySprint self-gates on the ability.sprint grant + stamina — the SAME rule the AI uses (the Moat)
     speed = attackMoveSpeed(e, speed); // rooted (or slowed) while a swing is in flight — the SAME rule the AI uses
-    if (m.dodgeT > 0) {
-      // velocity from the dash impulse (MovementSystem)
-    } else if (moving) {
-      let dx = ix;
-      let dy = iy;
-      if (this.shiftLock) {
-        // rotate the input axes into the FACING frame: forward = t.angle, right = t.angle + 90°. −iy is
-        // "forward" (W), +ix is "strafe right" (D). So the world vector is forward·(−iy) + right·(ix).
-        const cos = Math.cos(t.angle);
-        const sin = Math.sin(t.angle);
-        dx = cos * -iy + -sin * ix; // right vector is (−sin, cos); forward is (cos, sin)
-        dy = sin * -iy + cos * ix;
+    // The movement INTENT is a world-space velocity (nx·speed, ny·speed) — frame-NEUTRAL. InputSystem's job ENDS
+    // here: it writes the intent to mover.vx/vy and nothing more. MovementSystem is the SINGLE place that RESOLVES
+    // it in the actor's frame — world grid OR deck-local — beside jump/land/perch, all in one tick phase. (This
+    // unification killed the deck-jump bugs: movement was split across InputSystem (deck) + MovementSystem (world +
+    // land), so a deck jumper's state was always a tick out of sync.) A dodge impulse owns velocity (m.dvx/dvy).
+    if (m.dodgeT <= 0) {
+      if (moving) {
+        let dx = ix;
+        let dy = iy;
+        if (this.shiftLock) {
+          // rotate the input axes into the FACING frame: forward = t.angle, right = t.angle + 90°. −iy is
+          // "forward" (W), +ix is "strafe right" (D). So the world vector is forward·(−iy) + right·(ix).
+          const cos = Math.cos(t.angle);
+          const sin = Math.sin(t.angle);
+          dx = cos * -iy + -sin * ix; // right vector is (−sin, cos); forward is (cos, sin)
+          dy = sin * -iy + cos * ix;
+        }
+        const [nx, ny] = norm(dx, dy);
+        m.vx = nx * speed;
+        m.vy = ny * speed;
+      } else {
+        m.vx = 0;
+        m.vy = 0;
       }
-      const [nx, ny] = norm(dx, dy);
-      m.vx = nx * speed;
-      m.vy = ny * speed;
-    } else {
-      m.vx = 0;
-      m.vy = 0;
     }
 
     // abilities (the loadout decides what each key does)

@@ -3,11 +3,8 @@ import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
 import { DialogueSystem } from '../src/systems/DialogueSystem';
 import { InteractionSystem } from '../src/systems/InteractionSystem';
-import type { ShipSystem } from '../src/systems/ShipSystem';
 
-// prompt()/best() only read components; ShipSystem/DialogueSystem are touched solely by a verb's run().
-const stubShips = {} as ShipSystem;
-const sysFor = (world: World, dlg = new DialogueSystem()) => new InteractionSystem(world, stubShips, dlg);
+const sysFor = (world: World, dlg = new DialogueSystem()) => new InteractionSystem(world, dlg);
 
 function actorAt(world: World, x: number, y: number): Entity {
   return world.create({ transform: { x, y, angle: 0, r: 12 } });
@@ -28,21 +25,8 @@ describe('InteractionSystem — generic verbs (the Moat for interaction)', () =>
     expect(sysFor(world).prompt(a)).toBe('');
   });
 
-  it('a self-verb (Disembark) wins over a nearby target while aboard a ship', () => {
-    const world = new World();
-    const a = actorAt(world, 0, 0);
-    const ship = world.create({ transform: { x: 0, y: 0, angle: 0, r: 30 } });
-    a.onDeck = { shipId: ship.id, lx: 0, ly: 0 };
-    world.create({ transform: { x: 5, y: 0, angle: 0, r: 10 }, pickup: { item: { cat: 'weapon', id: 'weapon.cutlass' }, label: 'Cutlass' } });
-    expect(sysFor(world).prompt(a)).toBe('[E] Disembark');
-  });
-
-  it('offers Board near a ship when on foot (radius-aware reach reads the big hull from afar)', () => {
-    const world = new World();
-    const a = actorAt(world, 0, 0);
-    world.create({ transform: { x: 40, y: 0, angle: 0, r: 30 }, ship: { hull: 'ship.sloop', mode: 'exploration', anchored: true, speed: 0 } });
-    expect(sysFor(world).prompt(a)).toMatch(/^\[E\] Board the /);
-  });
+  // NOTE: boarding/leaving a ship is no longer a VERB — you walk across the gangplank (HullCollisionSystem does
+  // the world↔deck handoff), so there's no Board/Disembark prompt to test here anymore (see ship-deck.test.ts).
 
   it('Talk opens a dialogue session; E advances it, then closes after the last line', () => {
     const world = new World();
@@ -69,7 +53,7 @@ describe('InteractionSystem — generic verbs (the Moat for interaction)', () =>
     const ship = world.create({ transform: { x: 999, y: 999, angle: 0, r: 30 } });
     a.onDeck = { shipId: ship.id, lx: 0, ly: 0 };
     world.create({ transform: { x: 5, y: 0, angle: 0, r: 10 }, pickup: { item: { cat: 'weapon', id: 'weapon.cutlass' }, label: 'Cutlass' } });
-    expect(sysFor(world).prompt(a)).toBe('[E] Disembark'); // disembark (self) wins; Take is gated out anyway
+    expect(sysFor(world).prompt(a)).toBe(''); // Take is gated out while aboard (no verb applies → no prompt)
   });
 });
 

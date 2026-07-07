@@ -11,9 +11,9 @@ export class Collision {
    *  must be ≥ r away — so a wall touching the circle at ANY angle (including a diagonal CORNER) blocks it, with no
    *  sample-point gaps to tune. `airborne` (a jumper — MOVEMENT_AIR.md) clears foot-blocked TERRAIN but still
    *  respects world bounds (no leaving the map). */
-  canOccupy(x: number, y: number, r: number, mode: MoveMode, airborne = false): boolean {
+  canOccupy(x: number, y: number, r: number, mode: MoveMode, airborne = false, onLedge = false): boolean {
     if (x < r || y < r || x > WORLD_W - r || y > WORLD_H - r) return false; // world bounds (center kept r off the edge)
-    const passable = (t: Tile): boolean => (airborne ? TileGrid.airWalkable(t) : TileGrid.walkable(t, mode));
+    const passable = (t: Tile): boolean => (airborne ? TileGrid.airWalkable(t) : TileGrid.walkable(t, mode, onLedge));
     // only the tiles the circle's bounding box could touch — a small window, not the whole grid
     const tx0 = Math.floor((x - r) / TILE);
     const tx1 = Math.floor((x + r) / TILE);
@@ -34,18 +34,31 @@ export class Collision {
     return true;
   }
 
-  /** Axis-separated move so sliding along walls feels right. Mutates {x,y}. */
-  tryMove(t: { x: number; y: number }, dx: number, dy: number, r: number, mode: MoveMode, airborne = false): void {
-    if (dx !== 0 && this.canOccupy(t.x + dx, t.y, r, mode, airborne)) t.x += dx;
-    if (dy !== 0 && this.canOccupy(t.x, t.y + dy, r, mode, airborne)) t.y += dy;
+  /** Axis-separated move so sliding along walls feels right. Mutates {x,y}. `onLedge` = perched atop a low wall,
+   *  so low-wall tiles are walkable (you balance across them). `blocked` = an OPTIONAL extra obstacle predicate
+   *  (a MOVING one the static grid can't know — a ship hull): a step is taken only if the tile grid AND `blocked`
+   *  both allow the target. Takes (x, y, r) so callers can share ONE persistent closure across every body size
+   *  (no per-entity allocation). Keeps Collision pure geometry — the caller supplies the ship check. */
+  tryMove(
+    t: { x: number; y: number },
+    dx: number,
+    dy: number,
+    r: number,
+    mode: MoveMode,
+    airborne = false,
+    onLedge = false,
+    blocked?: (x: number, y: number, r: number) => boolean,
+  ): void {
+    if (dx !== 0 && this.canOccupy(t.x + dx, t.y, r, mode, airborne, onLedge) && !blocked?.(t.x + dx, t.y, r)) t.x += dx;
+    if (dy !== 0 && this.canOccupy(t.x, t.y + dy, r, mode, airborne, onLedge) && !blocked?.(t.x, t.y + dy, r)) t.y += dy;
   }
 
   /** DEPENETRATION — if a body is STUCK inside solid (spawned in a wall, landed on a tree, shoved into stone),
    *  SNAP it to the nearest clear spot. A ring search outward from the current center for the closest occupiable
    *  position; mutates {x,y}. No-op when already clear (the common case — one cheap canOccupy). Called each tick
    *  in the movement step, for EVERY body (the Moat): covers spawn, jump-land, knockback, future teleports. */
-  unstick(t: { x: number; y: number }, r: number, mode: MoveMode, airborne = false): void {
-    if (this.canOccupy(t.x, t.y, r, mode, airborne)) return; // already clear — nothing to do
+  unstick(t: { x: number; y: number }, r: number, mode: MoveMode, airborne = false, onLedge = false): void {
+    if (this.canOccupy(t.x, t.y, r, mode, airborne, onLedge)) return; // already clear (or validly perched) — nothing to do
     const step = TILE * 0.5; // search granularity (half a tile — fine enough vs. body/tile sizes)
     for (let ring = 1; ring <= 12; ring++) {
       const rad = ring * step;
@@ -54,7 +67,7 @@ export class Collision {
         const a = (k / 8) * Math.PI * 2;
         const cx = t.x + Math.cos(a) * rad;
         const cy = t.y + Math.sin(a) * rad;
-        if (this.canOccupy(cx, cy, r, mode, airborne)) {
+        if (this.canOccupy(cx, cy, r, mode, airborne, onLedge)) {
           t.x = cx;
           t.y = cy;
           return;

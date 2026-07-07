@@ -6,7 +6,6 @@ import { Spawner } from '../src/ecs/Spawner';
 import { World } from '../src/ecs/World';
 import type { DialogueSystem } from '../src/systems/DialogueSystem';
 import { InteractionSystem } from '../src/systems/InteractionSystem';
-import type { ShipSystem } from '../src/systems/ShipSystem';
 
 const HAT: ItemRef = { cat: 'accessory', id: 'accessory.strawHat' };
 const CUTLASS: ItemRef = { cat: 'weapon', id: 'weapon.cutlass' };
@@ -14,10 +13,10 @@ const DAGGER: ItemRef = { cat: 'weapon', id: 'weapon.dagger' };
 const GOMU: ItemRef = { cat: 'fruit', id: 'fruit.gomu' };
 
 /** A take-verb driver: places a pickup on top of the hero and runs the interaction (the real E-press path).
- *  ships/dialogue are stubbed — takePickup touches neither (safe: {} as T with this note). */
+ *  dialogue is stubbed — takePickup never touches it (safe: {} as T with this note). */
 function take(world: World, sp: Spawner, hero: ReturnType<Spawner['spawnHero']>, ref: ItemRef): void {
   sp.spawnPickup(ref, hero.transform!.x, hero.transform!.y);
-  new InteractionSystem(world, {} as ShipSystem, {} as DialogueSystem).interact(hero);
+  new InteractionSystem(world, {} as DialogueSystem).interact(hero);
 }
 
 describe('ItemRef — one reference resolves across all three registries', () => {

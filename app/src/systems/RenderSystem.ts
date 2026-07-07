@@ -11,6 +11,9 @@ const SUBMERGED_ALPHA = 0.15; // fully UNDERWATER (dived / sunk) — barely visi
 
 /** JUMP height fake (docs/design/MOVEMENT_AIR.md): peak scale-up of an airborne actor (bigger = higher). */
 const JUMP_SCALE = 0.45;
+/** LEDGE height fake: a smaller, STEADY scale-up while PERCHED atop a low wall (stone wall / ship rail) — you're
+ *  one wall-height up, so a fraction of the jump's peak. Reads as "standing on something" (movement-frames.md). */
+const LEDGE_SCALE = 0.15;
 /** SUBMERGE fake: scale-DOWN of a fully-underwater actor (smaller = deeper/below) — the inverse of the jump. A
  *  gentle dip (→ 0.8×), enough to read as "sunk under" without shrinking to a dot. */
 const SUBMERGE_SCALE = 0.2;
@@ -147,7 +150,8 @@ export class RenderSystem {
       // overhead camera / below the surface), the mirror of a jump's scale-UP. ONLY a full dive shrinks; a
       // SURFACE swim stays normal size (you're at the top of the water, not under it). Mutually exclusive with air.
       const sink = mv?.submerged ? 1 : 0; // fully submerged shrinks; surface swim = normal size
-      const animScale = 1 + JUMP_SCALE * air - SUBMERGE_SCALE * sink;
+      const perched = mv?.onLedge && air === 0 ? 1 : 0; // PERCHED atop a low wall (and not mid-jump) → a steady step-up
+      const animScale = 1 + JUMP_SCALE * air + LEDGE_SCALE * perched - SUBMERGE_SCALE * sink;
       const lift = air > 0 ? AIR_DEPTH_LIFT : 0; // airborne draws above grounded units (nearer the camera)
       const finalAlpha = alpha * (1 - JUMP_FADE * air); // slight translucency at the jump peak — an extra "up" cue
       // publish the body's FINAL presentation channels so worn layers (hat/weapon) mirror all three exactly

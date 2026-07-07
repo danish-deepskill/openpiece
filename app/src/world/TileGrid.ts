@@ -12,6 +12,12 @@ const FOOT_BLOCKED: ReadonlySet<Tile> = new Set([Tile.Wall, Tile.Door, Tile.Ston
  *  new too-tall-to-jump terrain here and `airWalkable` picks it up. (docs/design/MOVEMENT_AIR.md) */
 const BLOCKS_AIR: ReadonlySet<Tile> = new Set([Tile.Wall, Tile.Door]);
 
+/** LOW WALLS — foot-blocked but NOT air-blocked: you jump OVER them, and you can also LAND ON TOP and perch
+ *  (walkable-but-slow while `onLedge`). DERIVED as FOOT_BLOCKED − BLOCKS_AIR (currently StoneWall + Tree) so a
+ *  future blocking tile is automatically low or tall by its set membership — never missable by hand-listing. The
+ *  ship rail is the deck-frame peer of this set. (docs/design/MOVEMENT_AIR.md — the low-wall ledge model.) */
+const LOW_WALL: ReadonlySet<Tile> = new Set([...FOOT_BLOCKED].filter((t) => !BLOCKS_AIR.has(t)));
+
 /** The static world as a tile array. Buildings are baked into the tiles as Wall/Floor (no separate AABBs),
  * so collision and pathfinding both read one source of truth. */
 export class TileGrid {
@@ -38,9 +44,16 @@ export class TileGrid {
    *  foot out of water then flipping the mode early to sneak past the cage was the root of the swim-boundary bugs
    *  (early opacity/speed, seam stalls, corner sticks). Now collision is mode-agnostic; the mode just follows your
    *  position. (AI stays out of the sea via `pathable`, which still walls Water for foot — planning, not collision.) */
-  static walkable(t: Tile, mode: MoveMode): boolean {
+  static walkable(t: Tile, mode: MoveMode, onLedge = false): boolean {
     if (mode === 'boat') return t === Tile.Water || t === Tile.Dock || t === Tile.ShallowWater;
+    if (onLedge && LOW_WALL.has(t)) return true; // PERCHED atop a low wall (jumped onto it) → it's walkable (slow)
     return !FOOT_BLOCKED.has(t); // foot & swim: water + land passable, walls/trees block
+  }
+
+  /** Is this tile a LOW WALL — jumpable-over AND standable-on-top (a stone wall / a tree)? Used to set the perch
+   *  state when a jump lands atop one, and to keep it walkable while perched. */
+  static isLowWall(t: Tile): boolean {
+    return LOW_WALL.has(t);
   }
 
   /** Physical movement rule for an AIRBORNE actor (a jumper — docs/design/MOVEMENT_AIR.md): clears everything a

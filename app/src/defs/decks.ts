@@ -202,16 +202,40 @@ export function deckCellAtLocal(grid: DeckGrid, lx: number, ly: number): DeckCel
  *  (the rail is a LOW WALL: jump/Geppo hops over it to leap off, per MOVEMENT_AIR.md). Off-grid still blocks even
  *  airborne (you can't hover onto empty sea — you'd fall). Grid cells are ship-centered, so a cell spans
  *  [c.lx−t/2, c.lx+t/2] × [c.ly−t/2, c.ly+t/2]; we test every cell the circle's bbox overlaps. */
-export function deckCanOccupy(grid: DeckGrid, lx: number, ly: number, r: number, airborne = false): boolean {
+export function deckCanOccupy(grid: DeckGrid, lx: number, ly: number, r: number, airborne = false, onLedge = false): boolean {
+  return !overlapsCell(grid, lx, ly, r, (cell) => {
+    if (!cell) return true; // off-grid (open sea) blocks in BOTH foot and air — no floor to stand/land on
+    if (deckWalkable(cell.tile)) return false; // deck/helm/cannon/gangplank — walkable
+    // the RAIL is a LOW WALL: clearable while AIRBORNE (jump over it) AND standable while ON A LEDGE (you jumped
+    // onto it → perched, walkable-but-slow) — otherwise it blocks (you can't walk into the rail from the deck).
+    return !((airborne || onLedge) && cell.tile === 'rail');
+  });
+}
+
+/** From OUTSIDE the ship, does a world-space circle at deck-LOCAL (lx,ly) overlap the SOLID hull? The hull is
+ *  solid from outside on EVERY cell (rail AND deck interior — you can't stand on the deck without boarding) EXCEPT
+ *  the GANGPLANK, the one door you walk through. Off-grid (not the ship) is free. This is the world-collision
+ *  passability (distinct from deckCanOccupy's walk rule); HullCollisionSystem uses it to keep world walkers out. */
+export function hullBlocksOutside(grid: DeckGrid, lx: number, ly: number, r: number): boolean {
+  return overlapsCell(grid, lx, ly, r, (cell) => cell !== undefined && cell.tile !== 'gangplank');
+}
+
+/** Does a ship (at world `pose`, hull `grid`) BLOCK a world-space circle at (wx,wy)? The hull is a MOVING wall to
+ *  off-ship walkers: transform the point into the deck frame and test the solid footprint. Used by MovementSystem
+ *  to REJECT a step that would enter the hull (a true wall-stop — you bump the rail and slide, no teleport). The
+ *  GANGPLANK is passable (the door) so you can walk in; the interior is solid from outside (board by air, not walk). */
+export function hullBlocksWorldPoint(pose: ShipPose, grid: DeckGrid, wx: number, wy: number, r: number): boolean {
+  const local = worldToDeck(pose, wx, wy);
+  return hullBlocksOutside(grid, local.lx, local.ly, r);
+}
+
+/** Shared circle-vs-deck-grid sweep: true if the circle at LOCAL (lx,ly) overlaps ANY cell for which `blocks` is
+ *  true. `blocks` is called with the cell (or undefined for off-grid). Exact closest-point-per-cell (no sampling
+ *  gaps), mirroring world Collision. Cells are ship-centered, so a cell spans [c.lx±t/2]×[c.ly±t/2]. */
+function overlapsCell(grid: DeckGrid, lx: number, ly: number, r: number, blocks: (cell: DeckCell | undefined) => boolean): boolean {
   const t = grid.tilePx;
-  const passable = (cell: DeckCell | undefined): boolean => {
-    if (!cell) return false; // off-grid (open sea) blocks in BOTH foot and air — no floor to stand/land on
-    if (deckWalkable(cell.tile)) return true; // deck/helm/cannon
-    return airborne && cell.tile === 'rail'; // a low-wall rail is clearable only while airborne
-  };
   const halfW = (grid.cols * t) / 2;
   const halfH = (grid.rows * t) / 2;
-  // grid-cell window the circle's bbox could touch (convert local px → cell index: +half-span, /tile)
   const cx0 = Math.floor((lx - r + halfW) / t);
   const cx1 = Math.floor((lx + r + halfW) / t);
   const cy0 = Math.floor((ly - r + halfH) / t);
@@ -219,25 +243,33 @@ export function deckCanOccupy(grid: DeckGrid, lx: number, ly: number, r: number,
   const r2 = r * r;
   for (let cy = cy0; cy <= cy1; cy++) {
     for (let cx = cx0; cx <= cx1; cx++) {
-      if (passable(grid.cells.find((c) => c.cx === cx && c.cy === cy))) continue; // only blocking cells matter
-      // the blocking cell's box in LOCAL px, then closest-point distance to the circle center
+      if (!blocks(grid.cells.find((c) => c.cx === cx && c.cy === cy))) continue; // only blocking cells matter
       const bx0 = cx * t - halfW;
       const by0 = cy * t - halfH;
       const nx = Math.max(bx0, Math.min(lx, bx0 + t));
       const ny = Math.max(by0, Math.min(ly, by0 + t));
       const dx = lx - nx;
       const dy = ly - ny;
-      if (dx * dx + dy * dy < r2) return false; // circle overlaps this wall/sea → can't sit here
+      if (dx * dx + dy * dy < r2) return true; // circle overlaps a blocking cell
     }
   }
-  return true;
+  return false;
 }
 
 /** Axis-separated deck move (slide along the rail feels right), mutating an {lx,ly} local position. Mirrors world
  *  `Collision.tryMove` but on the deck grid. `airborne` lets a jumper cross the rail (to leap off the ship). */
-export function deckTryMove(pos: { lx: number; ly: number }, dlx: number, dly: number, grid: DeckGrid, r: number, airborne = false): void {
-  if (dlx !== 0 && deckCanOccupy(grid, pos.lx + dlx, pos.ly, r, airborne)) pos.lx += dlx;
-  if (dly !== 0 && deckCanOccupy(grid, pos.lx, pos.ly + dly, r, airborne)) pos.ly += dly;
+export function deckTryMove(pos: { lx: number; ly: number }, dlx: number, dly: number, grid: DeckGrid, r: number, airborne = false, onLedge = false): void {
+  if (dlx !== 0 && deckCanOccupy(grid, pos.lx + dlx, pos.ly, r, airborne, onLedge)) pos.lx += dlx;
+  if (dly !== 0 && deckCanOccupy(grid, pos.lx, pos.ly + dly, r, airborne, onLedge)) pos.ly += dly;
+}
+
+/** The gangplank's OUTWARD unit direction (toward open sea) — whichever orthogonal neighbor is off-grid. Used by
+ *  the walk-off (step off the door) to know which way is "out". */
+export function gangplankOutward(grid: DeckGrid, cell: DeckCell): [number, number] {
+  if (tileAt(grid, cell.cx - 1, cell.cy) === undefined) return [-1, 0];
+  if (tileAt(grid, cell.cx + 1, cell.cy) === undefined) return [1, 0];
+  if (tileAt(grid, cell.cx, cell.cy - 1) === undefined) return [0, -1];
+  return [0, 1];
 }
 
 /** A default deck-local spot to place a boarding actor: the HELM cell's local center (there's exactly one — the

@@ -1,5 +1,5 @@
 import { Registry, type Def } from '../core/Registry';
-import { deckHullError, deckHullSize, parseDeck } from './decks';
+import { deckHullError, deckHullSize, parseDeck, tileAt } from './decks';
 
 /**
  * Ship hull templates (data-driven, like every other content family). A ship is a composite entity: a hull
@@ -63,6 +63,13 @@ export const ShipHulls = new Registry<ShipHullDef>('ShipHulls', (s) => {
   }
   const helms = grid.cells.filter((c) => c.tile === 'helm').length;
   if (helms !== 1) return `deck must have exactly ONE helm ('H') tile (got ${helms})`;
+  const gangplanks = grid.cells.filter((c) => c.tile === 'gangplank');
+  if (gangplanks.length !== 1) return `deck must have exactly ONE gangplank ('G') tile — the board/leave door (got ${gangplanks.length})`;
+  // the door must FACE OPEN SEA (an orthogonal off-grid neighbor): an interior gangplank would silently open a
+  // hole mid-hull (hullBlocksOutside exempts it) and gangplankOutward would guess a direction — fail loud instead.
+  const gp = gangplanks[0];
+  const faceSea = [[-1, 0], [1, 0], [0, -1], [0, 1]].some(([dx, dy]) => tileAt(grid, gp.cx + dx, gp.cy + dy) === undefined);
+  if (!faceSea) return `the gangplank at (col ${gp.cx}, row ${gp.cy}) must sit on the hull EDGE facing open sea (it's the door)`;
   const hullErr = deckHullError(grid);
   if (hullErr) return `deck hull not watertight: ${hullErr}`;
   const size = deckHullSize(grid);
@@ -82,16 +89,18 @@ export const ShipHulls = new Registry<ShipHullDef>('ShipHulls', (s) => {
 // Rectangular hulls: rail (#) rings a walkable (.) interior. Bow = the +x (right) end of each row. The RENDERER
 // auto-shapes the rail (thin gunwale on outward edges, beveled corners) by reading each cell's neighbors — the
 // data is just the plain grid. 'H' helm aft-left, 'C' cannons on the broadsides. Cell = 1 world tile (32px).
+// 'G' = GANGPLANK: the ONE door in the rail where a world-space walker steps ON/OFF (boarding = walking across it).
+// Placed on the STERN edge (left, −x) — the natural boarding point. Everywhere else the hull is solid from outside.
 const SLOOP_DECK = [
   '######', // 6 cols (bow↔stern) × 4 rows (beam) → a 4×2 walkable interior
   '#H..C#',
-  '#C...#',
+  'GC...#', // gangplank on the aft port corner
   '######',
 ];
 const CARAVEL_DECK = [
   '########', // 8 × 5
   '#H...C.#',
-  '#C....C#',
+  'GC....C#', // gangplank aft-port
   '#....C.#',
   '########',
 ];
@@ -99,7 +108,7 @@ const GALLEON_DECK = [
   '###########', // 11 × 7
   '#H...C....#',
   '#C.......C#',
-  '#....C....#',
+  'G....C....#', // gangplank amidships-port
   '#C.......C#',
   '#....C...C#',
   '###########',

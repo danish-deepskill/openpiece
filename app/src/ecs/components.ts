@@ -65,6 +65,15 @@ export interface Mover {
   fallT?: number;
   fallDur?: number;
   fallFrom?: number; // the air-scale height the fall STARTS from (the hover altitude at the moment it ended)
+  /** ON A LEDGE — standing atop a LOW WALL (a StoneWall/Tree in the world, or a ship rail on deck) after JUMPING
+   *  onto it. Set on landing airborne over a low-wall tile; cleared when you step off onto normal ground. While
+   *  set, that low wall is WALKABLE for you (so you perch, not get stuck/unstuck-off) but movement is SLOWED
+   *  (LEDGE_MOVE_MULT). This is how "land on the low wall and balance across it" works without a z-axis: the state
+   *  distinguishes ON-TOP (you jumped up here) from BESIDE (walking into it from ground = still blocked). */
+  onLedge?: boolean;
+  /** FRAME-SWITCH cooldown (s): counts down after boarding/leaving a ship; while > 0 the gangplank handoff won't
+   *  re-fire, so you don't ping-pong between deck and world at the door. Ticked down by ShipSystem each tick. */
+  frameCd?: number;
 }
 
 export interface Health {
@@ -214,6 +223,10 @@ export interface OnDeck {
   shipId: number;
   lx: number; // LOCAL x on the deck (px), ship-centered, bow = +x
   ly: number; // LOCAL y on the deck (px), ship-centered
+  /** TOOK THE WHEEL: set by pressing E while standing on the `helm` tile (cleared by E again or stepping off), so
+   *  steering is a DELIBERATE act — WASD only pilots the ship while this is true, never by accidentally walking
+   *  over the wheel. Absent/false ⇒ a free-walking passenger (full combat), even while atop the helm tile. */
+  piloting?: boolean;
 }
 
 /**

@@ -31,6 +31,7 @@ import { NameplateSystem } from '../systems/NameplateSystem';
 import { RenderSystem } from '../systems/RenderSystem';
 import { WeaponSpriteSystem } from '../systems/WeaponSpriteSystem';
 import { ShipSystem } from '../systems/ShipSystem';
+import { HullCollisionSystem } from '../systems/HullCollisionSystem';
 import { StrikeResolver } from '../systems/StrikeResolver';
 import { SquadSystem } from '../systems/SquadSystem';
 import { validateAllContent } from '../defs/validateContent';
@@ -62,6 +63,7 @@ export class WorldScene extends Phaser.Scene {
   private abilitySys!: AbilitySystem;
   private effectSys!: EffectSystem;
   private shipSys!: ShipSystem;
+  private hullSys!: HullCollisionSystem;
   private squadSys!: SquadSystem;
   private doorSys!: DoorSystem;
   private doorRenderer!: DoorRenderer;
@@ -107,6 +109,7 @@ export class WorldScene extends Phaser.Scene {
     const effects = new EffectSystem(world);
     const abilities = new AbilitySystem(world, effects, strikes, combatRng);
     const ships = new ShipSystem(world, collision);
+    const hulls = new HullCollisionSystem(world); // boarding handoffs (gangplank / leap-on) + embedded-in-hull eject fallback
     const squads = new SquadSystem(world, query);
     const spawner = new Spawner(world, worldgenRng);
 
@@ -129,7 +132,7 @@ export class WorldScene extends Phaser.Scene {
     // (EnemySpawn.unit, rolled from the seeded worldgen stream) — the scene just instantiates it.
     const isle = { id: 2, name: 'Isle Raiders' };
     for (const s of level.enemies) spawner.spawnUnit(s.unit, s.x, s.y, s.boss ? undefined : isle);
-    // an anchored Sloop at the home dock — board with E, sail east with W/S + A/D
+    // an anchored Sloop off the home dock — walk aboard via the gangplank, E on the wheel to steer
     spawner.spawnShip('ship.sloop', level.boatSpawn.x, level.boatSpawn.y, 'straw_hat');
 
     const ctx: AIContext = { world, query, rng: aiRng, abilities, pathfinder };
@@ -138,6 +141,7 @@ export class WorldScene extends Phaser.Scene {
     this.abilitySys = abilities;
     this.effectSys = effects;
     this.shipSys = ships;
+    this.hullSys = hulls;
     this.squadSys = squads;
     this.meleeSys = new MeleeSystem(world, strikes);
     this.combatantSys = new CombatantSystem(world);
@@ -145,7 +149,7 @@ export class WorldScene extends Phaser.Scene {
     this.doorRenderer = new DoorRenderer(this, this.doorSys);
     this.debug = new DebugOverlay(this, world, level.grid);
     this.dialogueSys = new DialogueSystem();
-    this.interactionSys = new InteractionSystem(world, ships, this.dialogueSys);
+    this.interactionSys = new InteractionSystem(world, this.dialogueSys);
     this.inspectSys = new InspectSystem(this, world, query);
     this.inputSys = new InputSystem(this, world, query, abilities, ships, this.director, this.interactionSys, this.dialogueSys, this.inspectSys);
     this.aiSys = new AISystem(world, ctx);
@@ -236,7 +240,8 @@ export class WorldScene extends Phaser.Scene {
       this.moveSys.update(dt);
       this.swimSys.update(dt); // water upkeep AFTER movement sets mode/submerged: swim stamina, breath, drowning
       this.bodySys.update(); // resolve body-vs-body overlap (weighted) after movement integrates
-      this.shipSys.update(dt); // integrate hulls + pin riders AFTER foot movement (deck position wins)
+      this.shipSys.update(dt); // integrate hulls + parent on-deck actors AFTER foot movement (deck position wins)
+      this.hullSys.update(); // solid hull: push world walkers out of any ship (except the gangplank) + board handoff
       this.meleeSys.update(dt); // resolve active swings by contact against current positions
       this.abilitySys.update(dt); // ability cooldowns
       this.combatantSys.update(dt); // stamina regen + combo decay

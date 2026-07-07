@@ -51,6 +51,7 @@ export const BOAT_SPEED = 225;
 /** Terrain modifiers: a unit's move speed on that ground, as a fraction of normal (see TileGrid.speedMul). */
 export const SHALLOW_MOVE_MULT = 0.5; // wading coastal shallows
 export const SAND_MOVE_MULT = 0.75; // trudging across sand/desert — heavier going than grass
+export const LEDGE_MOVE_MULT = 0.5; // balancing atop a LOW WALL (stone wall / ship rail) you jumped onto — a slow perch
 export const SWIM_MOVE_MULT = 0.5; // swimming deep water — SAME pace as a shallow wade (no speed change across the water)
 /** Surface swimming drains stamina at this rate (per sec) — swimming is exertion, like sprint/Geppo. */
 export const SWIM_STAM_DRAIN = 12;
@@ -102,6 +103,10 @@ export const GEPPO_HOVER_HEIGHT = 0.7;
 export const GEPPO_MOVE_MULT = 1.5;
 /** Descent time (s) when a Geppo hover ENDS — the fall arc, so landing isn't an instant snap to the ground. */
 export const GEPPO_FALL_DUR = 0.3;
+
+/** MOVEMENT FRAMES (docs/design/features/movement-frames.md): seconds after a ship board/leave before the
+ *  gangplank/air handoff can re-fire — stops the board↔leave ping-pong at the door. */
+export const FRAME_SWITCH_COOLDOWN = 0.4;
 
 /** Follow-camera zoom — higher = closer (moomoo.io-style). 1.0 showed too much world. */
 export const CAMERA_ZOOM = 2;
