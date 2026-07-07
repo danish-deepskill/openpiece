@@ -67,14 +67,14 @@ export const Verbs: VerbDef[] = [
     id: 'verb.disembark',
     self: true,
     label: () => 'Disembark',
-    can: (a) => !!a.riding,
+    can: (a) => !!a.onDeck,
     run: (a, _t, ctx) => ctx.ships.disembark(a),
   },
   {
     id: 'verb.board',
     reach: 38,
     label: (_a, t) => `Board the ${ShipHulls.get(t!.ship!.hull).name}`,
-    can: (a, t) => !a.riding && !!t?.ship,
+    can: (a, t) => !a.onDeck && !!t?.ship,
     run: (a, t, ctx) => ctx.ships.board(a, t!),
   },
   {
@@ -84,14 +84,14 @@ export const Verbs: VerbDef[] = [
       const cat = t!.pickup!.item.cat;
       return `${cat === 'fruit' ? 'Eat' : cat === 'manual' ? 'Read' : 'Take'} ${itemName(t!.pickup!.item)}`;
     },
-    can: (a, t) => !a.riding && !!t?.pickup,
+    can: (a, t) => !a.onDeck && !!t?.pickup,
     run: takePickup,
   },
   {
     id: 'verb.talk',
     reach: 24,
     label: (_a, t) => `Talk to ${t!.identity?.name ?? 'someone'}`,
-    can: (a, t) => !a.riding && !!t?.npc,
+    can: (a, t) => !a.onDeck && !!t?.npc,
     run: (a, t, ctx) => {
       const npc = t!.npc!;
       const name = t!.identity?.name ?? 'Someone';
@@ -143,7 +143,7 @@ export class InteractionSystem {
 
   /** The best available (verb, target) for this actor, or undefined. */
   private best(actor: Entity): { verb: VerbDef; target: Entity | undefined } | undefined {
-    // self-verbs first (disembark is always offered while riding, regardless of what's nearby)
+    // self-verbs first (disembark is always offered while aboard a ship, regardless of what's nearby)
     for (const verb of this.verbs) {
       if (verb.self && verb.can(actor, undefined, this.ctx)) return { verb, target: undefined };
     }

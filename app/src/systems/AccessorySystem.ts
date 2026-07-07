@@ -58,15 +58,23 @@ export class AccessorySystem {
         // a 'body'-frame sprite is REGISTERED to the mannequin (canvas center = body center) — its content
         // is already positioned by the artist on the template, so it takes no slot-anchor offset
         const registered = v.kind === 'sprite' && v.frame === 'body';
-        const off = (registered ? 0 : SLOT_ANCHOR[d.slot] * t.r) + (d.offset ?? 0);
+        // ANIM SCALE: ride the body's jump/Geppo rise & submerge sink (RenderSystem publishes it — the body's
+        // own gfx.setScale) so a hat/mask stays glued through the arc instead of hovering at flat size. Because
+        // the body scales about its center, the anchor OFFSET grows with it too (a crown pin sits farther out at
+        // 1.45×), so this multiplies BOTH the offset and the drawn size. Rolling hat has its own scale channel.
+        const animScale = rollingHat ? 1 : (this.renderSys.scaleById.get(e.id) ?? 1);
+        const off = ((registered ? 0 : SLOT_ANCHOR[d.slot] * t.r) + (d.offset ?? 0)) * animScale;
         // normal: pinned along the aim. Rolling hat: pinned to the tumbling head instead.
         const x = rollingHat ? t.x + head!.dx : t.x + Math.cos(a) * off;
         const y = rollingHat ? t.y + head!.dy : t.y + Math.sin(a) * off;
         const baseAlpha = this.renderSys.alphaById.get(e.id) ?? 1;
         const alpha = rollingHat ? baseAlpha * head!.crownAlpha : baseAlpha; // fade the hat out as the head tucks under
-        const depth = rollingHat
+        // add the body's airborne depth-lift so a hat/mask rides ABOVE grounded units WITH the jumping body (its
+        // +SLOT_DEPTH over the body is preserved, so it still sits on top of the body it's worn on).
+        const lift = this.renderSys.liftById.get(e.id) ?? 0;
+        const depth = lift + (rollingHat
           ? this.renderSys.sortY(e) + (head!.overTop ? 0.5 : -0.5) // over the top → above body; under → behind it
-          : this.renderSys.sortY(e) + (d.layer === 'under' ? -0.6 : SLOT_DEPTH[d.slot]); // slot ladder over the y-sorted body (sortY handles riders)
+          : this.renderSys.sortY(e) + (d.layer === 'under' ? -0.6 : SLOT_DEPTH[d.slot])); // slot ladder over the y-sorted body (sortY handles riders)
 
         if (v.kind === 'sprite') {
           let img = this.images[usedImg];
@@ -81,7 +89,7 @@ export class AccessorySystem {
           // (scale 1.6 = 1.6 heads — a hat keeps fitting if the anatomy retunes), other slots against the
           // body diameter. body frame: the canvas spans the full ±BODY_FRAME_R·r regardless of slot.
           const basis = d.slot === 'head' || d.slot === 'face' ? ANATOMY.headR * 2 * t.r : 2 * t.r;
-          const dia = (registered ? BODY_FRAME_R * 2 * t.r * v.scale : basis * v.scale) * (rollingHat ? head!.scale : 1); // shrink with the tumbling head
+          const dia = (registered ? BODY_FRAME_R * 2 * t.r * v.scale : basis * v.scale) * (rollingHat ? head!.scale : animScale); // shrink w/ tumbling head, else ride the jump/sink arc
           // rolling hat orients to the TRAVEL direction (it tumbles the way you roll), not the unit's aim
           const rot = d.rotates === false ? 0 : (rollingHat ? head!.travel : a) + Math.PI / 2;
           img
@@ -102,6 +110,7 @@ export class AccessorySystem {
         usedGfx++;
         g.setPosition(x, y)
           .setRotation(d.rotates === false ? 0 : (rollingHat ? head!.travel : a)) // rolling hat follows travel, not aim
+          .setScale(animScale) // ride the body's jump/sink arc (animScale is forced to 1 while rolling, above)
           .setAlpha(alpha)
           .setDepth(depth)
           .setVisible(true);

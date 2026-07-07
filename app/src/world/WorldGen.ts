@@ -284,7 +284,7 @@ export function generateLevel(rng: Rng): LevelLayout {
     ...doors,
     ...spawnTiles,
     { tx: HOME.cx - 7, ty: HOME.cy }, // player spawn
-    { tx: HOME.cx + 14, ty: HOME.cy }, // boat spawn
+    { tx: HOME.cx + 18, ty: HOME.cy }, // boat spawn (out in open water — the walkable hull is big; keep it off the beach)
     { tx: ENEMY.cx, ty: ENEMY.cy }, // captain
   ];
   scatterGroves(grid, rng, HOME.cx, HOME.cy, HOME.r, GROVES.home, GROVES, protect);
@@ -293,7 +293,7 @@ export function generateLevel(rng: Rng): LevelLayout {
   return {
     grid,
     playerSpawn: { x: px(HOME.cx - 7), y: px(HOME.cy) }, // west side of the island (near the loot houses)
-    boatSpawn: { x: px(HOME.cx + 14), y: px(HOME.cy) },
+    boatSpawn: { x: px(HOME.cx + 18), y: px(HOME.cy) }, // out past the dock/shallows in deep water — the walkable sloop is large (r≈56), so keep its whole hull clear of the beach or it runs aground and can't sail
     pickups,
     doors,
     enemies,

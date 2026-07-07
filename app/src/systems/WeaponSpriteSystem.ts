@@ -50,12 +50,21 @@ export class WeaponSpriteSystem {
       const tipTop = (v.tipAt ?? 'top') === 'top';
       const h = v.length / Math.max(0.05, 1 - gripAt); // full art height so the tip-side span = length
       const w = h * (img.width / Math.max(1, img.height)); // keep the art's aspect; width is visual-only
+      // ANIM SCALE: the body's jump/Geppo rise & submerge sink (RenderSystem publishes it — the body's own
+      // gfx.setScale, applied about its center) must carry the blade too, or it detaches mid-jump. The grip
+      // ANCHOR sits farther from center at 1.45×, so scale the anchor OFFSET; the steel grows by the same factor.
+      const t = e.transform!; // narrowed by the with('transform', …) query
+      const s = this.renderSys.scaleById.get(e.id) ?? 1;
+      const ax = t.x + (a.x - t.x) * s;
+      const ay = t.y + (a.y - t.y) * s;
       img
         .setOrigin(0.5, tipTop ? 1 - gripAt : gripAt) // origin = the grip point (rotation pivots at the hand)
-        .setPosition(a.x, a.y)
+        .setPosition(ax, ay)
         .setRotation(a.angle + (tipTop ? Math.PI / 2 : -Math.PI / 2)) // whichever end is the tip leads
-        .setDisplaySize(w, h)
-        .setDepth(this.renderSys.sortY(e) + (e.render!.depthBias ?? 0) - 0.1) // just under the body: fists cover the hilt (sortY handles riders)
+        .setDisplaySize(w * s, h * s)
+        // + the body's airborne lift so the blade rides up WITH the jumping body (keeps its -0.1 under-body order);
+        // alpha reads the body's FINAL alpha (now incl. the jump-peak fade), so the steel fades exactly with it.
+        .setDepth((this.renderSys.liftById.get(e.id) ?? 0) + this.renderSys.sortY(e) + (e.render!.depthBias ?? 0) - 0.1)
         .setAlpha(this.renderSys.alphaById.get(e.id) ?? 1)
         .setVisible(true);
     }

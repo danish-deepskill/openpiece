@@ -29,7 +29,7 @@ export class MovementSystem {
       // DEPENETRATION: if this body is STUCK inside solid (spawned in a wall, landed on a tree, shoved into stone),
       // snap it to the nearest clear spot BEFORE it tries to move. Runs for every foot/swim body each tick (a
       // cheap no-op when already clear); a jumper is airborne and passes over things, so skip it mid-air.
-      if (m.mode !== 'boat' && m.layer !== 'air' && !e.riding) this.collision.unstick(t, t.r, m.mode); // riders are pinned to the deck (ShipSystem) — don't depenetrate them
+      if (m.mode !== 'boat' && m.layer !== 'air' && !e.onDeck) this.collision.unstick(t, t.r, m.mode); // on-deck actors are parented by ShipSystem (their pos is deck-local) — don't depenetrate against the ocean grid
       if (m.rollT) m.rollT = Math.max(0, m.rollT - dt); // roll-anim clock ticks down independently of the impulse decay
       // GEPPO HOVER (docs/design/MOVEMENT_AIR.md): while hovering, kick off the air every GEPPO_KICK_INTERVAL —
       // each kick spends GEPPO_KICK_STAM + puffs a cloud. When the next kick is UNAFFORDABLE, begin the FALL (a
@@ -99,10 +99,10 @@ export class MovementSystem {
       // heuristics — the mode simply follows your position, so speed/opacity/pose/drain (all read it) can never
       // disagree with the terrain. Collision is mode-agnostic (foot & swim share one walkable), so entering/exiting
       // never walls you; the mode just relabels as you cross. This ONE rule replaced the whole seam-bug family.
-      // NOT while RIDING: a rider is on the BOAT's deck (pinned by ShipSystem), so its mode/position follow the
-      // ship — the terrain under it (open sea) must NOT relabel it a swimmer (it'd drain breath + show the swim
-      // pose while safely aboard). Boarding sets things up; here we just leave a rider's mode alone.
-      if (!airborne && !e.riding && (m.mode === 'foot' || m.mode === 'swim')) {
+      // NOT while ON DECK: an on-deck actor rides the BOAT's deck (parented by ShipSystem), so its mode/position
+      // follow the ship — the terrain under it (open sea) must NOT relabel it a swimmer (it'd drain breath + show
+      // the swim pose while safely aboard). Boarding sets things up; here we just leave an on-deck actor's mode alone.
+      if (!airborne && !e.onDeck && (m.mode === 'foot' || m.mode === 'swim')) {
         m.mode = this.collision.tileAtPx(t.x, t.y) === Tile.Water ? 'swim' : 'foot';
       }
     }

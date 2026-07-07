@@ -46,8 +46,16 @@ const DRAWS: Record<string, DrawFn> = { ...draws, ship: drawShip };
 export class RenderSystem {
   private readonly gfxById = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly imgById = new Map<number, Phaser.GameObjects.Image>(); // sprite-render entities (Render.sprite)
-  /** Computed per-entity alpha this frame (wade/iframe-blink) — AccessorySystem reads it so hats mirror the body. */
+  /** Computed per-entity FINAL alpha this frame (wade/iframe-blink AND the jump-peak fade) — worn layers read it
+   *  so a hat/blade fades EXACTLY with the body, including at the top of a jump. Must be the body's real alpha. */
   readonly alphaById = new Map<number, number>();
+  /** Computed per-entity animation SCALE this frame (jump/Geppo rise, submerge sink) — worn layers (accessories,
+   *  sprite weapons) read it so a hat/blade rides the body's scale-arc instead of detaching. Same publish-once
+   *  pattern as alphaById: RenderSystem is the ONE place that derives the arc, so nobody recomputes it from mover. */
+  readonly scaleById = new Map<number, number>();
+  /** Computed per-entity DEPTH LIFT this frame (AIR_DEPTH_LIFT while airborne, else 0) — worn layers add it so a
+   *  hat/blade rides ABOVE grounded units with the jumping body, instead of being left at ground depth under it. */
+  readonly liftById = new Map<number, number>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -55,14 +63,14 @@ export class RenderSystem {
     private readonly grid: TileGrid,
   ) {}
 
-  /** The y a unit's layers (body, accessories, weapon) sort by. Normally its own transform.y — but a RIDER
-   *  sorts by its SHIP's y (+2, just above the deck), so ALL its layers draw above the hull regardless of the
-   *  rider's seat position (else an aft-seated rider's hat/weapon drops under the hull as the boat turns). The
-   *  ONE home for this rule; every render layer reads it so they can never disagree. */
+  /** The y a unit's layers (body, accessories, weapon) sort by. Normally its own transform.y — but an ON-DECK
+   *  actor must draw ABOVE its hull yet still order fore/aft AMONG on-deck actors as they walk. So it sorts by its
+   *  OWN world y, lifted past the hull's y-extent (ship.y + its radius) so it always clears the deck it stands on.
+   *  The ONE home for this rule; every render layer reads it so they can never disagree. */
   sortY(e: Entity): number {
-    if (e.riding) {
-      const ship = this.world.byId(e.riding.shipId);
-      if (ship?.transform) return ship.transform.y + 2;
+    if (e.onDeck) {
+      const ship = this.world.byId(e.onDeck.shipId);
+      if (ship?.transform) return e.transform!.y + ship.transform.r; // own y (fore/aft order) lifted clear of the hull
     }
     return e.transform!.y;
   }
@@ -75,9 +83,9 @@ export class RenderSystem {
       const t = e.transform;
       const rd = e.render;
       // SUBMERSION fade: a SWIMMER reads mostly-submerged (the swim STATE, not the tile — mode is the truth);
-      // a foot unit wading the shallows reads partly submerged. Riders (pinned to a deck) never submerge.
+      // a foot unit wading the shallows reads partly submerged. On-deck actors (aboard a ship) never submerge.
       let alpha = 1;
-      if (!e.riding && e.mover) {
+      if (!e.onDeck && e.mover) {
         // SUBMERGED (dived under) reads faint; SURFACE swim (deep OR shallow) reads the SAME as a shallow wade —
         // you're at the top of the water either way, so deep swimming shouldn't look more see-through than wading.
         if (e.mover.submerged) alpha = SUBMERGED_ALPHA;
@@ -85,7 +93,11 @@ export class RenderSystem {
       }
       // brief invulnerability blink, composed on top of the wade fade
       if (e.health && e.health.iframes > 0 && Math.floor(now / 50) % 2 === 0) alpha *= 0.5;
+      // Defaults for the worn-layer channels — sprite entities keep these; actor bodies overwrite scale/lift and
+      // REFINE alpha (with the jump-peak fade) once `air` is known below, so hats/weapons mirror the FINAL body.
       this.alphaById.set(e.id, alpha);
+      this.scaleById.set(e.id, 1);
+      this.liftById.set(e.id, 0);
       const depth = this.sortY(e) + (rd.depthBias ?? 0); // top-down y-sort (rider layers sort by the ship — sortY)
 
       if (rd.sprite) {
@@ -135,9 +147,16 @@ export class RenderSystem {
       // overhead camera / below the surface), the mirror of a jump's scale-UP. ONLY a full dive shrinks; a
       // SURFACE swim stays normal size (you're at the top of the water, not under it). Mutually exclusive with air.
       const sink = mv?.submerged ? 1 : 0; // fully submerged shrinks; surface swim = normal size
-      gfx.setScale(1 + JUMP_SCALE * air - SUBMERGE_SCALE * sink);
-      gfx.setDepth(air > 0 ? depth + AIR_DEPTH_LIFT : depth);
-      gfx.setAlpha(alpha * (1 - JUMP_FADE * air)); // slight translucency at the peak — an extra "up off the ground" cue
+      const animScale = 1 + JUMP_SCALE * air - SUBMERGE_SCALE * sink;
+      const lift = air > 0 ? AIR_DEPTH_LIFT : 0; // airborne draws above grounded units (nearer the camera)
+      const finalAlpha = alpha * (1 - JUMP_FADE * air); // slight translucency at the jump peak — an extra "up" cue
+      // publish the body's FINAL presentation channels so worn layers (hat/weapon) mirror all three exactly
+      this.scaleById.set(e.id, animScale);
+      this.liftById.set(e.id, lift);
+      this.alphaById.set(e.id, finalAlpha);
+      gfx.setScale(animScale);
+      gfx.setDepth(depth + lift);
+      gfx.setAlpha(finalAlpha);
       gfx.clear();
       // GOD-MODE AURA (debug tell): a pulsing golden glow UNDER the body so you can SEE the tag is live. Purely
       // presentational — reads the same 'state.godMode' tag the sim gates on, so it follows possession (the
@@ -152,6 +171,8 @@ export class RenderSystem {
         gfx.destroy();
         this.gfxById.delete(id);
         this.alphaById.delete(id);
+        this.scaleById.delete(id);
+        this.liftById.delete(id);
       }
     }
     for (const [id, img] of this.imgById) {
@@ -159,6 +180,8 @@ export class RenderSystem {
         img.destroy();
         this.imgById.delete(id);
         this.alphaById.delete(id);
+        this.scaleById.delete(id);
+        this.liftById.delete(id);
       }
     }
   }

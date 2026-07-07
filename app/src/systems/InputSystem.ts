@@ -132,11 +132,18 @@ export class InputSystem {
       if (!this.dialogue.advance()) this.interactions.interact(e);
     }
 
-    // piloting a ship — route movement to the helm, skip foot controls
-    if (e.riding) {
-      const fwd = (this.down('W') || this.down('UP') ? 1 : 0) - (this.down('S') || this.down('DOWN') ? 1 : 0);
-      const turn = (this.down('D') || this.down('RIGHT') ? 1 : 0) - (this.down('A') || this.down('LEFT') ? 1 : 0);
-      this.ships.pilot(e, fwd, turn, dt);
+    // aboard a ship — piloting is POSITIONAL: on the HELM tile, WASD steers the ship; anywhere else on the deck,
+    // WASD WALKS your local deck spot (world-space intent, deck collision walls the rails). Foot controls skipped.
+    if (e.onDeck) {
+      if (this.ships.atHelm(e)) {
+        const fwd = (this.down('W') || this.down('UP') ? 1 : 0) - (this.down('S') || this.down('DOWN') ? 1 : 0);
+        const turn = (this.down('D') || this.down('RIGHT') ? 1 : 0) - (this.down('A') || this.down('LEFT') ? 1 : 0);
+        this.ships.pilot(e, fwd, turn, dt);
+      } else {
+        const wdx = (this.down('D') || this.down('RIGHT') ? 1 : 0) - (this.down('A') || this.down('LEFT') ? 1 : 0);
+        const wdy = (this.down('S') || this.down('DOWN') ? 1 : 0) - (this.down('W') || this.down('UP') ? 1 : 0);
+        this.ships.walkDeck(e, wdx, wdy, dt); // walk the deck in screen/world space
+      }
       m.vx = 0;
       m.vy = 0;
       return;

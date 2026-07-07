@@ -143,6 +143,13 @@ NOT the ocean grid. So there are TWO collision contexts:
   through to a lower deck later); `deck`/`helm`/`cannon` are walkable.
 - The exact circle-vs-AABB `canOccupy` + `unstick` we built generalize directly — they take a grid + a
   position; point them at the deck grid in local space. (This is why the collision refactor matters here.)
+- **The rail is a LOW WALL, not a tall one** — it blocks a foot actor (you can't walk off the deck into the
+  sea) BUT an AIRBORNE actor (jump/Geppo, the `air` layer from MOVEMENT_AIR.md) CLEARS it. This reuses the
+  existing "airborne clears low terrain" rule — point the deck's low-wall class at the same airborne check the
+  ocean grid uses. Emergent payoff: **leaping off the ship = jump the rail; BOARDING an enemy deck in a naval
+  battle = jump the rail onto their deck** — no special boarding move, just the movement system. (`hole` is
+  also low/clearable; `tall` deck obstacles — a cabin wall, a mast base — would block even airborne, a later
+  tile class.) So deck tiles carry a wall HEIGHT (none / low / tall), mirroring the world terrain classes.
 
 ## Piloting = a deck POSITION, not a seat
 
@@ -194,3 +201,44 @@ Two collision contexts: WORLD (ocean grid) for off-ship actors, DECK (hull grid)
 
 Each step is typecheck + Vitest green; steps 1–4 are the spine, 5–6 broaden it. Keep this doc, `NAVAL.md`, and
 `ROADMAP` in sync when built.
+
+## Naval-battle AI: PER-FRAME pathfinding + CROSS-FRAME transition actions (design, not built)
+
+A ship battle has MULTIPLE moving coordinate frames (your deck, each enemy deck, the open sea between) plus an
+AIR layer (Geppo/jump crossings). A crew member deciding "cross to the enemy ship and fight the captain" plans
+across frames that are rotating and sailing relative to each other. The naive approach — one giant pathfinder
+over the whole battle — falls apart under moving frames. The architecture (settled direction, build later):
+
+**Pathfind WITHIN a frame; DECIDE between frames.**
+- **World grid** — the ocean/islands. Existing `pathable` A*, unchanged.
+- **Each ship's DECK grid** — a tiny local A* over that hull's `DeckGrid` (~6×4 cells, dirt cheap), run in the
+  ship's LOCAL frame, so it's immune to the hull moving/rotating. The deck-frame twin of the world pathfinder.
+- **The AIR layer** — NOT a grid. A Geppo/jump crossing is a BALLISTIC HOP between two points, validated by a
+  reachability + lead-aim check, not an A* path.
+
+**A cross-ship goal is a SEQUENCE of frame-local plans stitched by TRANSITION actions**, e.g. attack an enemy
+captain who is `onDeck: enemyShip`:
+1. `[deck path]`  walk across MY deck to the boarding edge          — my ship's local A*
+2. `[transition]` BOARD: cross the gangplank OR Geppo-hop the gap   — a frame-transition action
+3. `[deck path]`  walk across THEIR deck to the captain             — enemy ship's local A*
+4. `[combat]`     engage                                            — existing combat
+
+Each leg uses the pathfinder its frame already has; only the TRANSITION is new — and it's the same world↔deck
+coordinate handoff as boarding, generalized to **deck↔deck**. THIS is why the handoff must be built as a GENERIC
+frame-transition primitive (`enterDeck(actor, ship, localSpot)` / `exitDeck(actor)`), not a one-off "board from
+the dock" — so deck→deck battle boarding and Geppo-land reuse it verbatim.
+
+**Geppo / air crossing = an extra EDGE in the unit's decision graph** (only if it has the Geppo ability — the
+Moat: capability is unit data, not special-case code):
+- **Reachability:** is the target deck within Geppo range given both ships' CURRENT positions? Recomputed as they
+  move — a closing gap opens the hop, a widening one closes it.
+- **Lead-aim the landing:** the enemy deck is MOVING, so aim where it WILL be — reuse the Gomu lead-aim already
+  built for Luffy.
+- **Land handoff:** on landing, `worldToDeck(enemyShip, landingPoint)` → the unit is now `onDeck: enemyShip`.
+  Same coordinate handoff, different ship.
+- **Fighting in the AIR** = combat while `layer:'air'` with no `onDeck` — a world-space airborne actor. Two Geppo
+  users clashing mid-hop is just combat between two airborne world actors. No new engine.
+
+So a ground crew member paths to the gangplank and boards; a Geppo crew member leaps the gap — two edges to the
+same goal, chosen by the unit's capabilities. Build order for this layer (AFTER the spine + solid-hull handoff):
+deck-local A* → crew "board & fight" behavior → Geppo air-edge + lead-aim landing → air combat polish.

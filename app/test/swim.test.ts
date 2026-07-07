@@ -35,12 +35,12 @@ function swimmer(world: World, x: number, y: number): Entity {
 }
 
 describe('swim mode transitions (MovementSystem)', () => {
-  it('a RIDER (on a boat) over deep water does NOT become a swimmer — the deck keeps its mode', () => {
+  it('an ON-DECK actor over deep water does NOT become a swimmer — the deck keeps its mode', () => {
     const world = new World();
     const g = new TileGrid(20, 20);
     g.tiles = Array.from({ length: 20 }, () => Array.from({ length: 20 }, () => Tile.Water)); // all sea
     const e = swimmer(world, 5 * TILE, 5 * TILE); // sitting on open water
-    e.riding = { shipId: 999, seat: 0 }; // aboard a sloop (pinned to the deck by ShipSystem)
+    e.onDeck = { shipId: 999, lx: 0, ly: 0 }; // aboard a sloop (parented to the deck by ShipSystem)
     new MovementSystem(world, new Collision(g)).update(0.2);
     expect(e.mover!.mode).toBe('foot'); // still 'foot' — NOT relabeled swim by the sea under the boat
   });

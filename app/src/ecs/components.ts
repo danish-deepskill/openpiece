@@ -205,12 +205,15 @@ export interface Ship {
   throttle: number;
 }
 
-/** Marks an entity riding/piloting a ship (its world position is pinned to a DECK SLOT, not the ship center,
- *  so riders don't stack). Id at rest — ShipSystem resolves it via world.byId each use, so a sunk ship reads
- *  as gone, not stale. */
-export interface Riding {
+/** Marks an entity standing ON a ship's deck (docs/design/features/big-walkable-ship.md — local-space parenting).
+ *  It carries a LOCAL position on the deck (ship-frame px, bow = +x, same frame as the deck grid); ShipSystem
+ *  derives the WORLD position each tick as `ship.pos + rotate(local, ship.angle)`, so the actor rides the deck as
+ *  it sails/turns. Replaces a fixed seat with a free spot (step 3 lets `lx/ly` MOVE = walking). Id at rest —
+ *  resolved via world.byId each use, so a sunk ship reads as gone, not stale. */
+export interface OnDeck {
   shipId: number;
-  seat: number; // deck-slot index (0 = pilot at the helm; 1+ = passengers spread along the deck)
+  lx: number; // LOCAL x on the deck (px), ship-centered, bow = +x
+  ly: number; // LOCAL y on the deck (px), ship-centered
 }
 
 /**
@@ -368,7 +371,7 @@ export interface Components {
   accessories: Accessories;
   // naval
   ship: Ship;
-  riding: Riding;
+  onDeck: OnDeck;
 }
 
 export type ComponentName = keyof Components;

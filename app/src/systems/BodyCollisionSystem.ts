@@ -20,11 +20,11 @@ export class BodyCollisionSystem {
     private readonly collision: Collision,
   ) {}
 
-  /** A solid, pushable body: a living, GROUNDED foot actor that isn't riding a ship. An AIRBORNE actor (a jumper —
+  /** A solid, pushable body: a living, GROUNDED foot actor that isn't aboard a ship. An AIRBORNE actor (a jumper —
    *  docs/design/MOVEMENT_AIR.md) is NOT solid: it's above the crowd, so it neither pushes others nor is pushed —
    *  you jump OVER units. Excluding it here covers both directions at once (skipped as `e`, filtered from neighbors). */
   private solid = (e: Entity): boolean =>
-    !!e.transform && !!e.mover && e.mover.mode === 'foot' && e.mover.layer !== 'air' && !e.riding && !e.health?.dead;
+    !!e.transform && !!e.mover && e.mover.mode === 'foot' && e.mover.layer !== 'air' && !e.onDeck && !e.health?.dead;
 
   update(): void {
     for (const e of this.world.with('transform', 'mover')) {

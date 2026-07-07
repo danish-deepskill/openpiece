@@ -28,10 +28,11 @@ describe('InteractionSystem — generic verbs (the Moat for interaction)', () =>
     expect(sysFor(world).prompt(a)).toBe('');
   });
 
-  it('a self-verb (Disembark) wins over a nearby target while riding', () => {
+  it('a self-verb (Disembark) wins over a nearby target while aboard a ship', () => {
     const world = new World();
     const a = actorAt(world, 0, 0);
-    a.riding = { ship: world.create({ transform: { x: 0, y: 0, angle: 0, r: 30 } }) };
+    const ship = world.create({ transform: { x: 0, y: 0, angle: 0, r: 30 } });
+    a.onDeck = { shipId: ship.id, lx: 0, ly: 0 };
     world.create({ transform: { x: 5, y: 0, angle: 0, r: 10 }, pickup: { item: { cat: 'weapon', id: 'weapon.cutlass' }, label: 'Cutlass' } });
     expect(sysFor(world).prompt(a)).toBe('[E] Disembark');
   });
@@ -62,10 +63,11 @@ describe('InteractionSystem — generic verbs (the Moat for interaction)', () =>
     expect(dlg.view()).toBeNull(); // conversation over
   });
 
-  it("doesn't offer Take while riding (can() gates on !riding)", () => {
+  it("doesn't offer Take while aboard a ship (can() gates on !onDeck)", () => {
     const world = new World();
     const a = actorAt(world, 0, 0);
-    a.riding = { ship: world.create({ transform: { x: 999, y: 999, angle: 0, r: 30 } }) };
+    const ship = world.create({ transform: { x: 999, y: 999, angle: 0, r: 30 } });
+    a.onDeck = { shipId: ship.id, lx: 0, ly: 0 };
     world.create({ transform: { x: 5, y: 0, angle: 0, r: 10 }, pickup: { item: { cat: 'weapon', id: 'weapon.cutlass' }, label: 'Cutlass' } });
     expect(sysFor(world).prompt(a)).toBe('[E] Disembark'); // disembark (self) wins; Take is gated out anyway
   });
