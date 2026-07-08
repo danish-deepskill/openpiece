@@ -144,6 +144,18 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     expect(deckCanOccupy(grid, a.onDeck!.lx, a.onDeck!.ly, a.transform!.r, false)).toBe(true); // on a valid deck cell
   });
 
+  it('TAKING the wheel seats you AT it (the whole tile is the station trigger; the wheel is its center)', () => {
+    const { world, ships } = seaSystem();
+    const ship = makeShip(world, 500, 500, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const helm = helmSpot(grid);
+    const a = makeActor(world, 0, 0);
+    a.onDeck = { shipId: ship.id, lx: helm.lx + 10, ly: helm.ly - 6 }; // on the helm tile, but beside the wheel
+    ships.seatAtHelm(a);
+    expect(a.onDeck!.lx).toBeCloseTo(helm.lx, 6);
+    expect(a.onDeck!.ly).toBeCloseTo(helm.ly, 6);
+  });
+
   it('hands on the wheel: the PILOT faces the BOW, live through the turn (not the frozen pre-wheel aim)', () => {
     const { world, ships } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);

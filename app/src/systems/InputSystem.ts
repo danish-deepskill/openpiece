@@ -135,6 +135,7 @@ export class InputSystem {
         // dialogue consumed the press
       } else if (e.onDeck && this.ships.atHelm(e)) {
         e.onDeck.piloting = !e.onDeck.piloting; // take or release the wheel
+        if (e.onDeck.piloting) this.ships.seatAtHelm(e); // grabbing the wheel stands you AT it, not beside it
         // taking the wheel WEIGHS ANCHOR; releasing drops it — the anchor follows the helm now that boarding is
         // walking (the old board/disembark verbs owned this flag before they were removed)
         const ship = this.world.byId(e.onDeck.shipId);

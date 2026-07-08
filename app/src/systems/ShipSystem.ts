@@ -1,5 +1,5 @@
 import { events } from '../core/EventBus';
-import { deckCellAtLocal, deckOf, deckToWorld } from '../defs/decks';
+import { deckCellAtLocal, deckOf, deckToWorld, helmSpot } from '../defs/decks';
 import { clamp } from '../core/math';
 import { ShipHulls } from '../defs/ships';
 import type { Entity } from '../ecs/components';
@@ -80,6 +80,18 @@ export class ShipSystem {
     // one exception to "ship code never touches facing" (parenting owns position only): holding the wheel IS
     // your action, so your body follows it; release the wheel and free aim returns (Input owns angle again).
     if (e.transform) e.transform.angle = t.angle;
+  }
+
+  /** SEAT the pilot AT the wheel on TAKING it (E on the helm tile): the whole tile is the station trigger, so
+   *  you could otherwise steer from the tile's corner, visibly beside the wheel. A deliberate interaction pull,
+   *  not a movement snap — the transitions-never-move-the-body rule governs frame handoffs, not grabbing a
+   *  station. Works for ANY pilot (future AI helmsmen seat themselves the same way — the Moat). */
+  seatAtHelm(e: Entity): void {
+    const ship = e.onDeck ? this.world.byId(e.onDeck.shipId) : undefined;
+    if (!ship?.ship || !e.onDeck) return;
+    const helm = helmSpot(deckOf(ship.ship.hull, ShipHulls.get(ship.ship.hull).deck));
+    e.onDeck.lx = helm.lx;
+    e.onDeck.ly = helm.ly;
   }
 
   /** Is the actor STANDING on its ship's helm tile? Piloting is POSITIONAL — you steer only while on the helm
