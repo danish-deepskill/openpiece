@@ -1,6 +1,8 @@
 # Ships & Naval Combat (Design)
 
 Ships are first-class entities (and, architecturally, **composite actors** — a hull with part components).
+The MOVEMENT half — wind, points of sail, momentum, anchor states, grounding/ramming/projectile impacts —
+is designed in `SAILING.md` (the sailing model this combat layer stands on).
 
 ## Ship classes
 **Sloop** (starter, fast, fragile) → **Caravel** (mid) → **Galleon** (heavy, durable) → **Submarine / bubble

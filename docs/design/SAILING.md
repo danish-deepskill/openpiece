@@ -1,0 +1,100 @@
+# Sailing — the movement & impact model (Design)
+
+> The MOVEMENT half of the naval vision — how a ship sails, turns, stops, and crashes. The combat/ownership
+> half (classes, parts, cannons, modes, theft) is `NAVAL.md`; the walkable deck is
+> `features/big-walkable-ship.md`. STATUS: design ahead of code, on purpose. What's implemented today is the
+> arcade placeholder (ShipSystem: throttle + drag + flow-gated rudder); judged and sequenced 2026-07 after
+> the walkable-ship pillar, at the developer's call that sailing is one of THE MOATS of this game.
+
+## Verdict: which simulation tier
+
+Sailing sits on an arcade↔simulation spectrum:
+
+- **Arcade (current)** — WASD car with water drag. No wind, no decisions; every heading is equally good, so
+  sailing is joystick input, not gameplay. Cheap feel, zero moat.
+- **Full sim (Naval Action)** — sail-by-sail management, crew stations, tacking failure micro. Fights the
+  top-down action-RPG genre; wrong tier.
+- **TARGET: the Pirates! / Sea-of-Thieves middle** — wind + points of sail + sail states + momentum + a real
+  anchor. Decisions every minute, zero rope micromanagement. Wind turns POSITION into a resource (the
+  weather gauge: the upwind ship chooses when to engage), chases become angle-play instead of stat checks,
+  and rig differences make ship classes MECHANICALLY distinct instead of stat reskins.
+
+Two specific reasons the current feel reads cheap (developer report):
+1. **Velocity instantly equals heading** — turn the wheel and the whole momentum vector snaps to the new
+   direction. A go-kart on rails, not 200 tons of oak.
+2. **No wind** — nothing to read, nothing to plan, no reason position matters.
+
+## Core model (five pieces; every knob on `ShipHullDef` — content is data)
+
+1. **WIND** — a world-frame vector (direction + strength) drifting on a seeded Rng stream (deterministic,
+   replicable, multiplayer-safe). Environment state hangs off the FRAME (a lower-deck frame has no wind).
+   Storms later spike it via the event director (`EVENTS.md`).
+2. **POINTS OF SAIL** — `sailCurve` on the hull def: a speed multiplier by angle-off-wind, with a NO-GO zone
+   dead upwind (sails luff, thrust ≈ 0). This single data field IS "different ships, different mechanics":
+   - square rig (Galleon): wide no-go (~70°/side), monstrous on a broad reach;
+   - fore-and-aft (Sloop): narrow no-go, points close to the wind, nimble;
+   - **oars (Rowboat)**: a FLAT curve — wind-independent, slow, can turn standing (`minTurnFrac > 0` finally
+     earns its keep). The starter boat stays tutorial-friendly as DATA, not as a special case.
+3. **SAIL STATES** — furled / half (battle sails) / full, stepped by W/S (replaces throttle-as-gas-pedal).
+   Speed = sail amount × curve(angle to wind) × maxSpeed; accel stays slow (sails catching wind).
+4. **MOMENTUM WITH DRIFT** — the ship keeps a velocity VECTOR; steering turns the HEADING, and velocity
+   eases toward it at a per-hull rate (`driftEase`). Ships carve arcs, get caught sideways mid-turn, and
+   coast believably. The single biggest feel upgrade; also the prerequisite for real impact physics below.
+5. **A REAL ANCHOR** — states, not a decorative flag (today `Ship.anchored` is read by NOTHING in the sim;
+   only the renderer draws a chain dot): dropped / weighing / up. Drop = hard deceleration over ~1s — and
+   dropped AT SPEED pivots the ship around it (the handbrake anchor-turn, a deliberately pirate move).
+   Weighing takes a beat (instant-ish solo now; a crew capstan job when the naval-sim pillar lands).
+   NAVAL.md's theft rule ("unanchored ships can be stolen") makes the state strategic, not just physical.
+
+KEPT from the current implementation (already right): **steerage** — rudder authority scales with water flow
+(`minTurnFrac + flow`), and hard turns bleed speed (`turnBrake`). These survive the rework unchanged.
+
+## Emergent maneuvers — deliberately NO dedicated code
+
+All of these are CONSEQUENCES of the five pieces, never features:
+- **Tacking**: zigzag upwind by swinging the bow through the no-go zone — costs speed by the curve.
+- **In irons**: enter the no-go too slow → stranded luffing until you fall off. The stall IS the failure
+  state; no scripted "tack failed" logic.
+- **Jibing (wearing)**: cross the wind stern-first — safe, no stall risk, gives up ground downwind.
+- **Weather gauge**: the upwind ship dictates engagement — pure positioning strategy from the wind vector.
+- **Anchor turn**: drop at speed to whip the stern around — from the anchor model.
+The preparation loop (weigh anchor → set sails → gain steerage) also falls out of states 3+5, and each step
+becomes a CREW JOB later without redesign (DEEP_SIMULATION).
+
+## Impacts (judged 2026-07; build AFTER momentum — ram physics need a real velocity vector)
+
+- **GROUNDING / CRASHING into terrain**: today running aground silently zeroes speed. Target: speed-scaled —
+  below a threshold, a free bump (QoL: nudging the dock never chips HP); above it, hull damage scaled by a
+  terrain HARDNESS knob (sand soft, rock/dock hard — a TerrainDef field, content). The soft case hides a
+  feature: **deliberate beaching** — run up on sand for a fast raid entry, stuck until you back off
+  (careening flavor). Impact FX + crew stagger via the external-force channel.
+- **RAMMING**: ships currently GHOST through each other (body collision is foot-only; hulls only block
+  walkers) — ship-vs-ship collision must exist first. Phase 1: **circle-vs-circle** (ship.r) impact
+  detection; damage = RELATIVE MOMENTUM, split by mass ratio (galleon crushes sloop; the rammer takes a
+  fraction; NAVAL.md's ram part shifts the split — content, not code). Impulse shoves both hulls; both crews
+  stagger. WARNING (recorded): grid-accurate hull-vs-hull contact is a rabbit hole — only pursue it if
+  boarding-by-contact ever demands it.
+- **PROJECTILE HITS on hull/parts**: a cannonball flies in the WORLD frame; on a hull hit, `worldToDeck`
+  names the CELL it struck — and with the structure layer, the mast/helm/cannon standing there is an ENTITY
+  with HP (NAVAL.md hit-spots, made spatial): mast → slowed, helm → can't steer, waterline → flooding
+  (bail/patch = crew jobs). Crew on deck are hit by ordinary actor collision already — parenting keeps them
+  in world coords. Needs: the structure layer (terrain pillar slice 3) + a projectile system.
+
+## Architecture mapping
+
+- `WindSystem` (sim, seeded stream) owns the wind; ShipSystem consumes it — pure reads, no new engine.
+- All behavior knobs on `ShipHullDef` (`sailCurve`, `driftEase`, mass, hardness thresholds) — a new rig is a
+  def row. Curves as small lookup tables (angle buckets), not formulas, so content can shape them freely.
+- Everything sim-pure + fixed-timestep + seeded → headless server/replay safe (the multiplayer keystone).
+- Deck actors need NO code for any of this: parenting carries them through every turn, ram, and grounding
+  (the frames payoff); only the stagger effect touches them, via the shared external-force channel.
+
+## Build order (triggers, not dates)
+
+1. **After the terrain pillar**: wind + sailCurve + sail states + momentum/drift + real anchor — the moat
+   slice; fun solo, needs no pathfinding, no crew, no structures.
+2. **Impacts**: grounding/beaching + ship-ship circle collision + ram momentum damage (needs #1's vectors).
+3. **Cannons + part HP**: projectile system + deck structures with HP (needs slice-3 structures; unlocks
+   disable-vs-sink and capture gameplay).
+4. **Crewed sailing**: preparation steps become jobs (capstan, sails, lookout) — the naval-sim pillar
+   (DEEP_SIMULATION); nothing above needs redesign for it.
