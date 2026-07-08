@@ -8,11 +8,12 @@ interface Particle { x: number; y: number; vx: number; vy: number; life: number;
 interface Corpse { x: number; y: number; r: number; color: number; life: number; max: number }
 interface DmgText { obj: Phaser.GameObjects.Text; vy: number; life: number }
 interface Spot { obj: Phaser.GameObjects.Text; life: number; max: number } // the "!" spotted marker
-interface Ring { x: number; y: number; radius: number; color: number; life: number; max: number; width: number } // expanding shockwave
+interface Ring { x: number; y: number; radius: number; color: number; life: number; max: number; width: number; alpha: number; under: boolean } // expanding shockwave
 
 /** Pooled, presentation-only effects. Lives outside the ECS to keep the hot path allocation-free. */
 export class FxSystem {
   private readonly gfx: Phaser.GameObjects.Graphics;
+  private readonly gfxGround: Phaser.GameObjects.Graphics; // ground-plane layer (Depth.GroundFx) — splash rings draw beneath units
   private particles: Particle[] = [];
   private swings: SwingFx[] = [];
   private corpses: Corpse[] = [];
@@ -29,6 +30,7 @@ export class FxSystem {
 
   constructor(private readonly scene: Phaser.Scene) {
     this.gfx = scene.add.graphics().setDepth(Depth.Fx);
+    this.gfxGround = scene.add.graphics().setDepth(Depth.GroundFx); // ground-plane FX (splash rings) — UNDER units
     // the sim EMITS fx events; this presentation system is their one subscriber (DESIGN_PATTERNS §7)
     events.on('fx:burst', ({ x, y, color, n, speed }) => this.burst(x, y, color, n, speed));
     events.on('fx:dmgText', ({ x, y, value, color }) => this.dmgText(x, y, value, color));
@@ -36,7 +38,9 @@ export class FxSystem {
     events.on('fx:corpse', ({ x, y, r, color }) => this.corpse(x, y, r, color));
     events.on('fx:shake', ({ amount }) => this.shake(amount));
     events.on('fx:spotted', ({ x, y, dur }) => this.spotted(x, y, dur));
-    events.on('fx:ring', ({ x, y, radius, color, life, width }) => this.rings.push({ x, y, radius, color, life, max: life, width: width ?? 4 }));
+    events.on('fx:ring', ({ x, y, radius, color, life, width, alpha, under }) =>
+      this.rings.push({ x, y, radius, color, life, max: life, width: width ?? 4, alpha: alpha ?? 1, under: under ?? false }),
+    );
     this.textPool = new Pool<Phaser.GameObjects.Text>(
       () =>
         scene.add
@@ -130,16 +134,19 @@ export class FxSystem {
 
     const g = this.gfx;
     g.clear();
+    this.gfxGround.clear();
     for (const c of this.corpses) {
       g.fillStyle(c.color, clamp(c.life / c.max, 0, 1));
       g.fillCircle(c.x, c.y, c.r);
     }
-    // SHOCKWAVE rings: expand from ~0 to `radius` while fading — a slam impact (Gomu Ono's stomp).
+    // SHOCKWAVE rings: expand from ~0 to `radius` while fading — a slam impact above the crowd, or a water-entry
+    // splash on the GROUND plane (rg.under → drawn beneath units: the ring is ON the sea surface, the body above it).
     for (const rg of this.rings) {
       const prog = 1 - rg.life / rg.max; // 0 → 1 over its life
       const cur = rg.radius * (0.2 + 0.8 * prog); // grows outward
-      g.lineStyle(rg.width * (1 - prog) + 1, rg.color, clamp(rg.life / rg.max, 0, 1)); // thick+opaque early, thin+faint late
-      g.strokeCircle(rg.x, rg.y, cur);
+      const layer = rg.under ? this.gfxGround : g;
+      layer.lineStyle(rg.width * (1 - prog) + 1, rg.color, rg.alpha * clamp(rg.life / rg.max, 0, 1)); // thick+opaque early, thin+faint late
+      layer.strokeCircle(rg.x, rg.y, cur);
     }
     for (const s of this.swings) this.drawSwing(s);
     for (const p of this.particles) {

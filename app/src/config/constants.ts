@@ -21,6 +21,7 @@ export const Depth = {
   Terrain: 0,
   Sea: 1, // animated wave-crest overlay, drawn just above the (baked) deep water and below everything else
   Corpse: 5,
+  GroundFx: 6, // water-surface FX (splash rings) — on the ground plane: above corpses, below items/boats/actors
   Building: 10,
   Item: 12,
   Boat: 15,

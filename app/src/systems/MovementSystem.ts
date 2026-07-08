@@ -306,7 +306,8 @@ export class MovementSystem {
   private waterEntryFx(x: number, y: number, r: number): void {
     const water = this.collision.terrainAtPx(x, y).water;
     if (water === undefined) return; // dry landing — no puff
-    // splash look (developer-tuned): wide, slow, THIN — and bluer over the deep than the pale shallows
-    events.emit('fx:ring', { x, y, radius: r * 2.2, color: water === 'deep' ? SPLASH_DEEP : SPLASH_SHALLOW, life: 0.5, width: 2 });
+    // splash look (developer-tuned): wide, slow, THIN, translucent, and UNDER the body (it's the sea surface
+    // rippling, not an aura on the unit) — bluer over the deep than the pale shallows
+    events.emit('fx:ring', { x, y, radius: r * 2.2, color: water === 'deep' ? SPLASH_DEEP : SPLASH_SHALLOW, life: 0.5, width: 2, alpha: 0.55, under: true });
   }
 }

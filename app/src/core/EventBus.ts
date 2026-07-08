@@ -34,8 +34,9 @@ export interface GameEvents {
   'fx:shake': { amount: number };
   /** An expanding SHOCKWAVE ring — a slam/impact (Gomu Ono's stomp) or a water-entry splash. Grows from ~0 to
    *  `radius` and fades over `life` seconds. `width` = starting stroke thickness (px, default 4 — the slam look);
-   *  a splash passes a thin one. Presentation-only (a cosmetic ring; any AoE damage is separate). */
-  'fx:ring': { x: number; y: number; radius: number; color: number; life: number; width?: number };
+   *  `alpha` = peak opacity (default 1); `under` = draw on the GROUND plane beneath units (a splash sits ON the
+   *  water surface under the body; a slam shockwave stays above). Presentation-only (any AoE damage is separate). */
+  'fx:ring': { x: number; y: number; radius: number; color: number; life: number; width?: number; alpha?: number; under?: boolean };
   /** An AI just SPOTTED a target and is about to give chase — the "!" double-take marker over its head. The sim
    *  (brain's alert state) emits it at the unit's position; FxSystem draws a rising "!" there for `dur` seconds.
    *  (The unit HOLDS STILL during the alert beat, so a fixed-position marker tracks it fine — no world lookup.) */
