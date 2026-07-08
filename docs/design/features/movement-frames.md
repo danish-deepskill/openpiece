@@ -7,12 +7,14 @@ tick phase. `InputSystem` only writes the frame-neutral intent (`mover.vx/vy`); 
 resolves the deck-frame case beside jump/land/perch/airborne-leave. This killed the deck-jump bug class whose
 ROOT was: deck locomotion lived in InputSystem while world locomotion + jump/land/perch lived in MovementSystem —
 split across two tick phases, so a deck jumper's move and its landing state were perpetually a tick out of sync
-(you'd get stuck on the rail, or flung off). One system + one phase = no stale state. `ShipSystem` keeps only the
-frame-transition primitives (enterDeck/exitDeck), parenting, and piloting; its `walkDeck` is gone.
+(you'd get stuck on the rail, or flung off). One system + one phase = no stale state. The frame-transition
+primitives live in `world/frames.ts` (enterDeck/exitDeck/inFrameCooldown) — the ONE world↔deck handoff every
+caller goes through (a raw `onDeck` write once made swimmers drown standing on deck); `ShipSystem` keeps only
+parenting + piloting; its `walkDeck` is gone.
 
-## The problem (a symptom the canon warns about)
+## The problem it solved (a symptom the canon warns about)
 
-Being on a ship's deck currently changes the whole input/movement pipeline: `InputSystem` has an `if (e.onDeck) { walk-or-pilot; return }` that SKIPS all combat/aim/jump/abilities, and `MovementSystem` has grown `!e.onDeck` special-cases. So the deck is a "special mode" — you're disarmed the moment you board. That contradicts the **Moat** (the player isn't special — and neither is a *location*): standing on a deck should no more strip your abilities than standing on sand vs. grass does.
+Being on a ship's deck used to change the whole input/movement pipeline: `InputSystem` had an `if (e.onDeck) { walk-or-pilot; return }` that SKIPPED all combat/aim/jump/abilities, and `MovementSystem` had grown `!e.onDeck` special-cases. The deck was a "special mode" — you were disarmed the moment you boarded. That contradicts the **Moat** (the player isn't special — and neither is a *location*): standing on a deck should no more strip your abilities than standing on sand vs. grass does.
 
 The root cause is one design flaw: **movement is expressed as world-space velocity (`mover.vx/vy`) integrated against the world grid — the world is HARD-CODED as the frame of reference.** A deck is a different reference frame (moving, rotating), so the code special-cases it with a branch. Every "re-enable X on the deck" fix is a symptom of this. Fixing them one-by-one is the hotfix trap; the foundation is to make movement **frame-agnostic**.
 
@@ -44,11 +46,34 @@ The whole point: **no system branches on "am I on a deck." They branch on the FR
 - It DELETES the creeping `!e.onDeck` branches (MovementSystem's mode-derive, the InputSystem early-return) instead of adding more.
 - The frame is DATA (a component fact), so it serializes, replays, and works headless — same as MoveMode/Layer.
 
-## Build order
+## The transition rulebook (battle-tested — four playtest rounds of snap/freeze bugs distilled)
 
-1. Input: split into ACTIONS (always run) + a frame-neutral movement INTENT; drop the `onDeck` early-return so aim/attack/abilities/jump run aboard. Route the intent to `walkDeck` when deck-framed, world `vx/vy` when world-framed — the ONE dispatch. Guard the double-apply (deck-framed must not also set world `vx/vy`).
-2. Jump/Geppo deck-relative: a deck-framed jumper stays deck-framed (Layer='air'), lands back on the moving deck.
-3. Generic frame transition (`enterFrame`/`exitFrame`) — folds boarding + the deferred gangplank walk-on/off + future deck→deck into one primitive.
-4. Collapse the remaining `!e.onDeck` special-cases in MovementSystem into the frame dispatch.
+Every rule below exists because its violation shipped a real bug. Break one and the same bug family returns.
 
-Each step typecheck + Vitest green. Keep this doc + `big-walkable-ship.md` in sync.
+1. **A transition NEVER moves the body.** It is a pure address-book switch: convert the CURRENT point between
+   frames (`exitDeck`/`enterDeck` with the standing position), never a lookahead or a snap target. Lookaheads
+   are TRIGGERS only. Corollary: a body may exit OVERLAPPING solid (the humanoid r=11 is wider than the rail's
+   outer wood band) — that's NORMAL; the frame beat (`frameCd`, which gates only the rail drop-off and mutes the
+   hull eject) lets it walk itself clear.
+2. **Every deck ENTRY is gated on a LEGAL deck state** (the landing spot must satisfy deck collision, else
+   perch). No entry may create an impossible position and hope later ticks fix it.
+3. **Direction-aware doors, not cooldowns.** The gangplank pair (walk-on/walk-off) is input-asymmetric
+   (inward intent boards, outward leaves), so it cannot oscillate — cooldown mutes on transitions were the
+   OLD bug source, not the fix.
+4. **Perch-as-needed landings in BOTH frames:** if grounded rules reject the landing cell, set `onLedge`
+   rather than rejecting/teleporting the landing.
+5. **Depenetration is nearest-clear-spot, never a radial fling** — and an embedded body keeps its veto lifted
+   (the hull veto applies only from CLEAR positions) so it can walk itself free instead of deadlocking.
+
+## Frames-as-LEVELS (where this goes next)
+
+A frame is not just "the deck of one ship" — it's the general level primitive. Lower decks, holds, caves, and
+pocket interiors are MORE GRIDS with their own colliders + structure indexes, entered through hatch/ladder
+transitions built on the same `frames.ts` primitives (RimWorld ships this exact shape as pocket maps; our
+moving frames are a superset). Multi-level is NEVER a z-axis — elevation stays discrete states
+(air layer / onLedge / submerged / which-frame). Recorded naval triggers: an airborne body INHERITS the
+velocity of the frame it leaves (leap between moving ships) — add at `exitDeck` when naval battles land;
+cross-frame pathfinding = a portal graph (frames are rooms; gangplank/hatch/leap edges are doors,
+capability-gated by jump/Geppo).
+
+Keep this doc + `big-walkable-ship.md` in sync.

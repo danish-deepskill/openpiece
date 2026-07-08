@@ -122,7 +122,8 @@ The hero's current `avatar` (stam/combo/cd) folds into `attributes` + `abilities
 | Crafting / blacksmithing / market | **Generic systems over recipe defs** | consume materials, emit items |
 | Open world / islands | **One seamless chunked sea** (tiered ticking) | zones are data over a continuous ocean; see §5 |
 | Ocean zones / hazards | **`ZoneDef` + HazardSystem** | climate, hazard set, tier gate, spawn tables |
-| Ships / parts / cannons | **Composite entity + part components** | naval combat reuses GAS-lite engine |
+| Buildings / walls / doors / trees | **StructureDef + per-grid occupancy index** (built) | entities on the two-layer grid (`ARCHITECTURE.md §5`); door state on the component; HP/destructibility = add `health` + a damage path at the trigger below |
+| Ships / parts / cannons | **Composite entity + part components** | naval combat reuses GAS-lite engine; ship WEAK-POINTS (mast/helm/hull breach) = structures ON the deck grid taking damage — emerges from the structure layer, no bespoke system |
 | Ship modes | **FSM** (exploration ↔ battle) | swaps active ability/control set |
 | Land & sea events | **Event Director + `EventDef`** | proximity triggers, Adventure-Dex tiering |
 | Factions | **Data-driven relations matrix** (built) | `docs/ARCHITECTURE.md §11` |
@@ -141,9 +142,11 @@ The hero's current `avatar` (stam/combo/cd) folds into `attributes` + `abilities
   screen). Chunks tick in TIERS — **active** (full sim) / **nearby** (reduced) / **distant** (frozen or
   abstract via the Event Director). Zones (`ZoneDef`: climate, hazards, tier gates) are DATA painted over the
   continuous sea, not scenes; crossing a zone boundary changes numbers, never screens. Chunk-proof invariants
-  already in place: all grid reads via the TileGrid/Collision facade; Uint8-ready ordinals; worldgen a pure
-  fn of the seed (becomes per-chunk pure at the trigger); absolute f64 world coords; plain serializable
-  components. PERSISTENCE lands BEFORE chunking (an unloaded chunk's state must live somewhere).
+  already in place: all grid reads via the TileGrid/Collision facade; Uint8-ready ordinals; the structure
+  layer is a per-grid REBUILDABLE index over serializable `structure` components (a chunk reloads by
+  re-placing its entities); worldgen a pure fn of the seed (becomes per-chunk pure at the trigger); absolute
+  f64 world coords; plain serializable components. PERSISTENCE lands BEFORE chunking (an unloaded chunk's
+  state must live somewhere).
 - **Event Director** (L4D-AI-Director style): each tick over the active region, it weighs `EventDef`s by
   Adventure-Dex tier, active factions, region, and player power, then spawns encounters by proximity and
   resolves rewards + reputation deltas. Events never hardcode placement.

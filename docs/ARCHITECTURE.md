@@ -153,6 +153,25 @@ style). Structural changes (add/remove component/entity) are cheap; queries iter
 corpses) do NOT** — they churn every frame and are pure presentation, so `FxSystem` keeps them in
 `Pool`s. Keeps the ECS clean and allocation-free in the hot path.
 
+### The static world: two layers, one collider, many frames
+
+- **Two-layer grid.** A frame's static model is TERRAIN (ground — small-int ordinals decoding to
+  `TerrainDef` rows, Uint8Array/chunk-ready) plus STRUCTURES (built things — wall/door/tree ENTITIES with a
+  `structure` component, occupying cells through the grid's own `StructureIndex`: cell → entity, RimWorld's
+  EdificeGrid). Terrain can't carry what building needs — multi-tile footprints, per-instance state (a
+  door's `open`), HP/destructibility — so anything constructible is the entity layer; anything that IS the
+  ground (floor, sand, water, future cliffs) stays terrain. Every physical/planning/vision rule composes
+  the two; `placeStructure`/`removeStructure` are the one build/demolish pair (entity + index in lockstep).
+- **One collision engine.** `GridCollider` is THE circle-vs-grid solver (canOccupy/tryMove/unstick, one
+  circle-vs-AABB primitive). Each frame plugs in an ORACLE `blocksAt(cx, cy, ctx) → QuarterMask` (4-bit
+  NW/NE/SW/SE — quantized quarter shapes as data, chosen over free shapes) reading that frame's layers:
+  the world facade composes terrain + structures; the deck facade composes hull mask tables. Collision may
+  be coarser than visuals BY DESIGN.
+- **Frames as levels.** World and each ship deck are peer coordinate frames (`world/frames.ts` owns the
+  handoff); lower decks / caves / pocket interiors are MORE grids with their own colliders + structure
+  indexes — never a z-axis. The transition rulebook + naval triggers live in
+  `docs/design/features/movement-frames.md`.
+
 ---
 
 ## 6. AI abstraction (FSM now → behavior-tree/jobs later)
