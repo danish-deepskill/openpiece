@@ -39,10 +39,11 @@ describe('Structures registry (family sweep)', () => {
     }
   });
 
-  it("every def's bake key resolves to a painter (CI-side twin of the StructureRenderer boot sweep)", () => {
-    // structureDraws imports Phaser TYPE-only, so this is legal headless — a typo'd bake key fails here in CI
+  it("every def's bake + overlay key resolves to a painter (CI-side twin of the StructureRenderer boot sweep)", () => {
+    // structureDraws imports Phaser TYPE-only, so this is legal headless — a typo'd key fails here in CI
     for (const d of Structures.all()) {
       if (d.bake) expect(structureDraws[d.bake], `${d.id} names unknown bake '${d.bake}'`).toBeDefined();
+      if (d.overlay) expect(structureDraws[d.overlay], `${d.id} names unknown overlay '${d.overlay}'`).toBeDefined();
     }
   });
 });

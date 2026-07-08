@@ -89,12 +89,25 @@ describe('WorldGen — walls & groves never seal a required path', () => {
     expect(level.pickups.some((p) => p.item.id === 'accessory.strawHat')).toBe(true);
   });
 
-  it('actually places a gapped stone ring, houses with doors, and some trees', () => {
+  it('actually places a gapped stone ring, houses with doors, trees, and THE windmill', () => {
     const s = generateLevel(new Rng(1)).structures;
     const count = (def: string) => s.filter((r) => r.def === def).length;
     expect(count('structure.stoneWall')).toBeGreaterThan(10); // a real perimeter, not a stray tile
     expect(count('structure.tree')).toBeGreaterThan(0);
     expect(count('structure.door')).toBe(4); // one per village house
     expect(count('structure.wall')).toBeGreaterThan(10); // the village shells
+    expect(count('structure.windmill')).toBe(1); // the multi-tile landmark — ONE record, SIX cells at spawn
+  });
+
+  it('the windmill record occupies all six of its cells once materialized (multi-tile end-to-end)', () => {
+    const level = generateLevel(new Rng(1));
+    materialize(level);
+    const mill = level.structures.find((r) => r.def === 'structure.windmill')!;
+    for (let dy = 0; dy < 2; dy++) {
+      for (let dx = 0; dx < 3; dx++) {
+        expect(level.grid.structures.blocks(mill.tx + dx, mill.ty + dy, FOOT_CTX)).toBe(true);
+      }
+    }
+    expect(level.grid.structures.blocks(mill.tx - 1, mill.ty, FOOT_CTX)).toBe(false); // …and not its neighbor
   });
 });

@@ -29,9 +29,7 @@ export interface StructureDef extends Def {
    *  clears while open, and AI PLANS through it as passable even while it physically blocks (it opens on
    *  arrival — so pursuers follow you inside instead of being walled out). */
   door?: boolean;
-  /** Gets a baked leaf-crown overlay ABOVE the actor band (units walk under the leaves) — trees. */
-  canopy?: boolean;
-  // ---- presentation (plain data; draw FUNCTIONS live in draw/structureDraws.ts keyed by `bake`) ----
+  // ---- presentation (plain data; draw FUNCTIONS live in draw/structureDraws.ts keyed by `bake`/`overlay`) ----
   /** Base fill painted over every footprint cell before the bake detail; ABSENT = the terrain underneath
    *  shows through (a tree trunk stands on visible grass; a wall replaces its ground entirely). */
   color?: number;
@@ -40,6 +38,9 @@ export interface StructureDef extends Def {
   /** Key into draw/structureDraws.ts for the baked visual (wall shading, door frame, trunk). Unknown key =
    *  throw at first bake (fail loud), mirroring the terrain-bake boot sweep. */
   bake?: string;
+  /** Key into draw/structureDraws.ts for the ABOVE-ACTORS overlay (baked at Depth.Canopy — units pass UNDER
+   *  it): a tree's leaf crown, a windmill's blades. Same fail-loud key sweep as `bake`. */
+  overlay?: string;
 }
 
 // validated at boot: a fractional/zero footprint corrupts the occupancy stamp; an air-blocker that doesn't
@@ -61,6 +62,9 @@ Structures.registerAll([
   // freestanding stone — a LOW wall: jump it or perch on it; no door mechanic, see-through (waist height)
   { id: 'structure.stoneWall', name: 'Stone Wall', size: { w: 1, h: 1 }, blocksFoot: true, blocksAir: false, color: 0x8a8781, minimap: 0x6b6b6b, bake: 'stoneWall' },
   // tree — a LOW blocker (vault the grove / perch); no base color (the trunk stands on visible grass),
-  // crown baked above actors via `canopy`
-  { id: 'structure.tree', name: 'Tree', size: { w: 1, h: 1 }, blocksFoot: true, blocksAir: false, canopy: true, minimap: 0x2f5a2f, bake: 'tree' },
+  // crown baked above actors via the overlay pass
+  { id: 'structure.tree', name: 'Tree', size: { w: 1, h: 1 }, blocksFoot: true, blocksAir: false, minimap: 0x2f5a2f, bake: 'tree', overlay: 'treeCrown' },
+  // windmill — the first MULTI-TILE structure (the reason built things are entities, not tiles): one entity,
+  // SIX occupied cells; a TALL roofed landmark (no jumping through the mill) with its blade sweep above actors
+  { id: 'structure.windmill', name: 'Windmill', size: { w: 3, h: 2 }, blocksFoot: true, blocksAir: true, opaque: true, color: 0x7d7668, minimap: 0x6b5f4e, bake: 'windmill', overlay: 'windmillBlades' },
 ]);

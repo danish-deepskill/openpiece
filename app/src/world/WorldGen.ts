@@ -248,6 +248,10 @@ export function generateLevel(rng: Rng): LevelLayout {
     { tx: HOME.cx, ty: HOME.cy + 4, tw: 6, th: 4 }, // the tavern (biggest) — recognizable by size + interior
   ];
   for (const h of houses) stampHouse(h.tx, h.ty, h.tw, h.th);
+  // the village windmill — ONE entity, SIX cells (3×2): the multi-tile structure the entity layer exists for.
+  // NE of the village on open grass, clear of every house/spawn; blocks foot AND air (a roofed landmark you
+  // route around, not over), blade sweep baked above actors. Placement knob: the anchor cell below.
+  gen.build('structure.windmill', HOME.cx + 4, HOME.cy - 8);
   // interior-center pixel of a house — where stashed loot sits (walk in through the door, press E)
   const inside = (h: (typeof houses)[number]) => ({ x: px(h.tx) + px(h.tw) / 2, y: px(h.ty) + px(h.th) / 2 });
 
