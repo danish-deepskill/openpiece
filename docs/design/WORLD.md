@@ -34,6 +34,8 @@ current-based puzzles.
 
 ## Engine implications (preview)
 - World = a **graph of regions/islands**; each `ZoneDef` carries climate, hazard set, tier gate, spawn tables.
-- **Region streaming**: only the active island/sea region's entities & terrain are live (Phaser scene per
-  region, or chunked world). Zones are data, not code.
+- **Seamless chunked sea** (decided 2026-07; supersedes region-scene streaming — scene transitions would kill
+  the sailing moat, `SAILING.md`): chunks tick in tiers (active/nearby/distant); zones are DATA painted over
+  one continuous ocean — crossing a boundary changes hazards/climate, never screens. Built at the recorded
+  trigger (world size/entity counts), AFTER persistence; sailing ships earlier on a larger fixed map.
 - Hazards = environmental systems reading the active `ZoneDef` (a `HazardSystem` that applies effects to ships).

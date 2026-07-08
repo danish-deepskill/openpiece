@@ -120,7 +120,7 @@ The hero's current `avatar` (stam/combo/cd) folds into `attributes` + `abilities
 | Progression / talents / dexes | **Independent XP tracks** (`progression`) | non-linear; caps in data |
 | Items / materials / recipes / blueprints | **Registry defs + `inventory`** | Def vs Instance for upgrades/enchants |
 | Crafting / blacksmithing / market | **Generic systems over recipe defs** | consume materials, emit items |
-| Open world / islands | **Region graph + scene streaming** | one active region; zones are data |
+| Open world / islands | **One seamless chunked sea** (tiered ticking) | zones are data over a continuous ocean; see §5 |
 | Ocean zones / hazards | **`ZoneDef` + HazardSystem** | climate, hazard set, tier gate, spawn tables |
 | Ships / parts / cannons | **Composite entity + part components** | naval combat reuses GAS-lite engine |
 | Ship modes | **FSM** (exploration ↔ battle) | swaps active ability/control set |
@@ -136,8 +136,14 @@ The hero's current `avatar` (stam/combo/cd) folds into `attributes` + `abilities
 
 ## 5. World streaming & the Event Director
 
-- **World = a graph** of islands + sea regions (`ZoneDef` nodes). Only the **active region** is simulated
-  (its own Phaser scene or a chunk swap). Travel = transition between region scenes; ships carry state across.
+- **World = ONE SEAMLESS SEA, chunked** (decided 2026-07, superseding the earlier region-scene idea: scene
+  transitions are incompatible with the sailing moat — no weather gauge or cross-zone chase through a loading
+  screen). Chunks tick in TIERS — **active** (full sim) / **nearby** (reduced) / **distant** (frozen or
+  abstract via the Event Director). Zones (`ZoneDef`: climate, hazards, tier gates) are DATA painted over the
+  continuous sea, not scenes; crossing a zone boundary changes numbers, never screens. Chunk-proof invariants
+  already in place: all grid reads via the TileGrid/Collision facade; Uint8-ready ordinals; worldgen a pure
+  fn of the seed (becomes per-chunk pure at the trigger); absolute f64 world coords; plain serializable
+  components. PERSISTENCE lands BEFORE chunking (an unloaded chunk's state must live somewhere).
 - **Event Director** (L4D-AI-Director style): each tick over the active region, it weighs `EventDef`s by
   Adventure-Dex tier, active factions, region, and player power, then spawns encounters by proximity and
   resolves rewards + reputation deltas. Events never hardcode placement.
