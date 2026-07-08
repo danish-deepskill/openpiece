@@ -51,7 +51,7 @@ Ship-to-ship reuses the **same attribute/ability/effect engine** as characters (
 attributes, cannons are abilities, fire/flood are effects). Crews matter; many events want coordinated crews.
 
 ## Sailing & ownership
-- Spawn a ship via a **ship-in-a-bottle** item. **Unanchored ships can be stolen** by other players/NPCs →
+- **Unanchored ships can be stolen** by other players/NPCs →
   the **anchor** is a meaningful state.
 - Sailing is also a **talent** (cap 500).
 
