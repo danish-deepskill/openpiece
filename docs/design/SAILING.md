@@ -155,6 +155,15 @@ AI the sim is deterministic and fully queryable, so the "deep" parts are arithme
   which plugs straight into the INT-ladder/knowledge economy (low crews don't KNOW things).
 - **Timescale favors the AI**: sailing decides over seconds-to-minutes with smooth dynamics vs melee's
   adversarial tenths-of-seconds. Precedent: Pirates! (1987) AI sailed a wind model.
+- **Combat maneuvering too** (broadsides on target, accurately timed): guns fire abeam, so "get the
+  broadside on" is ONE more term in the same heading scan — `sailCurve(wind) × broadside-alignment ×
+  range-band(loadout: mortar holds distance, burst closes)`; circling/strafing/gauge-keeping EMERGE from it,
+  never scripted. Fire timing = deflection shooting (aim at target pos + velocity × shell flight time — the
+  deterministic sim hands the AI exact velocity, so a PERFECT solution is the cheap default and skill
+  DEGRADES it: noisy estimates, slow solutions, wide gates). Fair by construction: shells are slow visible
+  arcs — even perfect solutions are dodgeable. The design nugget: POSITIONING (navigator) and GUNNERY
+  (gunner) are separate crew skills — an enemy ship's fight quality IS its crew composition, not a
+  monolithic "AI level" (knowledge economy; strongest genre precedent — Pirates!, Black Flag, Naval Action).
 - Honest caveats: INTERCEPTING a wind-literate player needs an iterative intercept estimate (slightly more
   math, still cheap); coordinated FLEETS are genuinely harder — deferred with squads-at-sea.
 
