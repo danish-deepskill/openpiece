@@ -1,18 +1,19 @@
 import type Phaser from 'phaser';
 import { Depth, TILE } from '../config/constants';
-import type { DoorSystem } from '../systems/DoorSystem';
+import { Structures } from '../defs/structures';
+import type { World } from '../ecs/World';
 
 /**
- * Draws the shut-door panels for every closed door — PRESENTATION half of the door feature (the sim tile
- * flip lives in systems/DoorSystem). Redrawn per render frame from DoorSystem.open; the baked terrain is
- * static, so the open/closed look can't live in it.
+ * Draws the shut-door panels for every closed door STRUCTURE — PRESENTATION half of the door feature (the
+ * `structure.open` flip lives in systems/DoorSystem). Redrawn per render frame from the entities' own open
+ * state; the baked structure layer is static, so the open/closed look can't live in it.
  */
 export class DoorRenderer {
   private readonly gfx: Phaser.GameObjects.Graphics;
 
   constructor(
     scene: Phaser.Scene,
-    private readonly doors: DoorSystem,
+    private readonly world: World,
   ) {
     this.gfx = scene.add.graphics().setDepth(Depth.Building);
     this.update(); // correct (closed) look before the first play frame
@@ -21,11 +22,10 @@ export class DoorRenderer {
   update(): void {
     const g = this.gfx;
     g.clear();
-    for (let i = 0; i < this.doors.doors.length; i++) {
-      if (!this.doors.open[i]) {
-        const d = this.doors.doors[i];
-        this.drawClosed(g, d.tx * TILE, d.ty * TILE);
-      }
+    for (const e of this.world.with('structure')) {
+      const s = e.structure;
+      if (s.open || !Structures.get(s.def).door) continue;
+      this.drawClosed(g, s.tx * TILE, s.ty * TILE);
     }
   }
 

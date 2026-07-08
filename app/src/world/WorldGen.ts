@@ -1,4 +1,5 @@
 import { ENEMY, HOME, TILE } from '../config/constants';
+import { Structures } from '../defs/structures';
 import { TERRAIN } from '../defs/terrains';
 import type { Rng } from '../core/Rng';
 import type { ItemRef } from '../defs/items';
@@ -8,13 +9,26 @@ export interface EnemySpawn { x: number; y: number; boss: boolean; unit: string 
 
 export interface PickupSpawn { item: ItemRef; x: number; y: number }
 
+/** WHAT to build at WHICH anchor cell — plain data, like EnemySpawn. Worldgen stays a pure function of the
+ *  seed; the scene turns each record into a structure ENTITY (placeStructure) at world start. */
+export interface StructureSpawn { def: string; tx: number; ty: number }
+
 export interface LevelLayout {
   grid: TileGrid;
   playerSpawn: { x: number; y: number };
   boatSpawn: { x: number; y: number };
   pickups: PickupSpawn[];
-  doors: { tx: number; ty: number }[];
+  structures: StructureSpawn[];
   enemies: EnemySpawn[];
+}
+
+/** Generation-time structure emitter shared by the stamp passes: records what to build (pure data) plus a
+ *  cell-occupancy scratch, so a later pass can never stack a second structure on a claimed cell (the index's
+ *  place() would throw at spawn — this keeps generation legal by construction). */
+interface GenCtx {
+  grid: TileGrid;
+  occupied(tx: number, ty: number): boolean;
+  build(def: string, tx: number, ty: number): void;
 }
 
 const px = (tx: number) => tx * TILE;
@@ -49,7 +63,7 @@ const WALL_SPOKES = { slices: 3, inner: 2, halfW: 1.2, gapAt: 0.55, gapWidth: 2 
 
 /**
  * Tree groves (blocking cover) scattered on each island. A tree blocks ONLY its trunk tile; the leaf crown
- * overhangs ~1 tile all round (drawn above actors — TerrainRenderer's canopy pass). Knobs:
+ * overhangs ~1 tile all round (drawn above actors — StructureRenderer's canopy pass). Knobs:
  *  - `home`/`enemy` grove COUNT per island
  *  - `spread`      grove radius in tiles trunks scatter within
  *  - `perGrove`    target trunks per grove (fewer land when a spot can't satisfy spacing/clearance)
@@ -62,13 +76,13 @@ const GROVES = { home: 3, enemy: 4, spread: 3.4, perGrove: 4, spacing: 3, clear:
 const inBounds = (grid: TileGrid, tx: number, ty: number): boolean =>
   tx >= 0 && ty >= 0 && tx < grid.w && ty < grid.h;
 
-/** Stone ring around (cx,cy) with evenly-spaced gaps; only overwrites Grass, so it never carves beach,
- *  dock, or buildings. Gap 0 faces due west (angle π) — the player's natural landing approach. */
-function stampWallRing(grid: TileGrid, cx: number, cy: number, cfg: typeof WALL_RING): void {
+/** Stone ring around (cx,cy) with evenly-spaced gaps; only builds on unclaimed Grass, so it never carves
+ *  beach, dock, or buildings. Gap 0 faces due west (angle π) — the player's natural landing approach. */
+function stampWallRing(gen: GenCtx, cx: number, cy: number, cfg: typeof WALL_RING): void {
   const gapHalf = cfg.gaps > 0 ? cfg.gapWidth / (2 * cfg.radius) : 0; // gap arc half-width (radians)
-  for (let ty = 0; ty < grid.h; ty++) {
-    for (let tx = 0; tx < grid.w; tx++) {
-      if (grid.tiles[ty][tx] !== TERRAIN.grass) continue;
+  for (let ty = 0; ty < gen.grid.h; ty++) {
+    for (let tx = 0; tx < gen.grid.w; tx++) {
+      if (gen.grid.tiles[ty][tx] !== TERRAIN.grass || gen.occupied(tx, ty)) continue;
       const d = Math.hypot(tx - cx, ty - cy);
       if (Math.abs(d - cfg.radius) >= cfg.thickness) continue; // outside the wall band
       if (gapHalf > 0) {
@@ -81,15 +95,15 @@ function stampWallRing(grid: TileGrid, cx: number, cy: number, cfg: typeof WALL_
         }
         if (inGap) continue;
       }
-      grid.tiles[ty][tx] = TERRAIN.stoneWall;
+      gen.build('structure.stoneWall', tx, ty);
     }
   }
 }
 
 /** Radial spoke walls dividing the ring's interior into `slices` wedges (the pizza). Each spoke runs from
  *  `inner` out to the ring radius along one angle, with a doorway gap partway along so wedges connect.
- *  Grass-only (never carves the ring's own gaps or any structure), so the perimeter stays as authored. */
-function stampWallSpokes(grid: TileGrid, cx: number, cy: number, ring: typeof WALL_RING, cfg: typeof WALL_SPOKES): void {
+ *  Unclaimed-grass-only (never doubles the ring's cells or carves its gaps), so the perimeter stays as authored. */
+function stampWallSpokes(gen: GenCtx, cx: number, cy: number, ring: typeof WALL_RING, cfg: typeof WALL_SPOKES): void {
   const angles: number[] = [];
   for (let k = 0; k < cfg.slices; k++) {
     // offset half a wedge off gap 0 (due west) so a spoke bisects the wall BETWEEN two entrances
@@ -97,9 +111,9 @@ function stampWallSpokes(grid: TileGrid, cx: number, cy: number, ring: typeof WA
   }
   const gapStart = cfg.inner + (ring.radius - cfg.inner) * cfg.gapAt; // radial start of the crossing doorway
   const gapEnd = gapStart + cfg.gapWidth;
-  for (let ty = 0; ty < grid.h; ty++) {
-    for (let tx = 0; tx < grid.w; tx++) {
-      if (grid.tiles[ty][tx] !== TERRAIN.grass) continue;
+  for (let ty = 0; ty < gen.grid.h; ty++) {
+    for (let tx = 0; tx < gen.grid.w; tx++) {
+      if (gen.grid.tiles[ty][tx] !== TERRAIN.grass || gen.occupied(tx, ty)) continue;
       const dx = tx - cx;
       const dy = ty - cy;
       const d = Math.hypot(dx, dy);
@@ -109,7 +123,7 @@ function stampWallSpokes(grid: TileGrid, cx: number, cy: number, ring: typeof WA
         const da = Math.abs(Math.atan2(Math.sin(a - sa), Math.cos(a - sa))); // wrapped angular offset from the spoke line
         if (da * d >= cfg.halfW) continue; // perpendicular distance to the spoke line = da·d; outside the band
         if (d >= gapStart && d <= gapEnd) break; // the crossing doorway — leave it open
-        grid.tiles[ty][tx] = TERRAIN.stoneWall;
+        gen.build('structure.stoneWall', tx, ty);
         break;
       }
     }
@@ -120,7 +134,7 @@ function stampWallSpokes(grid: TileGrid, cx: number, cy: number, ring: typeof WA
  *  across ALL of the island's groves, so neighbouring groves can't fuse either), avoiding `protect` tiles
  *  (docks/doors/spawns) and — when `ringR` is given (enemy isle) — the wall band, so chokepoints stay open. */
 function scatterGroves(
-  grid: TileGrid, rng: Rng, cx: number, cy: number, islandR: number,
+  gen: GenCtx, rng: Rng, cx: number, cy: number, islandR: number,
   count: number, cfg: typeof GROVES, protect: readonly Pt[], ringR?: number,
 ): void {
   const clear2 = cfg.clear * cfg.clear;
@@ -130,7 +144,7 @@ function scatterGroves(
     protect.some((p) => (p.tx - tx) ** 2 + (p.ty - ty) ** 2 < clear2) ||
     (ringR !== undefined && Math.abs(Math.hypot(tx - cx, ty - cy) - ringR) < cfg.clear);
   const plantable = (tx: number, ty: number): boolean =>
-    inBounds(grid, tx, ty) && grid.tiles[ty][tx] === TERRAIN.grass && !near(tx, ty);
+    inBounds(gen.grid, tx, ty) && gen.grid.tiles[ty][tx] === TERRAIN.grass && !gen.occupied(tx, ty) && !near(tx, ty);
   const spaced = (tx: number, ty: number): boolean =>
     trunks.every((p) => (p.tx - tx) ** 2 + (p.ty - ty) ** 2 >= space2);
   for (let i = 0; i < count; i++) {
@@ -152,7 +166,7 @@ function scatterGroves(
       const tx = Math.round(ctx + Math.cos(a) * rr);
       const ty = Math.round(cty + Math.sin(a) * rr);
       if (!plantable(tx, ty) || !spaced(tx, ty)) continue;
-      grid.tiles[ty][tx] = TERRAIN.tree;
+      gen.build('structure.tree', tx, ty);
       trunks.push({ tx, ty });
       planted++;
     }
@@ -192,23 +206,39 @@ export function generateLevel(rng: Rng): LevelLayout {
     if (grid.tiles[ENEMY.cy + 1]) grid.tiles[ENEMY.cy + 1][x] = TERRAIN.dock;
   }
 
-  // home village buildings — stamped as hollow wall blocks (Wall perimeter, Floor interior, 1-tile door).
-  // Real grid obstacles so collision + pathfinding share one source of truth.
-  const doors: { tx: number; ty: number }[] = [];
+  // structure records + a generation-time occupancy scratch (one claim per cell — see GenCtx)
+  const structures: StructureSpawn[] = [];
+  const occ = new Set<number>();
+  const gen: GenCtx = {
+    grid,
+    occupied: (tx, ty) => occ.has(ty * grid.w + tx),
+    build: (def, tx, ty) => {
+      structures.push({ def, tx, ty });
+      // claim the FULL footprint, not just the anchor — a later pass probing any cell of a 3×2 windmill
+      // must see it as taken (the anchor-only version under-claimed multi-tile defs)
+      const { w, h } = Structures.get(def).size;
+      for (let y = ty; y < ty + h; y++) for (let x = tx; x < tx + w; x++) occ.add(y * grid.w + x);
+    },
+  };
+
+  // home village buildings — floor terrain under the WHOLE rect (walls STAND on floor), wall structure
+  // entities on the perimeter, one openable door structure mid-bottom. Structures are what collision +
+  // pathfinding read (through the grid's StructureIndex), so the layout stays one source of truth.
+  const doorCells: Pt[] = [];
   // buildings carry NO floating text label — the structure reads for itself (more natural than "House"/"Tavern" tags)
   const stampHouse = (tx: number, ty: number, tw: number, th: number) => {
+    const doorX = tx + Math.floor(tw / 2); // doorway in the bottom wall (openable — see DoorSystem)
+    const doorY = ty + th - 1;
     for (let y = ty; y < ty + th; y++) {
       for (let x = tx; x < tx + tw; x++) {
         if (x < 0 || y < 0 || x >= grid.w || y >= grid.h) continue;
+        grid.tiles[y][x] = TERRAIN.floor;
         const edge = x === tx || x === tx + tw - 1 || y === ty || y === ty + th - 1;
-        grid.tiles[y][x] = edge ? TERRAIN.wall : TERRAIN.floor;
+        if (!edge) continue;
+        const door = x === doorX && y === doorY;
+        gen.build(door ? 'structure.door' : 'structure.wall', x, y);
+        if (door) doorCells.push({ tx: x, ty: y });
       }
-    }
-    const doorX = tx + Math.floor(tw / 2); // doorway in the bottom wall (openable — see DoorSystem)
-    const doorY = ty + th - 1;
-    if (grid.tiles[doorY]) {
-      grid.tiles[doorY][doorX] = TERRAIN.door;
-      doors.push({ tx: doorX, ty: doorY });
     }
   };
   const houses = [
@@ -234,14 +264,15 @@ export function generateLevel(rng: Rng): LevelLayout {
   ];
 
   // enemy-isle stone ring (the assault funnels through its gaps) — placed on the enemy island's grass
-  stampWallRing(grid, ENEMY.cx, ENEMY.cy, WALL_RING);
+  stampWallRing(gen, ENEMY.cx, ENEMY.cy, WALL_RING);
   // …then divide the interior into 3 wedges (the pizza): radial spokes from the hub to the ring, each with a
   // crossing doorway. Stamped AFTER the ring so a spoke meeting the ring just thickens the join, never a gap.
-  stampWallSpokes(grid, ENEMY.cx, ENEMY.cy, WALL_RING, WALL_SPOKES);
+  stampWallSpokes(gen, ENEMY.cx, ENEMY.cy, WALL_RING, WALL_SPOKES);
 
-  // fodder scattered inside the ring; reject any roll that lands on a solid tile (the wall band), so no
-  // enemy spawns embedded in stone. Falls back to the always-clear island center after the retry budget.
-  const solidPx = (x: number, y: number): boolean => !TileGrid.walkable(grid.tileAtPx(x, y), 'foot');
+  // fodder scattered inside the ring; reject any roll that lands on a solid cell in EITHER layer (terrain or
+  // a built structure), so no enemy spawns embedded in stone. Falls back to the island center after the budget.
+  const solidPx = (x: number, y: number): boolean =>
+    !TileGrid.walkable(grid.tileAtPx(x, y), 'foot') || gen.occupied(Math.floor(x / TILE), Math.floor(y / TILE));
   const enemies: EnemySpawn[] = [];
   for (let i = 0; i < 7; i++) {
     let x = px(ENEMY.cx);
@@ -282,21 +313,21 @@ export function generateLevel(rng: Rng): LevelLayout {
   const spawnTiles: Pt[] = enemies.map((e) => ({ tx: Math.floor(e.x / TILE), ty: Math.floor(e.y / TILE) }));
   const protect: Pt[] = [
     ...dockTiles,
-    ...doors,
+    ...doorCells,
     ...spawnTiles,
     { tx: HOME.cx - 7, ty: HOME.cy }, // player spawn
     { tx: HOME.cx + 18, ty: HOME.cy }, // boat spawn (out in open water — the walkable hull is big; keep it off the beach)
     { tx: ENEMY.cx, ty: ENEMY.cy }, // captain
   ];
-  scatterGroves(grid, rng, HOME.cx, HOME.cy, HOME.r, GROVES.home, GROVES, protect);
-  scatterGroves(grid, rng, ENEMY.cx, ENEMY.cy, ENEMY.r, GROVES.enemy, GROVES, protect, WALL_RING.radius);
+  scatterGroves(gen, rng, HOME.cx, HOME.cy, HOME.r, GROVES.home, GROVES, protect);
+  scatterGroves(gen, rng, ENEMY.cx, ENEMY.cy, ENEMY.r, GROVES.enemy, GROVES, protect, WALL_RING.radius);
 
   return {
     grid,
     playerSpawn: { x: px(HOME.cx - 7), y: px(HOME.cy) }, // west side of the island (near the loot houses)
     boatSpawn: { x: px(HOME.cx + 18), y: px(HOME.cy) }, // out past the dock/shallows in deep water — the walkable sloop is large (r≈56), so keep its whole hull clear of the beach or it runs aground and can't sail
     pickups,
-    doors,
+    structures,
     enemies,
   };
 }

@@ -17,10 +17,13 @@ export class Collision {
       // bounds = the map edge: the center stays r inside even AIRBORNE (no jumping off the map)
       { cellPx: TILE, originX: 0, originY: 0, bounds: { w: WORLD_W, h: WORLD_H } },
       (cx, cy, ctx) => {
+        // TWO-LAYER oracle: the ground (terrain ordinal) AND whatever is built on it (structure entity) must
+        // both pass — one rulebook, composed here so no caller ever reads half the world.
         const t = this.grid.tileAt(cx, cy); // out-of-range reads endless sea (TileGrid's rule)
         const passable = ctx.airborne ? TileGrid.airWalkable(t) : TileGrid.walkable(t, ctx.mode, ctx.onLedge);
-        // terrain blocks FULL-cell today; sub-tile shapes are one TerrainDef field away (quarter-mask oracle)
-        return passable ? Q_CLEAR : Q_SOLID;
+        if (!passable || this.grid.structures.blocks(cx, cy, ctx)) return Q_SOLID;
+        // both layers block FULL-cell today; sub-tile shapes are one def field away (quarter-mask oracle)
+        return Q_CLEAR;
       },
     );
   }
@@ -62,7 +65,7 @@ export class Collision {
     return TileGrid.swimSpeedMul(this.grid.tileAtPx(x, y));
   }
 
-  /** The stored ordinal under a world point — for callers that feed TileGrid's static rules (isLowWall etc.). */
+  /** The stored ordinal under a world point — for callers that feed TileGrid's static rules (walkable/speedMul). */
   tileAtPx(x: number, y: number): number {
     return this.grid.tileAtPx(x, y);
   }

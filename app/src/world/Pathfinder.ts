@@ -28,7 +28,13 @@ export class Pathfinder {
   constructor(private readonly grid: TileGrid) {}
 
   private walkable(tx: number, ty: number, mode: MoveMode): boolean {
-    return TileGrid.pathable(this.grid.tileAt(tx, ty), mode); // doorways are routable for AI
+    // both layers: the ground must be plannable AND nothing blocking may be built on it (doorways are
+    // routable for AI — StructureIndex.pathable treats doors as open, DoorSystem opens them on arrival)
+    return TileGrid.pathable(this.grid.tileAt(tx, ty), mode) && this.grid.structures.pathable(tx, ty, mode);
+  }
+
+  private walkableAtPx(x: number, y: number, mode: MoveMode): boolean {
+    return this.walkable(Math.floor(x / TILE), Math.floor(y / TILE), mode);
   }
 
   private toCenter(tx: number, ty: number): Waypoint {
@@ -143,9 +149,9 @@ export class Pathfinder {
       const y = ay + (dy * i) / steps;
       // sample the center line AND both swept edges — if any clips a wall, the body won't fit
       if (
-        !TileGrid.pathable(this.grid.tileAtPx(x, y), mode) ||
-        !TileGrid.pathable(this.grid.tileAtPx(x + ox, y + oy), mode) ||
-        !TileGrid.pathable(this.grid.tileAtPx(x - ox, y - oy), mode)
+        !this.walkableAtPx(x, y, mode) ||
+        !this.walkableAtPx(x + ox, y + oy, mode) ||
+        !this.walkableAtPx(x - ox, y - oy, mode)
       ) {
         return false;
       }
@@ -159,7 +165,7 @@ export class Pathfinder {
     for (let i = 0; i <= steps; i++) {
       const x = ax + ((bx - ax) * i) / steps;
       const y = ay + ((by - ay) * i) / steps;
-      if (!TileGrid.pathable(this.grid.tileAtPx(x, y), mode)) return false; // can see through doorways
+      if (!this.walkableAtPx(x, y, mode)) return false; // can see through doorways
     }
     return true;
   }

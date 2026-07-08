@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { TERRAIN } from '../src/defs/terrains';
+import { World } from '../src/ecs/World';
 import { Collision } from '../src/world/Collision';
+import { placeStructure } from '../src/world/StructureIndex';
 import { TileGrid } from '../src/world/TileGrid';
 
 /**
@@ -11,10 +13,12 @@ import { TileGrid } from '../src/world/TileGrid';
  */
 
 const T = 32; // TILE
-/** A grid that's all Grass except a single Wall tile at (wallTx, wallTy). */
+/** All-grass grid with a single wall STRUCTURE at (wallTx, wallTy) — collision reads it through the grid's
+ *  structure layer, exactly the box geometry the old wall terrain had. */
 function wallAt(wallTx: number, wallTy: number): TileGrid {
   const g = new TileGrid(20, 20);
-  g.tiles = Array.from({ length: 20 }, (_, ty) => Array.from({ length: 20 }, (_, tx) => (tx === wallTx && ty === wallTy ? TERRAIN.wall : TERRAIN.grass)));
+  g.tiles = Array.from({ length: 20 }, () => Array.from({ length: 20 }, () => TERRAIN.grass));
+  placeStructure(new World(), g.structures, 'structure.wall', wallTx, wallTy);
   return g;
 }
 

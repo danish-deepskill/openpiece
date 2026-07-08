@@ -79,7 +79,7 @@ ballpiece/
         components.ts           # Component data interfaces (plain, serializable) + Components union
         Spawner.ts              # sim-side factory: spawnHero/spawnUnit/spawnPickup/spawnShip from Defs
       defs/                     # content rows: units, bodies, factions, aiProfiles, layers, ships, terrains,
-        ...                     #   decks, accessories, visual, items (ItemRef spine; BASE_KIT in units.ts) — data only
+        ...                     #   structures, decks, accessories, visual, items (ItemRef spine; BASE_KIT in units.ts) — data only
       combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier,
         ...                     #   swing (motion registry + shared geom), hitVolume (timed strike volumes),
         ...                     #   phases (windup/active/recover clock), guard (block/parry/feint + posture),
@@ -90,13 +90,14 @@ ballpiece/
         brains.ts               # actorBrain — ONE profile-driven brain for every actor (the Moat)
         perception.ts           # vision cone / peripheral / blind-arc checks
       world/
-        TileGrid.ts             # tile data + walkable(mode) + terrain speed
-        WorldGen.ts             # seeded two-island gen -> TileGrid + placements (pure fn of the seed)
+        TileGrid.ts             # the TWO-LAYER grid: terrain ordinals + its StructureIndex; walkable(mode) + terrain speed
+        StructureIndex.ts       # per-grid occupancy (cell -> structure ENTITY, RimWorld EdificeGrid) + place/removeStructure
+        WorldGen.ts             # seeded two-island gen -> TileGrid + structure records + placements (pure fn of the seed)
         GridCollider.ts         # THE circle-vs-grid engine: quarter-mask oracle + MoveCtx (one sweep, every frame)
-        Collision.ts            # world-frame facade over GridCollider (terrain-def oracle; entity-level API)
+        Collision.ts            # world-frame facade over GridCollider (composed terrain+structure oracle; entity-level API)
         deckCollision.ts        # deck-frame colliders per hull (walk rule + hull-solid-as-drawn from outside)
         frames.ts               # frame transitions (enterDeck/exitDeck/inFrameCooldown) — the ONE world<->deck handoff
-        Pathfinder.ts           # grid A* + line-of-sight
+        Pathfinder.ts           # grid A* + line-of-sight (composes both layers; doors plan-through)
         SpatialQuery.ts         # nearest()/within() neighbor queries (swap-in grid later)
       systems/                  # sim systems are Phaser-free; presentation systems take `scene` FIRST
         InputSystem.ts          # (presentation boundary) input -> the controlled entity's intent/abilities
@@ -113,7 +114,7 @@ ballpiece/
         RenderSystem.ts         # (presentation) OWNS the Graphics side-table; render components are data
         FxSystem.ts / NameplateSystem.ts / AccessorySystem.ts / WeaponSpriteSystem.ts / InspectSystem.ts / DebugOverlay.ts   # (presentation)
       draw/                     # (presentation) procedural draw fns + DrawFn type + world renderers
-        actorDraws.ts / accessoryDraws.ts / shipDraws.ts / terrainBakes.ts / TerrainRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
+        actorDraws.ts / accessoryDraws.ts / shipDraws.ts / terrainBakes.ts / structureDraws.ts / TerrainRenderer.ts / StructureRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
       scripts/                  # dev tools run via vite-node (art:template — the artist mannequin SVG)
       scenes/
         BootScene.ts            # asset manifest (import.meta.glob) -> launch World + Hud

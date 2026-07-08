@@ -1,20 +1,26 @@
 import { MAPH, MAPW, SHALLOW_MOVE_MULT, SWIM_MOVE_MULT, TILE } from '../config/constants';
 import { TERRAIN, terrainByOrdinal, type TerrainDef } from '../defs/terrains';
 import type { MoveMode } from '../ecs/components';
+import { StructureIndex } from './StructureIndex';
 
 /**
- * The static world as a grid of terrain ORDINALS (see defs/terrains.ts — behavior lives on TerrainDef rows, not
- * in switch statements here). Buildings are still baked into the cells as wall/floor/door terrain (no separate
- * structure layer YET — that's the next slice); collision, pathfinding, and rendering all read one source of
- * truth. Storage is plain small ints, Uint8Array/chunk-ready for the streamed-world future.
+ * The static world as TWO layers sharing one grid: terrain ORDINALS (what the ground is — behavior lives on
+ * TerrainDef rows, not in switch statements here) plus the STRUCTURE occupancy index (what's built on it —
+ * wall/door/tree ENTITIES, world/StructureIndex.ts). Collision, pathfinding, and rendering each compose the
+ * two layers with one rulebook; the grid owning its own index is what makes every frame (world, deck, lower
+ * deck later) a self-contained level. Terrain storage is plain small ints, Uint8Array/chunk-ready.
  */
 export class TileGrid {
   tiles: number[][] = [];
+  /** This grid's structure layer — populate via placeStructure (entities + cells stay in lockstep). */
+  readonly structures: StructureIndex;
 
   constructor(
     readonly w: number = MAPW,
     readonly h: number = MAPH,
-  ) {}
+  ) {
+    this.structures = new StructureIndex(w, h);
+  }
 
   /** The stored ordinal at a cell; out-of-bounds reads as open sea (the world is an island in endless water). */
   tileAt(tx: number, ty: number): number {
@@ -52,13 +58,6 @@ export class TileGrid {
     return !terrainByOrdinal(ordinal).blocksAir;
   }
 
-  /** A LOW WALL — foot-blocked but not air-blocked: jump over it, or land on top and perch (mover.onLedge).
-   *  Derived from the def's two blocking fields, so a new blocking terrain is automatically low or tall. */
-  static isLowWall(ordinal: number): boolean {
-    const d = terrainByOrdinal(ordinal);
-    return d.blocksFoot && !d.blocksAir;
-  }
-
   /** Terrain movement multiplier (1 = normal) — the def's own knob (shallows wade, sand trudges). */
   static speedMul(ordinal: number): number {
     return terrainByOrdinal(ordinal).speedMul;
@@ -69,14 +68,12 @@ export class TileGrid {
     return terrainByOrdinal(ordinal).water === 'deep' ? SWIM_MOVE_MULT : SHALLOW_MOVE_MULT;
   }
 
-  /** Looser rule for AI PLANNING + line-of-sight: doors count as passable (DoorSystem opens them on arrival) and
-   *  deep water counts as blocked for foot (a land brain has no swim logic) — both def flags, not tile branches. */
+  /** Looser TERRAIN rule for AI PLANNING + line-of-sight: deep water counts as blocked for foot (a land brain
+   *  has no swim logic) — a def flag, not a tile branch. Doors are STRUCTURES now — their plan-through rule
+   *  lives on StructureIndex.pathable, composed with this by the Pathfinder. */
   static pathable(ordinal: number, mode: MoveMode): boolean {
     const d = terrainByOrdinal(ordinal);
-    if (mode === 'foot') {
-      if (d.door) return true;
-      if (d.aiFootAvoid) return false;
-    }
+    if (mode === 'foot' && d.aiFootAvoid) return false;
     return TileGrid.walkable(ordinal, mode);
   }
 }

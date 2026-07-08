@@ -8,7 +8,8 @@ import { TileGrid } from '../src/world/TileGrid';
  * TERRAIN-AS-DEFS (defs/terrains.ts) — the family sweep + the semantic contract the movement/render systems
  * lean on. Behavior parity with the old Tile enum is pinned by the movement suites (swim/ledge/jump/collision);
  * THIS file pins the data model itself: ordinal integrity, the TERRAIN table ↔ def binding, and the derived
- * classification rules (low wall, pathability) that replaced the old hand-listed sets.
+ * classification rules that replaced the old hand-listed sets. Built things (wall/door/stone/tree) are the
+ * STRUCTURE layer's — see structures.test.ts.
  */
 describe('Terrains registry', () => {
   it('every TERRAIN constant decodes to a def whose ordinal round-trips', () => {
@@ -35,14 +36,6 @@ describe('Terrains registry', () => {
     }
   });
 
-  it('LOW WALL = blocksFoot && !blocksAir: stone/tree are low (perchable), building wall/door are tall', () => {
-    expect(TileGrid.isLowWall(TERRAIN.stoneWall)).toBe(true);
-    expect(TileGrid.isLowWall(TERRAIN.tree)).toBe(true);
-    expect(TileGrid.isLowWall(TERRAIN.wall)).toBe(false);
-    expect(TileGrid.isLowWall(TERRAIN.door)).toBe(false);
-    expect(TileGrid.isLowWall(TERRAIN.grass)).toBe(false);
-  });
-
   it('water semantics drive speed: deep swims, shallows wade, sand trudges', () => {
     expect(terrainByOrdinal(TERRAIN.water).water).toBe('deep');
     expect(terrainByOrdinal(TERRAIN.shallowWater).water).toBe('shallow');
@@ -51,10 +44,8 @@ describe('Terrains registry', () => {
     expect(TileGrid.speedMul(TERRAIN.sand)).toBe(SAND_MOVE_MULT);
   });
 
-  it('AI pathability: doors plan-through (opened on arrival), deep water plans-around for foot', () => {
-    expect(TileGrid.pathable(TERRAIN.door, 'foot')).toBe(true); // physically blocked, but AI routes through
-    expect(TileGrid.walkable(TERRAIN.door, 'foot')).toBe(false);
-    expect(TileGrid.pathable(TERRAIN.water, 'foot')).toBe(false); // physically enterable (→swim), but AI stays ashore
+  it('AI pathability: deep water plans-around for foot (physically enterable → swim, but AI stays ashore)', () => {
+    expect(TileGrid.pathable(TERRAIN.water, 'foot')).toBe(false);
     expect(TileGrid.walkable(TERRAIN.water, 'foot')).toBe(true);
   });
 

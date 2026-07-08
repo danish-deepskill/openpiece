@@ -1,14 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { ENEMY, HOME, TILE } from '../src/config/constants';
-import { TERRAIN } from '../src/defs/terrains';
 import { Rng } from '../src/core/Rng';
 import { itemProblem } from '../src/defs/items';
-import { generateLevel } from '../src/world/WorldGen';
+import { World } from '../src/ecs/World';
+import type { MoveCtx } from '../src/world/GridCollider';
+import { placeStructure } from '../src/world/StructureIndex';
+import { generateLevel, type LevelLayout } from '../src/world/WorldGen';
 import { TileGrid } from '../src/world/TileGrid';
 
-/** Foot-reachability flood fill (4-neighbour). Uses `pathable`, not `walkable`: closed doors OPEN on
- *  approach (DoorSystem), so a house interior is reachable — but stone walls/trees have no such mechanic
- *  and stay blocking, so a grove or wall that truly seals a path still fails this fill. */
+/** Turn the level's structure RECORDS into placed entities on the grid's index — what WorldScene does at
+ *  world start. Doubles as an invariant: place() THROWS on any overlapping/out-of-bounds record, so a
+ *  worldgen pass that emits an illegal layout fails right here, on every seed swept below. */
+function materialize(level: LevelLayout): void {
+  const world = new World();
+  for (const s of level.structures) placeStructure(world, level.grid.structures, s.def, s.tx, s.ty);
+}
+
+const FOOT_CTX: MoveCtx = { mode: 'foot', airborne: false, onLedge: false };
+
+/** Foot-reachability flood fill (4-neighbour) over BOTH layers. Uses the planning rules, not `walkable`:
+ *  closed doors OPEN on approach (DoorSystem), so a house interior is reachable — but stone walls/trees have
+ *  no such mechanic and stay blocking, so a grove or wall that truly seals a path still fails this fill. */
 function footReachable(grid: TileGrid, sx: number, sy: number): boolean[][] {
   const seen: boolean[][] = grid.tiles.map((row) => row.map(() => false));
   const stack: Array<[number, number]> = [[sx, sy]];
@@ -17,7 +29,7 @@ function footReachable(grid: TileGrid, sx: number, sy: number): boolean[][] {
     const [x, y] = stack.pop()!;
     for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]] as const) {
       if (nx < 0 || ny < 0 || nx >= grid.w || ny >= grid.h || seen[ny][nx]) continue;
-      if (!TileGrid.pathable(grid.tiles[ny][nx], 'foot')) continue;
+      if (!TileGrid.pathable(grid.tiles[ny][nx], 'foot') || !grid.structures.pathable(nx, ny, 'foot')) continue;
       seen[ny][nx] = true;
       stack.push([nx, ny]);
     }
@@ -32,6 +44,7 @@ describe('WorldGen — walls & groves never seal a required path', () => {
   for (let seed = 0; seed < 40; seed++) {
     it(`seed ${seed}: captain, fodder, and home loot stay reachable`, () => {
       const level = generateLevel(new Rng(seed));
+      materialize(level); // throws on any illegal structure record — part of the per-seed sweep
       const g = level.grid;
 
       // Flood each landmass from its foothold: the ENEMY isle from the west-dock landing (through the ring gap),
@@ -42,7 +55,9 @@ describe('WorldGen — walls & groves never seal a required path', () => {
       for (const e of level.enemies) {
         const tx = tileOf(e.x);
         const ty = tileOf(e.y);
-        expect(TileGrid.walkable(g.tiles[ty][tx], 'foot')).toBe(true); // no spawn embedded in wall/tree
+        // no spawn embedded in a blocking cell of EITHER layer (terrain or a built structure)
+        expect(TileGrid.walkable(g.tiles[ty][tx], 'foot')).toBe(true);
+        expect(g.structures.blocks(tx, ty, FOOT_CTX)).toBe(false);
         expect(enemyReach[ty][tx] || homeReach[ty][tx]).toBe(true); // reachable from its island (enemy assault OR home spawn)
       }
 
@@ -57,12 +72,10 @@ describe('WorldGen — walls & groves never seal a required path', () => {
 
   it('trunks keep ≥2 clear tiles between them (crowns never fuse; units weave between trees)', () => {
     for (const seed of [0, 7, 23, 39]) {
-      const g = generateLevel(new Rng(seed)).grid;
-      const trees: Array<[number, number]> = [];
-      for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) if (g.tiles[y][x] === TERRAIN.tree) trees.push([x, y]);
+      const trees = generateLevel(new Rng(seed)).structures.filter((s) => s.def === 'structure.tree');
       for (let i = 0; i < trees.length; i++) {
         for (let j = i + 1; j < trees.length; j++) {
-          const d2 = (trees[i][0] - trees[j][0]) ** 2 + (trees[i][1] - trees[j][1]) ** 2;
+          const d2 = (trees[i].tx - trees[j].tx) ** 2 + (trees[i].ty - trees[j].ty) ** 2;
           expect(d2).toBeGreaterThanOrEqual(9); // GROVES.spacing = 3 tiles, squared
         }
       }
@@ -76,15 +89,12 @@ describe('WorldGen — walls & groves never seal a required path', () => {
     expect(level.pickups.some((p) => p.item.id === 'accessory.strawHat')).toBe(true);
   });
 
-  it('actually places a gapped stone ring and some trees', () => {
-    const g = generateLevel(new Rng(1)).grid;
-    let walls = 0;
-    let trees = 0;
-    for (const row of g.tiles) for (const t of row) {
-      if (t === TERRAIN.stoneWall) walls++;
-      else if (t === TERRAIN.tree) trees++;
-    }
-    expect(walls).toBeGreaterThan(10); // a real perimeter, not a stray tile
-    expect(trees).toBeGreaterThan(0);
+  it('actually places a gapped stone ring, houses with doors, and some trees', () => {
+    const s = generateLevel(new Rng(1)).structures;
+    const count = (def: string) => s.filter((r) => r.def === def).length;
+    expect(count('structure.stoneWall')).toBeGreaterThan(10); // a real perimeter, not a stray tile
+    expect(count('structure.tree')).toBeGreaterThan(0);
+    expect(count('structure.door')).toBe(4); // one per village house
+    expect(count('structure.wall')).toBeGreaterThan(10); // the village shells
   });
 });

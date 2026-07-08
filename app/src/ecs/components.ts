@@ -356,6 +356,20 @@ export interface Accessories {
   slots: Partial<Record<AccessorySlot, ContentId>>;
 }
 
+/** A static BUILT thing occupying whole grid cells — wall, door, tree; later windmill/cannon/mast. The def
+ *  (defs/structures.ts) carries the footprint + physics; this instance carries WHERE it stands and its own
+ *  state (a door's `open`; HP arrives with destructibility). Cells are claimed through the owning grid's
+ *  StructureIndex (world/StructureIndex.ts) at spawn — the index, not this component, is what collision and
+ *  pathfinding read per cell. Plain ids + ints, serializable like everything else. */
+export interface Structure {
+  def: ContentId;
+  /** Anchor cell (top-left of the def's w×h footprint), tile coords in the owning grid. */
+  tx: number;
+  ty: number;
+  /** Door state — toggled by DoorSystem on `door` defs; an open door stops blocking (collision + vision). */
+  open?: boolean;
+}
+
 /** Full component registry. Reserved (sim/One-Piece) components — inventory, needs, job,
  * rideable, vehicle, reputation, devilFruit, haki, rank — slot in here later. */
 export interface Components {
@@ -386,6 +400,8 @@ export interface Components {
   // naval
   ship: Ship;
   onDeck: OnDeck;
+  // world statics
+  structure: Structure;
 }
 
 export type ComponentName = keyof Components;

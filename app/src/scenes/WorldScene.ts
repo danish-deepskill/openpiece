@@ -38,7 +38,9 @@ import { validateAllContent } from '../defs/validateContent';
 import { Collision } from '../world/Collision';
 import { Pathfinder } from '../world/Pathfinder';
 import { SpatialQuery } from '../world/SpatialQuery';
+import { placeStructure } from '../world/StructureIndex';
 import { SeaRenderer } from '../draw/SeaRenderer';
+import { StructureRenderer } from '../draw/StructureRenderer';
 import { TerrainRenderer } from '../draw/TerrainRenderer';
 import { generateLevel } from '../world/WorldGen';
 import { unitPlateView } from '../ui/plateView';
@@ -67,6 +69,7 @@ export class WorldScene extends Phaser.Scene {
   private squadSys!: SquadSystem;
   private doorSys!: DoorSystem;
   private doorRenderer!: DoorRenderer;
+  private structureRenderer!: StructureRenderer;
   private debug!: DebugOverlay;
   private inspectSys!: InspectSystem;
   private aimReticle!: AimReticle;
@@ -95,10 +98,14 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
     this.sea = new SeaRenderer(this, level.grid); // animated wave-crest overlay on the (baked) deep water
     TerrainRenderer.bake(this, level.grid);
-    TerrainRenderer.bakeMinimap(this, level.grid);
 
     const world = new World();
     this.world = world;
+    // the STRUCTURE layer: worldgen's pure records become entities + grid occupancy, BEFORE anything
+    // (minimap, colliders' first queries, door sweep) reads the composed world
+    for (const s of level.structures) placeStructure(world, level.grid.structures, s.def, s.tx, s.ty);
+    TerrainRenderer.bakeMinimap(this, level.grid); // composes BOTH layers — after placement, by contract
+    this.structureRenderer = new StructureRenderer(this, level.grid);
     const collision = new Collision(level.grid);
     const pathfinder = new Pathfinder(level.grid);
     const query = new SpatialQuery(world);
@@ -145,8 +152,8 @@ export class WorldScene extends Phaser.Scene {
     this.squadSys = squads;
     this.meleeSys = new MeleeSystem(world, strikes);
     this.combatantSys = new CombatantSystem(world);
-    this.doorSys = new DoorSystem(level.grid, level.doors, world);
-    this.doorRenderer = new DoorRenderer(this, this.doorSys);
+    this.doorSys = new DoorSystem(world);
+    this.doorRenderer = new DoorRenderer(this, world);
     this.debug = new DebugOverlay(this, world, level.grid);
     this.dialogueSys = new DialogueSystem();
     this.interactionSys = new InteractionSystem(world, this.dialogueSys);
@@ -216,6 +223,7 @@ export class WorldScene extends Phaser.Scene {
     setBarRotation(-this.camRot);
     this.aimReticle.setRotation(-this.camRot); // the '+' stays screen-upright while the shift-lock view spins
 
+    this.structureRenderer.update(); // rebake the structure layer only if place/remove changed it (version check)
     this.doorRenderer.update(); // redraw closed-door panels from the sim's door state
     this.sea.update(dt); // the sea drifts even while paused/dead
     this.fx.update(dt);

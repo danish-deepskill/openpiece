@@ -20,6 +20,7 @@ export const ENEMY = { cx: 68, cy: 27, r: 13 };
 export const Depth = {
   Terrain: 0,
   Sea: 1, // animated wave-crest overlay, drawn just above the (baked) deep water and below everything else
+  Structure: 2, // baked structure layer (walls/doors/trunks) — ground plane like the old in-terrain bake: above the sea, below corpses/FX/actors
   Corpse: 5,
   GroundFx: 6, // water-surface FX (splash rings) — on the ground plane: above corpses, below items/boats/actors
   Building: 10,

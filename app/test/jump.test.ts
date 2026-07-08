@@ -8,6 +8,7 @@ import { MovementSystem } from '../src/systems/MovementSystem';
 import { JUMP_LAND_STUN } from '../src/config/constants';
 import { TERRAIN } from '../src/defs/terrains';
 import { Collision } from '../src/world/Collision';
+import { placeStructure } from '../src/world/StructureIndex';
 import { TileGrid } from '../src/world/TileGrid';
 import type { StrikeResolver } from '../src/systems/StrikeResolver';
 
@@ -58,41 +59,49 @@ describe('jump enters + exits the air layer', () => {
   });
 });
 
-describe('airborne clears LOW terrain but not TALL structures (the traversal payoff + the wall rule)', () => {
-  /** A 20×20 grass grid with a vertical strip of `barrier` at column 10. */
-  function barrierGrid(barrier: number): TileGrid {
+describe('airborne clears LOW structures but not TALL ones (the traversal payoff + the wall rule)', () => {
+  /** A 20×20 grass grid; `waterColumn` swaps column 10's TERRAIN to deep water. */
+  function grassGrid(waterColumn = false): TileGrid {
     const g = new TileGrid(20, 20);
-    g.tiles = Array.from({ length: 20 }, () => Array.from({ length: 20 }, (_, tx) => (tx === 10 ? barrier : TERRAIN.grass)));
+    g.tiles = Array.from({ length: 20 }, () => Array.from({ length: 20 }, (_, tx) => (waterColumn && tx === 10 ? TERRAIN.water : TERRAIN.grass)));
+    return g;
+  }
+
+  /** A grass grid with a vertical strip of `def` STRUCTURES at column 10 (the built-thing barrier). */
+  function structureColumn(def: string): TileGrid {
+    const g = grassGrid();
+    const world = new World();
+    for (let ty = 0; ty < 20; ty++) placeStructure(world, g.structures, def, 10, ty);
     return g;
   }
 
   const tile = 32; // TILE px — the column-10 barrier spans x≈320..352
   /** Does an actor moving east from just-west of the barrier get THROUGH (airborne or grounded)? */
-  function crosses(barrier: number, airborne: boolean): boolean {
+  function crosses(g: TileGrid, airborne: boolean): boolean {
     const p = { x: 9.5 * tile, y: 5 * tile };
-    new Collision(barrierGrid(barrier)).tryMove(p, tile, 0, 8, 'foot', airborne);
+    new Collision(g).tryMove(p, tile, 0, 8, 'foot', airborne);
     return p.x > 9.5 * tile;
   }
 
   it('deep water is crossable both ways: grounded WADES/SWIMS in, airborne FLIES over', () => {
     // deep water is no longer a foot WALL — a grounded unit enters it (becoming a swimmer, MovementSystem); an
     // airborne unit clears it. Both cross, differently. (The grounded-blocked-vs-airborne-clears contrast that
-    // matters is now StoneWall/Tree, below.)
-    expect(crosses(TERRAIN.water, false)).toBe(true); // grounded: steps into the sea (swims), not walled
-    expect(crosses(TERRAIN.water, true)).toBe(true); // airborne: flies over
+    // matters is the low structures, below.)
+    expect(crosses(grassGrid(true), false)).toBe(true); // grounded: steps into the sea (swims), not walled
+    expect(crosses(grassGrid(true), true)).toBe(true); // airborne: flies over
   });
 
-  it('a jump CLEARS low barriers — StoneWall + Tree (grounded blocked, airborne passes)', () => {
-    for (const low of [TERRAIN.stoneWall, TERRAIN.tree] as const) {
-      expect(crosses(low, false)).toBe(false); // on foot: blocked
-      expect(crosses(low, true)).toBe(true); // in air: vaulted
+  it('a jump CLEARS low structures — stone wall + tree (grounded blocked, airborne passes)', () => {
+    for (const low of ['structure.stoneWall', 'structure.tree'] as const) {
+      expect(crosses(structureColumn(low), false)).toBe(false); // on foot: blocked
+      expect(crosses(structureColumn(low), true)).toBe(true); // in air: vaulted
     }
   });
 
-  it('a jump is STILL BLOCKED by a building Wall + Door — too tall to hop onto (BLOCKS_AIR)', () => {
-    for (const tall of [TERRAIN.wall, TERRAIN.door] as const) {
-      expect(crosses(tall, false)).toBe(false); // on foot: blocked
-      expect(crosses(tall, true)).toBe(false); // in air: STILL blocked (a roofed structure)
+  it('a jump is STILL BLOCKED by a building wall + door — too tall to hop onto (blocksAir)', () => {
+    for (const tall of ['structure.wall', 'structure.door'] as const) {
+      expect(crosses(structureColumn(tall), false)).toBe(false); // on foot: blocked
+      expect(crosses(structureColumn(tall), true)).toBe(false); // in air: STILL blocked (a roofed structure)
     }
   });
 });

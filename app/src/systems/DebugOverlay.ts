@@ -9,13 +9,17 @@ import { strikeFrameOf, strikeVolumes } from '../combat/hitVolume';
 import { phaseAt } from '../combat/phases';
 import { swingGeomOf, swingPose } from '../combat/swing';
 import type { World } from '../ecs/World';
-import type { TileGrid } from '../world/TileGrid';
+import type { MoveCtx } from '../world/GridCollider';
+import { TileGrid } from '../world/TileGrid';
 
 /** Phase → debug tint: the tell reads warning-yellow, the live strike red, the punishable tail gray. */
 const PHASE_COLORS = { windup: '#ffd24a', active: '#ff5a5a', recover: '#9aa6b2' } as const;
 
 const DEPTH = 1_000_000;
 const SQUAD_COLORS = [0xff5a5a, 0x5aa0ff, 0x7fd17f, 0xf0b429, 0xc97fff, 0xff9f43];
+
+/** The grounded-walker context the collision overlay probes with (read-only — never mutated). */
+const FOOT_CTX: MoveCtx = { mode: 'foot', airborne: false, onLedge: false };
 
 /**
  * World-space debug view, drawn per-layer from the Debug flags (toggled via the DOM panel — backtick).
@@ -87,7 +91,7 @@ export class DebugOverlay {
     g.clear();
     this.used = 0;
 
-    // World: highlight wall tiles in view (pathfinding obstacles)
+    // World: highlight foot-blocking cells in view (pathfinding obstacles) — BOTH layers, terrain + structures
     if (Debug.on('world.collision')) {
       const v = this.scene.cameras.main.worldView;
       const x0 = Math.max(0, Math.floor(v.x / TILE));
@@ -97,7 +101,8 @@ export class DebugOverlay {
       g.fillStyle(0xff2b2b, 0.22);
       for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
-          if (this.grid.terrainAt(x, y).opaque) g.fillRect(x * TILE, y * TILE, TILE, TILE);
+          const blocked = !TileGrid.walkable(this.grid.tileAt(x, y), 'foot') || this.grid.structures.blocks(x, y, FOOT_CTX);
+          if (blocked) g.fillRect(x * TILE, y * TILE, TILE, TILE);
         }
       }
     }

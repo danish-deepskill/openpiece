@@ -6,21 +6,23 @@ import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
 import { MovementSystem } from '../src/systems/MovementSystem';
 import { Collision } from '../src/world/Collision';
+import { placeStructure } from '../src/world/StructureIndex';
 import { TileGrid } from '../src/world/TileGrid';
 
 /**
- * LOW-WALL LEDGE (docs/design/MOVEMENT_AIR.md) — a StoneWall/Tree is jumpable-OVER and standable-ON-TOP: land a
- * jump atop one and you PERCH (onLedge) — the low wall becomes walkable-but-slow for you until you step off onto
- * normal ground. Walking INTO it from the side (no perch) is still blocked. Distinguishes on-top vs beside without
- * a z-axis, via the onLedge state set only by LANDING there.
+ * LOW-STRUCTURE LEDGE (docs/design/MOVEMENT_AIR.md) — a stone wall/tree is jumpable-OVER and standable-ON-TOP:
+ * land a jump atop one and you PERCH (onLedge) — the low structure becomes walkable-but-slow for you until you
+ * step off onto normal ground. Walking INTO it from the side (no perch) is still blocked. Distinguishes on-top
+ * vs beside without a z-axis, via the onLedge state set only by LANDING there.
  */
 
 const T = 32;
-/** Grass everywhere, with a single StoneWall column at tile x=`wallCol` (a low wall to land on / walk into). */
+/** Grass everywhere, with a stone-wall STRUCTURE column at tile x=`wallCol` (a low wall to land on / walk into). */
 function wallGrid(wallCol = 5): TileGrid {
   const g = new TileGrid(12, 12);
   g.tiles = Array.from({ length: 12 }, () => Array.from({ length: 12 }, () => TERRAIN.grass));
-  for (let y = 0; y < 12; y++) g.tiles[y][wallCol] = TERRAIN.stoneWall;
+  const world = new World();
+  for (let y = 0; y < 12; y++) placeStructure(world, g.structures, 'structure.stoneWall', wallCol, y);
   return g;
 }
 function actor(world: World, x: number, y: number): Entity {
@@ -30,16 +32,12 @@ function actor(world: World, x: number, y: number): Entity {
   });
 }
 
-describe('TileGrid low-wall walkability', () => {
+describe('low-structure walkability (composed through the collision oracle)', () => {
   it('a stone wall blocks a normal foot actor, but is walkable while onLedge (perched)', () => {
-    expect(TileGrid.walkable(TERRAIN.stoneWall, 'foot', false)).toBe(false); // beside it → blocked
-    expect(TileGrid.walkable(TERRAIN.stoneWall, 'foot', true)).toBe(true); // perched on top → walkable
-  });
-  it('isLowWall marks stone walls and trees, not solid buildings or ground', () => {
-    expect(TileGrid.isLowWall(TERRAIN.stoneWall)).toBe(true);
-    expect(TileGrid.isLowWall(TERRAIN.tree)).toBe(true);
-    expect(TileGrid.isLowWall(TERRAIN.wall)).toBe(false); // a building wall is tall — not a ledge
-    expect(TileGrid.isLowWall(TERRAIN.grass)).toBe(false);
+    const col = new Collision(wallGrid(5));
+    const onWall = { x: 5 * T + T / 2, y: 5 * T + T / 2 };
+    expect(col.canOccupy(onWall.x, onWall.y, 8, 'foot', false, false)).toBe(false); // beside/inside → blocked
+    expect(col.canOccupy(onWall.x, onWall.y, 8, 'foot', false, true)).toBe(true); // perched on top → walkable
   });
 });
 
