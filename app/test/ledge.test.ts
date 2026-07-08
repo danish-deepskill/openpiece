@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LEDGE_MOVE_MULT } from '../src/config/constants';
+import { events } from '../src/core/EventBus';
 import { TERRAIN } from '../src/defs/terrains';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
@@ -39,6 +40,35 @@ describe('TileGrid low-wall walkability', () => {
     expect(TileGrid.isLowWall(TERRAIN.tree)).toBe(true);
     expect(TileGrid.isLowWall(TERRAIN.wall)).toBe(false); // a building wall is tall — not a ledge
     expect(TileGrid.isLowWall(TERRAIN.grass)).toBe(false);
+  });
+});
+
+describe('water-entry splash (the GENERAL rule of the sea surface)', () => {
+  // Not a perch special case: ANY descent that ends over water splashes (beach jump into the ocean, Geppo fall,
+  // leap off a ship, rail step-down); dry landings are silent; wading in never splashes (no descent).
+  function jumpLandsAt(tileEast: number): number {
+    // grass west half, deep water east half — land a jump on either side of the shoreline at column 6
+    const g = new TileGrid(12, 12);
+    g.tiles = Array.from({ length: 12 }, () => Array.from({ length: 12 }, (_, tx) => (tx >= 6 ? TERRAIN.water : TERRAIN.grass)));
+    const world = new World();
+    const move = new MovementSystem(world, new Collision(g));
+    const e = actor(world, tileEast * T, 5 * T);
+    e.mover!.layer = 'air';
+    e.mover!.airT = 0.01; // about to touch down right here
+    e.mover!.airDur = 0.5;
+    let rings = 0;
+    const off = events.on('fx:ring', () => rings++);
+    move.update(1 / 60); // lands
+    off();
+    return rings;
+  }
+
+  it('an AIR descent ending over deep water SPLASHES (jump off the beach into the ocean)', () => {
+    expect(jumpLandsAt(8)).toBe(1); // east half = water
+  });
+
+  it('an AIR descent ending on grass is SILENT (no dust ring — it read as a Geppo puff)', () => {
+    expect(jumpLandsAt(2)).toBe(0); // west half = grass
   });
 });
 
