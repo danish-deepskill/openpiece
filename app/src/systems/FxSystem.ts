@@ -8,7 +8,7 @@ interface Particle { x: number; y: number; vx: number; vy: number; life: number;
 interface Corpse { x: number; y: number; r: number; color: number; life: number; max: number }
 interface DmgText { obj: Phaser.GameObjects.Text; vy: number; life: number }
 interface Spot { obj: Phaser.GameObjects.Text; life: number; max: number } // the "!" spotted marker
-interface Ring { x: number; y: number; radius: number; color: number; life: number; max: number } // expanding shockwave
+interface Ring { x: number; y: number; radius: number; color: number; life: number; max: number; width: number } // expanding shockwave
 
 /** Pooled, presentation-only effects. Lives outside the ECS to keep the hot path allocation-free. */
 export class FxSystem {
@@ -36,7 +36,7 @@ export class FxSystem {
     events.on('fx:corpse', ({ x, y, r, color }) => this.corpse(x, y, r, color));
     events.on('fx:shake', ({ amount }) => this.shake(amount));
     events.on('fx:spotted', ({ x, y, dur }) => this.spotted(x, y, dur));
-    events.on('fx:ring', ({ x, y, radius, color, life }) => this.rings.push({ x, y, radius, color, life, max: life }));
+    events.on('fx:ring', ({ x, y, radius, color, life, width }) => this.rings.push({ x, y, radius, color, life, max: life, width: width ?? 4 }));
     this.textPool = new Pool<Phaser.GameObjects.Text>(
       () =>
         scene.add
@@ -138,7 +138,7 @@ export class FxSystem {
     for (const rg of this.rings) {
       const prog = 1 - rg.life / rg.max; // 0 → 1 over its life
       const cur = rg.radius * (0.2 + 0.8 * prog); // grows outward
-      g.lineStyle(4 * (1 - prog) + 1, rg.color, clamp(rg.life / rg.max, 0, 1)); // thick+opaque early, thin+faint late
+      g.lineStyle(rg.width * (1 - prog) + 1, rg.color, clamp(rg.life / rg.max, 0, 1)); // thick+opaque early, thin+faint late
       g.strokeCircle(rg.x, rg.y, cur);
     }
     for (const s of this.swings) this.drawSwing(s);

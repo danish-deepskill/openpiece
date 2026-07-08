@@ -19,6 +19,10 @@ export function beginFall(m: Mover): void {
   m.fallFrom = GEPPO_HOVER_HEIGHT; // the altitude the descent starts from (the held hover height)
 }
 
+/** Splash-ring colors by water kind (waterEntryFx) — bluer over the DEEP, paler over the shallows. */
+const SPLASH_DEEP = 0x6fb9ec;
+const SPLASH_SHALLOW = 0xbfe8ff;
+
 /** Is the (deck-local) push direction toward one of this RAIL cell's SEA-FACING sides? Sea-facing = the orthogonal
  *  neighbor is off-hull — the same neighbor rule as the drawn gunwale wood, so any authored hull shape works.
  *  Corners have two sea sides; pushing toward either counts (you can drop off a corner both ways). */
@@ -300,7 +304,9 @@ export class MovementSystem {
    *  both call this. Dry landings stay silent (a dust ring read as a Geppo puff); wading IN never splashes
    *  (no descent). Cosmetic (FX event only). */
   private waterEntryFx(x: number, y: number, r: number): void {
-    if (this.collision.terrainAtPx(x, y).water === undefined) return; // dry landing — no puff
-    events.emit('fx:ring', { x, y, radius: r * 1.2, color: 0xbfe8ff, life: 0.25 });
+    const water = this.collision.terrainAtPx(x, y).water;
+    if (water === undefined) return; // dry landing — no puff
+    // splash look (developer-tuned): wide, slow, THIN — and bluer over the deep than the pale shallows
+    events.emit('fx:ring', { x, y, radius: r * 2.2, color: water === 'deep' ? SPLASH_DEEP : SPLASH_SHALLOW, life: 0.5, width: 2 });
   }
 }
