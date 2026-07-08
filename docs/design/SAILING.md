@@ -80,6 +80,36 @@ becomes a CREW JOB later without redesign (DEEP_SIMULATION).
   (bail/patch = crew jobs). Crew on deck are hit by ordinary actor collision already — parenting keeps them
   in world coords. Needs: the structure layer (terrain pillar slice 3) + a projectile system.
 
+## Sinking — a PIPELINE, not an HP bar hitting zero
+
+Below-waterline damage (cannonball, ram, hard grounding) opens a BREACH → water level rises as a ship
+attribute → handling degrades as it fills → past a threshold the ship FOUNDERS over several seconds. The
+counterplay IS the crew: bail water + patch the breach (shipwright jobs) — a losing fight survivable by
+damage control. One damage model, THREE victory intents: DISABLE (mast/helm — capture the prize), SINK
+(send it down), or BOARD. On foundering: every actor aboard gets a FORCED frame exit at its standing
+position (the transitions-preserve-position rule provides the drama free — the crew is suddenly swimming
+where the deck was); the ship leaves salvageable flotsam. Visuals ride the existing submerge fakes
+(shrink + fade) — no z-axis. Player-ship loss harshness = a knob (NAVAL.md's ship-in-a-bottle re-acquires).
+
+## The helmsman's skill (navigation)
+
+ONE rule first: skill effects key off WHOEVER mans the helm — player or NPC read the same `navigation`
+attribute (the Moat; NAVAL.md's "Sailing talent" and the navigator crew role are the same number). The
+navigator ROLE = the character whose job is to hold that number high. Three axes, deliberately ordered
+information > efficiency > raw stats (the knowledge-economy philosophy, AI_INTELLIGENCE.md):
+
+1. **INFORMATION** — hazards (whirlpools, reefs, storms) revealed earlier/farther with skill; and the
+   **WIND FORECAST**: wind drifts on a SEEDED stream, so a skilled navigator literally reads the future the
+   sim already knows ("the wind veers east by evening") — uniquely cheap for us, very One Piece.
+2. **EFFICIENCY** — the RIG defines the physics; the SAILOR defines how close to ideal they get. Skill
+   closes the gap to the hull's true `sailCurve` (a green hand gets a sloppy curve: narrower good angles,
+   wider effective no-go; a master gets everything the ship can give). Mechanical and felt — NOT "+5% speed".
+3. **AUTONOMY** — what the navigator does when YOU aren't steering (the most valuable axis on an open sea):
+   low = holds a heading, blunders into the storm; mid = follows your plotted route, avoids known hazards;
+   high = tacks optimally and REROUTES around forecasted weather alone. Skill = time handed back to the
+   player — you fight on deck while the navigator sails. Needs crew AI + boat pathfinding (the portal-graph
+   pillar); the attribute + curve hooks cost nothing to design in from day one.
+
 ## Architecture mapping
 
 - `WindSystem` (sim, seeded stream) owns the wind; ShipSystem consumes it — pure reads, no new engine.
