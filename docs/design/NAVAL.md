@@ -4,9 +4,25 @@ Ships are first-class entities (and, architecturally, **composite actors** — a
 The MOVEMENT half — wind, points of sail, momentum, anchor states, grounding/ramming/projectile impacts —
 is designed in `SAILING.md` (the sailing model this combat layer stands on).
 
-## Ship classes
-**Sloop** (starter, fast, fragile) → **Caravel** (mid) → **Galleon** (heavy, durable) → **Submarine / bubble
-boats** (underwater, future). Each class is a `ShipHullDef` with base stats + part slots.
+## Ship classes — AXES, not a tier ladder (judged 2026-07)
+
+A linear "sloop → caravel → galleon → battleship" ladder obsoletes every earlier ship and converges on one
+"best" hull. Classes are instead ROLE ARCHETYPES positioned on four MECHANICAL axes (all fields on
+`ShipHullDef`; the mechanics live in `SAILING.md`):
+- **RIG** — the sailCurve shape: fore-and-aft points close to the wind; square dominates downwind; mixed
+  compromises; oars ignore wind entirely.
+- **SIZE** — the deck grid: crew capacity, cannon slots, MASS (feeds ram physics + turning).
+- **DRAFT** — deep-draft hulls CANNOT enter shallow water (the terrain kind already exists): a galleon
+  literally can't chase a sloop over the reef. This one field keeps small ships relevant FOREVER —
+  smuggler runs, river raids, escapes.
+- **CREW REQUIREMENT** — a big ship's sail states are CAPPED by crew aboard (two people can't work a ship
+  of the line's canvas): hull progression is gated by the crew you RECRUITED, not gold alone — ship story
+  and crew story become the same story.
+
+The roster as archetypes: **dinghy** (oars, anywhere) · **sloop** (close-pointing shallow-draft scout) ·
+**ketch/schooner** (fast reacher, the chase hunter) · **brig** (balanced small warship) · **caravel**
+(mixed-rig explorer) · **galleon** (broad-reach cargo fortress, deep draft) · **ship of the line** (endgame
+broadside siege, terrible upwind, crew-hungry) · **submarine / bubble boats** (underwater, future).
 
 ## Ship stats
 Speed, Armour, **Weaponry** (cannon slots), Turn Speed, Ram Strength, Health (+ Anchor system). Customizable
@@ -15,6 +31,11 @@ via **parts** and upgrades (shipwright talent).
 ## Parts & customization
 Ships have **parts** (hull, sails, figurehead, cannons, ram, …) — each a component contributing modifiers to
 ship stats. Customization = swapping part defs (data-driven, like character gear).
+**The upgrade LAW: every part is a TRADE-OFF along an axis, never a pure plus** — armor plating: +hull,
++mass → slower accel, deeper draft; racing sails: higher curve peak, −storm durability; ram prow: shifts the
+ram-damage split, bow weight → worse turning. "Speed ship" / "armored ship" are BUILDS the player assembles,
+never strictly-better buttons. Part QUALITY (shipwright craft) is the smooth numeric axis on top of the
+qualitative part CHOICE — the mirror of SAILING.md's skill-band rule.
 
 ## Two modes (state machine)
 - **Exploration mode** — sailing, navigation, hazard avoidance, events trigger.

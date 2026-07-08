@@ -95,8 +95,12 @@ where the deck was); the ship leaves salvageable flotsam. Visuals ride the exist
 
 ONE rule first: skill effects key off WHOEVER mans the helm — player or NPC read the same `navigation`
 attribute (the Moat; NAVAL.md's "Sailing talent" and the navigator crew role are the same number). The
-navigator ROLE = the character whose job is to hold that number high. Three axes, deliberately ordered
-information > efficiency > raw stats (the knowledge-economy philosophy, AI_INTELLIGENCE.md):
+navigator ROLE = the character whose job is to hold that number high. ONE ROLE, by design (judged 2026-07):
+"helmsman" is just whoever's hands are on the wheel — the axes bind to WHERE they apply, not to labels:
+INFORMATION comes from the best navigation skill ABOARD (the navigator warns from the map table);
+EFFICIENCY + AUTONOMY apply only to the actual helmsman. One Nami covers a small crew; if a battleship
+bridge ever wants both posts, that's two job rows in data, not architecture. Three axes, deliberately
+ordered information > efficiency > raw stats (the knowledge-economy philosophy, AI_INTELLIGENCE.md):
 
 1. **INFORMATION** — hazards (whirlpools, reefs, storms) revealed earlier/farther with skill; and the
    **WIND FORECAST**: wind drifts on a SEEDED stream, so a skilled navigator literally reads the future the
@@ -109,6 +113,23 @@ information > efficiency > raw stats (the knowledge-economy philosophy, AI_INTEL
    high = tacks optimally and REROUTES around forecasted weather alone. Skill = time handed back to the
    player — you fight on deck while the navigator sails. Needs crew AI + boat pathfinding (the portal-graph
    pillar); the attribute + curve hooks cost nothing to design in from day one.
+
+### The skill ladder (5 bands over levels 1–10)
+
+The RULE: each band unlocks a CAPABILITY you couldn't perform at all before; levels within a band grow the
+numbers. Capabilities are memorable ("at Advanced she reroutes"); percentages are mush. Legend NEVER exceeds
+100% trim — the rig defines the physics; legend-tier is superhuman knowledge, not broken sails.
+
+| Band | Efficiency (trim) | Information | Autonomy |
+|---|---|---|---|
+| Beginner 1–2 | ~65% of the hull curve, widened no-go — tacking usually strands in irons | — | holds a heading; blunders into hazards |
+| Intermediate 3–4 | ~80% | nearby hazard pings | follows a plotted route; STOPS at hazards |
+| Advanced 5–6 | ~90%; anchor-turn reliable | hazard range ×2 + current wind drift trend | REROUTES around detected hazards |
+| Expert 7–8 | 100% — the hull's true curve | the FORECAST (seeded read, hours ahead) | optimal tacking legs; jibe-vs-tack judgment; departs on the forecast |
+| Legend 9–10 | instant in-irons recovery | whole-map weather sense; freak events (rogue waves, sea kings) early | BATTLE-SAILING: holds the weather gauge + presents your broadside while you fight |
+
+Felt progression: the sea fights you → manageable → the ship answers → voyages sail themselves → the sea is
+transparent. All thresholds/curve factors are DATA (attribute bands on a def), never engine branches.
 
 ## Architecture mapping
 
