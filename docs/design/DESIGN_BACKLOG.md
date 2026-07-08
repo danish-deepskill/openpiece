@@ -281,3 +281,51 @@ region-graph + render rebake event — the dirty-flag plumbing exists, the COST 
 counter-matrix (armament > logia) and this table stay ONE system, not two.
 **Pass when:** with #4 (powers) — they are one design; the world-effect half also needs #14's delta
 vocabulary, which is another reason #14's pass runs early.
+
+## 17. Dialogue, social play & the interaction web — the OTHER half of "peer"
+**Moat:** the Moat says every character is a peer — but a peer you can only fight or ignore is half a peer.
+The living world needs a SOCIAL surface with the same depth as combat: talking your way past a guard, buying
+a rumor, intimidating a weaker crew into standing down, interrogating a captive for a chart. Kenshi and Caves
+of Qud prove this is systemic, not scripted. What exists today is a linear typewriter + one yes/no
+(`DialogueSystem`) — a presentation shell with no social MECHANICS behind it. Cheap version refused:
+branching dialogue trees hand-authored per NPC (that's content that doesn't scale and never surprises).
+**The shape (lean):** social actions are ABILITIES in the same engine — persuade / intimidate / bribe /
+interrogate / deceive / recruit-pitch resolve as CHECKS, not scripted branches: your relevant stat + LEGEND
+(#6 — a Yonko's "back off" is not a rookie's) + relationship + the target's disposition/greed/fear (AIProfile
+data) vs a threshold, with the OUTCOME feeding the sim (a bribed guard's faction stance shifts; a failed
+intimidation raises heat; interrogation writes a fact into your knowledge economy, #9). NPCs speak from STATE,
+not scripts — a line is assembled from who they are, what they know, and how they feel about you (Qud's
+grammar approach), so the same system serves any of thousands of actors (the Moat at the UI layer, like the
+unit-plate view already is). Bribery is heat's back door (#6/#15's corruption axis); intimidation is legend
+made interactive; deception is the player's half of #6's disguise/false-trail play.
+**Hard questions:** the check model (opposed roll vs deterministic threshold — lean deterministic + skill
+bands, matching SAILING/combat); relationship state shape (per-pair scalar vs richer); how much is
+generated-from-state vs authored set-pieces (recruitment/quest-givers may want authored beats); refusal &
+consequence (a failed intimidation must COST, not just deny); how AI uses social abilities on each other and
+on you (the Moat: an enemy captain intimidates YOUR crew's morale, #2).
+**Pass when:** with the crew era (#1) — recruitment IS a social interaction, so they define each other; the
+knowledge-economy hooks (#9) can wait for their own pass.
+
+## 18. Time, calendar & day/night — the substrate half a dozen points assume
+**Moat:** not itself a moat, but the SUBSTRATE most moats quietly stand on — and getting it wrong (or
+leaving it implicit) forces every dependent system to invent its own ad-hoc clock. Enumerate it once, early.
+Already depended-on: watch rotations & fatigue (#1–2), heat cooling "where you're not seen" over DAYS (#6),
+news travel time (#6), event pacing (#8), Marine patrol/duty schedules (#15), the Buster Call's 30-day clock
+(#6), the notoriety reference's per-day decay, world-history generation's timeline (#10).
+**The shape (lean):** ONE sim clock (deterministic tick → game-minutes; the fixed-timestep accumulator
+already exists) with a declared MAPPING (how many real minutes = one game-day — a feel knob, like SAILING's
+travel-time-as-design-variable). A DAY/NIGHT cycle that AI READS as data (an `AIProfileDef` schedule: sleep,
+patrol shifts, market hours) — night is a real mechanic (reduced vision cones → the stealth window for #19,
+dimmer render, some fauna nocturnal), not a lighting filter. TIME-TIER AWARE: distant chunks (#14) advance
+time COARSELY (a dehydrated ship's ETA is clock math, not per-tick sailing) — the calendar must survive the
+sim-LOD split, same as everything else. Seasons/long weather cycles = the far layer (deep-sim era), reserved
+now so the clock has room for them.
+**Hard questions:** the real-to-game time ratio (and whether it PAUSES, dilates, or fast-forwards — RimWorld
+time controls vs a hard real-time MP world, #13 — these conflict and the answer differs single- vs
+multiplayer); what actually CHANGES at night beyond vision (spawns? prices? crime?); does the player sleep/
+skip time or is it always flowing (Kenshi flows; RimWorld lets you speed it); calendar persistence and how a
+loaded save resumes the world clock; keeping it deterministic (the ONE wall-clock read stays the master-seed
+mint — game-time is pure sim state, replay-safe).
+**Pass when:** EARLY — alongside #14 (seamless world), because tick-tiers and the calendar are the same
+substrate; several points above can't be fully designed until the clock's shape is fixed. Lightweight to
+design, load-bearing to get right.
