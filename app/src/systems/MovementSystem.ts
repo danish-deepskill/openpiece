@@ -268,22 +268,14 @@ export class MovementSystem {
         !hullBlocksOutside(grid, e.onDeck.lx, e.onDeck.ly, e.transform!.r) ||
         !deckCanOccupy(grid, e.onDeck.lx + Math.sign(dlx), e.onDeck.ly + Math.sign(dly), e.transform!.r, false, true)
       ) {
-        // EXIT CLEAR OF THE HULL — the destination frame's legal state includes the solid hull-as-drawn (the
-        // mirror of the enterDeck fit gate). The standard humanoid (r=11) is WIDER than the rail's 16px outer
-        // band, so at the walled edge it still overlaps the wood by ~2r−16 px; exiting there handed it to the
-        // radial pushOut next tick — a 13px DIAGONAL yank (the caught-on-console snap). Slide the exit point
-        // forward along the walker's OWN push direction until clear instead: ~6px that reads as its next step.
-        const len = Math.hypot(dlx, dly);
-        const ux = dlx / len;
-        const uy = dly / len;
-        let exLx = e.onDeck.lx;
-        let exLy = e.onDeck.ly;
-        for (let i = 0; i < 24 && hullBlocksOutside(grid, exLx, exLy, e.transform!.r); i++) {
-          exLx += ux;
-          exLy += uy;
-        }
-        const w = deckToWorld(ship.transform, exLx, exLy);
-        exitDeck(e, w.x, w.y); // you slip off where you stood (+ the clearance step); the water relabels you a swimmer
+        // Exit EXACTLY where you stand — zero displacement, every time. The standard humanoid (r=11) is WIDER
+        // than the rail's 16px outer band, so it exits still overlapping the gunwale wood by a few px; that's
+        // FINE: the frame BEAT mutes the hull eject (HullCollisionSystem) while the embedded-veto lift lets it
+        // WALK itself clear over the next ~0.15s. (Both prior attempts moved the body AT the transition — a
+        // radial 13px yank, then a forward clearance slide — and both still read as a snap; only never-moving-
+        // the-body doesn't.)
+        const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
+        exitDeck(e, w.x, w.y); // you slip off where you stood; the water relabels you a swimmer
         m.onLedge = false; // off the wall
         return;
       }

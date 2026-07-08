@@ -1,7 +1,7 @@
 import { deckCellAtLocal, deckOf, deckToWorld, deckWalkable, gangplankCell, gangplankOutward, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
 import { deckCanOccupy, hullBlocksOutside } from '../world/deckCollision';
-import { enterDeck } from '../world/frames';
+import { enterDeck, inFrameCooldown } from '../world/frames';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 
@@ -68,6 +68,10 @@ export class HullCollisionSystem {
           continue;
         }
         if (!hullBlocksOutside(grid, local.lx, local.ly, t.r)) continue; // clear — nothing to do
+        // JUST TRANSITIONED (the frame beat): a body wider than the rail's outer band legitimately exits the
+        // drop-off still overlapping the gunwale wood — the beat lets it WALK itself clear (the embedded-veto
+        // lift permits moving while overlapped) instead of being ejected: ejecting here was the walk-off snap.
+        if (inFrameCooldown(e)) continue;
         this.pushOut(e, ship, local.lx, local.ly, t.r);
       }
     }
@@ -100,24 +104,36 @@ export class HullCollisionSystem {
     return Math.abs(lx - cxCenter) <= halfAlong && Math.abs(ly - cyCenter) <= halfAcross;
   }
 
-  /** MINIMAL ejection — the hull is a WALL you BUMP, not a magnet that flings you. Push the walker the SHORTEST
-   *  distance RADIALLY OUTWARD (away from the hull center, roughly the surface normal) until it just clears the
-   *  solid hull. Because a foot walker only penetrates ~one tick of movement before this runs, the clear spot is
-   *  right where it entered → it reads as "stopped at the rail", not teleported to the nearest sea. (Contrast the
-   *  old ring-search-from-center, which flung the walker far — the push/teleport bug.) Fine steps, first clear wins. */
+  /** MINIMAL ejection — the hull is a WALL you BUMP, not a magnet that flings you. Search the NEAREST clear spot
+   *  in fine rings (1.5px × 8 directions, nearest ring first): a shallow overlap ejects roughly PERPENDICULAR by
+   *  just the penetration depth. (The old radial-from-hull-center walk moved a 6px overlap 13px DIAGONALLY —
+   *  radial is longer than the surface normal, and its direction ignores which way the body entered.) A DEEP
+   *  embed (a ship sweeping over a stationary body) falls back to the coarse radial walk so nobody stays inside. */
   private pushOut(e: Entity, ship: Entity, lx: number, ly: number, r: number): void {
     const grid = deckOf(ship.ship!.hull, ShipHulls.get(ship.ship!.hull).deck);
     const st = ship.transform!;
-    // radial-out direction in LOCAL space (from hull center to the walker); fall back to +x if dead-center
-    const d = Math.hypot(lx, ly) || 1;
-    const ux = lx !== 0 || ly !== 0 ? lx / d : 1;
-    const uy = lx !== 0 || ly !== 0 ? ly / d : 0;
-    const step = 2; // px — fine, so the ejection is the MINIMUM needed (a wall bump, not a shove)
-    for (let i = 1; i <= grid.tilePx * grid.cols; i += step) {
+    for (let ring = 1.5; ring <= grid.tilePx * 2; ring += 1.5) {
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        const nlx = lx + Math.cos(a) * ring;
+        const nly = ly + Math.sin(a) * ring;
+        if (!hullBlocksOutside(grid, nlx, nly, r)) {
+          const w = deckToWorld(st, nlx, nly); // the closest clear spot → the minimum nudge, not a shove
+          e.transform!.x = w.x;
+          e.transform!.y = w.y;
+          return;
+        }
+      }
+    }
+    // DEEP embed (beyond 2 tiles of overlap): the old radial-outward walk — coarse, but guaranteed to exit
+    const d = Math.hypot(lx, ly);
+    const ux = d > 0.01 ? lx / d : 1; // dead-center on the hull origin → eject toward +x (bow), deterministically
+    const uy = d > 0.01 ? ly / d : 0;
+    for (let i = 2; i <= grid.tilePx * grid.cols; i += 2) {
       const nlx = lx + ux * i;
       const nly = ly + uy * i;
       if (!hullBlocksOutside(grid, nlx, nly, r)) {
-        const w = deckToWorld(st, nlx, nly); // just outside the hull, along the way it came → reads as "stopped here"
+        const w = deckToWorld(st, nlx, nly);
         e.transform!.x = w.x;
         e.transform!.y = w.y;
         return;

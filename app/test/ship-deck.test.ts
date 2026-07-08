@@ -470,17 +470,20 @@ describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () =
     expect(Math.abs(a.transform!.x - (500 + rail.lx))).toBeLessThan(8); // dropped WHERE IT STOOD, not flung
   });
 
-  it('RAIL DROP-OFF with the standard humanoid (r=11, wider than the 16px outer band) has NO eject yank', () => {
+  it('RAIL DROP-OFF with the standard humanoid (r=11, wider than the 16px outer band) NEVER jumps a tick', () => {
     // The console-caught snap: a body wider than the rail's outer water band can never stand clear of the wood
-    // while on the hull, so the walled exit left it overlapping → the radial pushOut yanked it 13px DIAGONALLY
-    // next tick. The exit now slides forward along the walker's own push direction until clear (~6px = a step).
+    // while on the hull, so it exits still OVERLAPPING the gunwale — and must be allowed to: the frame beat
+    // mutes the hull eject while the embedded-veto lift lets it WALK itself clear. The whole drop must move at
+    // WALK-STEP granularity, every tick — both prior attempts (radial eject, forward clearance slide) failed this.
     const { world, ships, move, a } = perchSetup(11);
     const hulls = new HullCollisionSystem(world);
+    const ship = world.first('ship')!;
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
     a.mover!.frameCd = 0;
     let px = a.transform!.x;
     let py = a.transform!.y;
     let maxStep = 0;
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 90; i++) {
       a.mover!.vx = 0;
       a.mover!.vy = 100; // hold seaward
       move.update(SIM);
@@ -492,7 +495,8 @@ describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () =
     }
     expect(a.onDeck).toBeUndefined(); // dropped off the gunwale
     expect(a.mover!.mode).toBe('swim');
-    expect(maxStep).toBeLessThan(8); // the clearance rides the walk direction (was: a 13px diagonal pushOut yank)
+    expect(maxStep).toBeLessThan(3); // walk-step granularity ONLY — no eject, no slide, no yank, ever
+    expect(hullBlocksWorldPoint(ship.transform!, grid, px, py, 11)).toBe(false); // and it walked itself clear
   });
 
   it('the drop-off waits out the post-landing beat (landing on the rail holding seaward must not dunk you)', () => {
