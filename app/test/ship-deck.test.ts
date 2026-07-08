@@ -144,6 +144,19 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     expect(deckCanOccupy(grid, a.onDeck!.lx, a.onDeck!.ly, a.transform!.r, false)).toBe(true); // on a valid deck cell
   });
 
+  it('hands on the wheel: the PILOT faces the BOW, live through the turn (not the frozen pre-wheel aim)', () => {
+    const { world, ships } = seaSystem();
+    const ship = makeShip(world, 500, 500, 0);
+    ship.ship!.speed = 100; // moving → the rudder has authority
+    const a = makeActor(world, 0, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const helm = helmSpot(grid);
+    a.onDeck = { shipId: ship.id, lx: helm.lx, ly: helm.ly };
+    a.transform!.angle = 2.5; // was aiming somewhere else entirely when taking the wheel
+    for (let i = 0; i < 10; i++) ships.pilot(a, 0, 1, 0.05); // steer right through a turn
+    expect(a.transform!.angle).toBeCloseTo(ship.transform!.angle, 6); // facing = the bow, tracking the heading
+  });
+
   it('a pilot ON the helm steers the ship (heading changes)', () => {
     const { world, ships } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);

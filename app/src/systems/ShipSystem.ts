@@ -75,7 +75,11 @@ export class ShipSystem {
     // carving costs momentum: a hard turn bleeds speed (exp form — frame-rate independent)
     if (turn !== 0) sh.speed *= Math.exp(-d.turnBrake * Math.abs(turn) * dt);
     sh.speed = clamp(sh.speed + fwd * d.accel * dt, -d.maxSpeed * d.reverseFrac, d.maxSpeed);
-    // (facing is untouched: parenting owns position only, and the pilot keeps their own aim like everyone else)
+    // HANDS ON THE WHEEL: the helmsman FACES THE BOW, live through every turn — steering locks your facing to
+    // the ship, not to wherever you looked when you took the wheel (the frozen-facing report). This is pilot()'s
+    // one exception to "ship code never touches facing" (parenting owns position only): holding the wheel IS
+    // your action, so your body follows it; release the wheel and free aim returns (Input owns angle again).
+    if (e.transform) e.transform.angle = t.angle;
   }
 
   /** Is the actor STANDING on its ship's helm tile? Piloting is POSITIONAL — you steer only while on the helm
