@@ -14,10 +14,12 @@ const JUMP_SCALE = 0.45;
 /** LEDGE height fake: a smaller, STEADY scale-up while PERCHED atop a low wall (stone wall / ship rail) — you're
  *  one wall-height up, so a fraction of the jump's peak. Reads as "standing on something" (movement-frames.md). */
 const LEDGE_SCALE = 0.15;
-/** Ease time-constant (s) for the ledge step-up/down — the perch elevation GLIDES in/out (settles in ~3τ) instead
- *  of flipping ±15% in one frame: that one-frame shrink read as a "snap" stepping off the rail onto water/sand,
- *  even though the position is continuous. Presentation-only smoothing; the sim's onLedge stays a hard flag. */
-const LEDGE_EASE_TAU = 0.06;
+/** Ease time-constants (s) for the ledge step-up/down — the perch elevation GLIDES (settles in ~3τ) instead of
+ *  flipping ±15% in one frame. ASYMMETRIC on purpose: mounting snaps up quickly (responsive), stepping OFF
+ *  descends slower — a simple readable FALL (paired with the ground-contact ring MovementSystem emits at the
+ *  step-down). Presentation-only smoothing; the sim's onLedge stays a hard flag. */
+const LEDGE_EASE_TAU_UP = 0.05;
+const LEDGE_EASE_TAU_DOWN = 0.12;
 /** SUBMERGE fake: scale-DOWN of a fully-underwater actor (smaller = deeper/below) — the inverse of the jump. A
  *  gentle dip (→ 0.8×), enough to read as "sunk under" without shrinking to a dot. */
 const SUBMERGE_SCALE = 0.2;
@@ -160,7 +162,8 @@ export class RenderSystem {
       // stepping off the wall GLIDE over ~3τ instead of popping the full ±15% in one frame (first sight = settled).
       const perchTarget = mv?.onLedge && air === 0 ? 1 : 0;
       const prevPerch = this.perchById.get(e.id) ?? perchTarget;
-      const perched = prevPerch + (perchTarget - prevPerch) * (1 - Math.exp(-dt / LEDGE_EASE_TAU));
+      const perchTau = perchTarget > prevPerch ? LEDGE_EASE_TAU_UP : LEDGE_EASE_TAU_DOWN; // quick up, slow fall down
+      const perched = prevPerch + (perchTarget - prevPerch) * (1 - Math.exp(-dt / perchTau));
       this.perchById.set(e.id, perched);
       const animScale = 1 + JUMP_SCALE * air + LEDGE_SCALE * perched - SUBMERGE_SCALE * sink;
       const lift = air > 0 ? AIR_DEPTH_LIFT : 0; // airborne draws above grounded units (nearer the camera)

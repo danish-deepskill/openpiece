@@ -149,7 +149,10 @@ export class MovementSystem {
         // STEP OFF the ledge: clear the perch ONLY once your WHOLE BODY has cleared the low wall (you'd fit WITHOUT
         // the perch). Clearing on center-only dropped it while your radius still overlapped → unstick flung you (the
         // step-off teleport). Full-body clearance means onLedge drops only when you're already off — nothing to eject.
-        if (m.onLedge && this.collision.canOccupy(t.x, t.y, t.r, m.mode, false, false)) m.onLedge = false;
+        if (m.onLedge && this.collision.canOccupy(t.x, t.y, t.r, m.mode, false, false)) {
+          m.onLedge = false; // stepped down off the low wall
+          this.perchStepFx(t.x, t.y, t.r, this.collision.terrainAtPx(t.x, t.y).water !== undefined);
+        }
       }
       // SWIM/FOOT MODE = a LABEL derived from WHERE YOU NOW ARE (after the move), one truthful rule: SWIM iff the
       // tile under your center is deep Water, else FOOT. No predictive early-flip, no ahead/behind/corner
@@ -277,12 +280,23 @@ export class MovementSystem {
         const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
         exitDeck(e, w.x, w.y); // you slip off where you stood; the water relabels you a swimmer
         m.onLedge = false; // off the wall
+        this.perchStepFx(w.x, w.y, e.transform!.r, this.collision.terrainAtPx(w.x, w.y).water !== undefined);
         return;
       }
     }
     deckTryMove(e.onDeck, dlx, dly, grid, e.transform!.r, airborne, m.onLedge);
     // STEP OFF the rail perch: clear ONLY when the whole body has cleared the rail (fits WITHOUT the perch). Center-
     // only clearing would wall you at the edge next tick (deck twin of the world step-off teleport).
-    if (m.onLedge && deckCanOccupy(grid, e.onDeck.lx, e.onDeck.ly, e.transform!.r, false, false)) m.onLedge = false;
+    if (m.onLedge && deckCanOccupy(grid, e.onDeck.lx, e.onDeck.ly, e.transform!.r, false, false)) {
+      m.onLedge = false; // stepped down off the rail onto the planks
+      this.perchStepFx(e.transform!.x, e.transform!.y, e.transform!.r, false); // deck planks — never a splash
+    }
+  }
+
+  /** GROUND-CONTACT puff when a perch ENDS (stepping down off a low wall / the ship rail): a splash ring over
+   *  water, dust ashore, a plank puff on deck. Pairs with the render's slower elevation ease-DOWN — together they
+   *  read as a simple FALL off the wall. Cosmetic (FX event only); the sim state is just onLedge flipping false. */
+  private perchStepFx(x: number, y: number, r: number, wet: boolean): void {
+    events.emit('fx:ring', { x, y, radius: r * 1.2, color: wet ? 0xbfe8ff : 0xcbb79a, life: 0.25 });
   }
 }
