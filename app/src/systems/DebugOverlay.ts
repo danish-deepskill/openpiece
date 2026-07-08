@@ -285,6 +285,24 @@ export class DebugOverlay {
       }
     }
 
+    // MOVEMENT-FRAME readout — makes the invisible frame state + its TRANSITIONS visible: which grid the
+    // controlled body resolves against (color flips deck↔world at the exact handoff tick), its coords IN that
+    // frame, the perch, and the post-transition beat. The tool the walk-off/boarding feel hunts were begging for.
+    if (Debug.on('world.frames')) {
+      const c = this.world.first('control');
+      if (c?.transform) {
+        const m = c.mover;
+        const cdv = m?.frameCd ?? 0;
+        const cd = cdv > 0 ? ` cd:${cdv.toFixed(2)}` : '';
+        const perch = m?.onLedge ? ' PERCH' : '';
+        const air = m?.layer === 'air' ? ' AIR' : '';
+        const txt = c.onDeck
+          ? `DECK ship#${c.onDeck.shipId} local(${c.onDeck.lx.toFixed(0)},${c.onDeck.ly.toFixed(0)})${air}${perch}${cd}`
+          : `WORLD (${c.transform.x.toFixed(0)},${c.transform.y.toFixed(0)}) ${m?.mode ?? ''}${air}${perch}${cd}`;
+        this.label(c.transform.x, c.transform.y + c.transform.r + 14, txt, c.onDeck ? '#7fd7ff' : '#a8e6a1');
+      }
+    }
+
     if (Debug.on('perf.hud')) {
       this.perf.setVisible(true).setText(`fps ${Math.round(this.scene.game.loop.actualFps)}  entities ${this.world.count}`);
     } else {

@@ -18,6 +18,7 @@ const DEFS: DebugFlagDef[] = [
   { key: 'combat.guard', label: 'Guard arc (block/parry cover)', group: 'Combat', default: false },
   { key: 'combat.god', label: 'God mode (invincible + free abilities)', group: 'Combat', default: false },
   { key: 'world.collision', label: 'Wall collision', group: 'World', default: false },
+  { key: 'world.frames', label: 'Movement frame (world/deck) readout', group: 'World', default: false },
   { key: 'perf.hud', label: 'FPS + entity count', group: 'Perf', default: false },
 ];
 
