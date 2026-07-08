@@ -423,12 +423,14 @@ describe('land-on-deck boarding (HullCollisionSystem — jump/Geppo over the rai
 describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () => {
   const SIM = 1 / 60;
   // the sloop's south rail amidships — its outward (sea-facing) side is south. Perch spot for every case below.
-  function perchSetup(): { world: World; ships: ShipSystem; move: MovementSystem; ship: Entity; a: Entity; rail: { lx: number; ly: number } } {
+  // `r` defaults to the small test body; pass 11 for the REAL body.humanoid radius (wider than the outer band).
+  function perchSetup(r = 8): { world: World; ships: ShipSystem; move: MovementSystem; ship: Entity; a: Entity; rail: { lx: number; ly: number } } {
     const { world, ships, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
     const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
     const rail = grid.cells.find((c) => c.cx === 2 && c.cy === 3)!;
     const a = makeActor(world, 0, 0);
+    a.transform!.r = r;
     a.onDeck = { shipId: ship.id, lx: rail.lx, ly: rail.ly };
     a.mover!.onLedge = true; // perched on the gunwale
     ships.update(SIM); // settle parenting so the world transform matches the perch before measuring
@@ -466,6 +468,31 @@ describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () =
     expect(a.onDeck).toBeUndefined(); // stepped down off the gunwale — not walled
     expect(a.mover!.onLedge).toBe(false); // off the wall
     expect(Math.abs(a.transform!.x - (500 + rail.lx))).toBeLessThan(8); // dropped WHERE IT STOOD, not flung
+  });
+
+  it('RAIL DROP-OFF with the standard humanoid (r=11, wider than the 16px outer band) has NO eject yank', () => {
+    // The console-caught snap: a body wider than the rail's outer water band can never stand clear of the wood
+    // while on the hull, so the walled exit left it overlapping → the radial pushOut yanked it 13px DIAGONALLY
+    // next tick. The exit now slides forward along the walker's own push direction until clear (~6px = a step).
+    const { world, ships, move, a } = perchSetup(11);
+    const hulls = new HullCollisionSystem(world);
+    a.mover!.frameCd = 0;
+    let px = a.transform!.x;
+    let py = a.transform!.y;
+    let maxStep = 0;
+    for (let i = 0; i < 60; i++) {
+      a.mover!.vx = 0;
+      a.mover!.vy = 100; // hold seaward
+      move.update(SIM);
+      ships.update(SIM);
+      hulls.update();
+      maxStep = Math.max(maxStep, Math.hypot(a.transform!.x - px, a.transform!.y - py));
+      px = a.transform!.x;
+      py = a.transform!.y;
+    }
+    expect(a.onDeck).toBeUndefined(); // dropped off the gunwale
+    expect(a.mover!.mode).toBe('swim');
+    expect(maxStep).toBeLessThan(8); // the clearance rides the walk direction (was: a 13px diagonal pushOut yank)
   });
 
   it('the drop-off waits out the post-landing beat (landing on the rail holding seaward must not dunk you)', () => {
