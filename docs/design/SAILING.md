@@ -140,6 +140,24 @@ transparent. All thresholds/curve factors are DATA (attribute bands on a def), n
 - Deck actors need NO code for any of this: parenting carries them through every turn, ram, and grounding
   (the frames payoff); only the stagger effect touches them, via the shared external-force channel.
 
+## Can enemy AI sail this? (feasibility, judged 2026-07)
+
+YES — and it's EASIER than the melee AI already shipped. The depth is human-side (reading, planning); to an
+AI the sim is deterministic and fully queryable, so the "deep" parts are arithmetic:
+- **Optimal steering = a formula**: scan headings, score by `sailCurve(angle-to-wind) × progress-to-target`
+  (velocity made good), pick the best — a dozen multiply-adds per decision tick (~1/s), not per frame.
+- **Emergent maneuvers need POLICIES, not scripts**: tack = "best heading is in the no-go → alternate
+  best-upwind legs, switch on drift threshold" (~20 lines); jibe-vs-tack = compare computed speed loss;
+  weather gauge = maximize one upwind dot product. Classic utility rules — the Brain roadmap's direction.
+- **The skill ladder IS the AI difficulty dial** (navigation keys off whoever mans the helm): EXPERT AI is
+  the easy case (undegraded math). The real design work is making LOW skill convincingly bad — heading
+  noise, delayed reactions, tacking forbidden (wears around instead), no forecast — DEGRADING competence,
+  which plugs straight into the INT-ladder/knowledge economy (low crews don't KNOW things).
+- **Timescale favors the AI**: sailing decides over seconds-to-minutes with smooth dynamics vs melee's
+  adversarial tenths-of-seconds. Precedent: Pirates! (1987) AI sailed a wind model.
+- Honest caveats: INTERCEPTING a wind-literate player needs an iterative intercept estimate (slightly more
+  math, still cheap); coordinated FLEETS are genuinely harder — deferred with squads-at-sea.
+
 ## Build order (triggers, not dates)
 
 1. **After the terrain pillar**: wind + sailCurve + sail states + momentum/drift + real anchor — the moat
