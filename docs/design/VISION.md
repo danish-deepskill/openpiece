@@ -31,13 +31,23 @@ direct-control action combat, a living faction world, sailing the seas between m
 - **Races**: Human, Fishman, Mink, Cyborg, Sharkman, Skypiean, … (stat/trait modifiers + ability access).
 
 ## Design docs index
+- `DESIGN_BACKLOG.md` — **the moat map**: which systems still need a REAL design pass (vision capture ≠
+  design), the hard questions each must answer, and the pass order. Start here to see what's next.
 - `COMBAT.md` — the four-layer combat system, power tiers, mode switching.
+- `SAILING.md` — the sailing MODEL (wind, sail curves, momentum, anchors, impacts, sinking, navigator skill
+  bands, AI feasibility) — a completed design pass; NAVAL's movement half stands on it.
+- `NAVAL.md` — ships as AXES (rig/size/draft/crew), parts + the upgrade trade-off LAW, cannons, naval combat.
+- `WORLD.md` — open world, ocean zones, hazards, wildlife, underwater; the seamless chunked-sea decision.
+- `PATHFINDING.md` — the movement-planning stack: solver, regions, cross-frame portals, shared fields,
+  squad/division movement, execution contract — a completed design pass.
 - `PROGRESSION.md` — stats/haki/talents, dexes, class system, ability sources, races, EXP tiers.
-- `WORLD.md` — open world, ocean zones, hazards, wildlife, underwater.
-- `NAVAL.md` — ships, parts, stats, modes, cannons, naval combat, submarines.
 - `EVENTS.md` — sea events, land events, factions, reputation, the event director.
 - `ECONOMY_ACTIVITIES.md` — gathering, crafting, blacksmithing, market, activities/talents, mounts, items.
 - `AI_INTELLIGENCE.md` — the INT axis: one AI stack where INT 1–10 gates perception, knowledge, decision,
   execution, and command; the information economy; counter-play; offline-only ML.
+- `DEEP_SIMULATION.md` — the Moat, the living sea, world structure, the multi-scale runtime, the road to
+  ballpiece.io. `REFERENCES.md` — ideas from reference games, tier-listed.
+- `features/` — per-feature design notes (movement frames + the transition rulebook, the walkable ship).
 
-**Status:** vision capture. Combat foundation is the agreed first build target ("good moat combat system first").
+**Status:** vision capture, with completed design passes marked above. Combat foundation was the agreed
+first build target; the pass queue lives in `DESIGN_BACKLOG.md`.

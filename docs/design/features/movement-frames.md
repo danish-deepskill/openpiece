@@ -74,6 +74,7 @@ moving frames are a superset). Multi-level is NEVER a z-axis — elevation stays
 (air layer / onLedge / submerged / which-frame). Recorded naval triggers: an airborne body INHERITS the
 velocity of the frame it leaves (leap between moving ships) — add at `exitDeck` when naval battles land;
 cross-frame pathfinding = a portal graph (frames are rooms; gangplank/hatch/leap edges are doors,
-capability-gated by jump/Geppo).
+capability-gated by jump/Geppo). The FULL planning architecture — solver core, regions, portals, shared
+fields, squad/division movement, and its build triggers — is `docs/design/PATHFINDING.md`.
 
 Keep this doc + `big-walkable-ship.md` in sync.
