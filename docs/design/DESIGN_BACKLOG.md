@@ -315,8 +315,8 @@ news travel time (#6), event pacing (#8), Marine patrol/duty schedules (#15), th
 **The shape (lean):** ONE sim clock (deterministic tick → game-minutes; the fixed-timestep accumulator
 already exists) with a declared MAPPING (how many real minutes = one game-day — a feel knob, like SAILING's
 travel-time-as-design-variable). A DAY/NIGHT cycle that AI READS as data (an `AIProfileDef` schedule: sleep,
-patrol shifts, market hours) — night is a real mechanic (reduced vision cones → the stealth window for #19,
-dimmer render, some fauna nocturnal), not a lighting filter. TIME-TIER AWARE: distant chunks (#14) advance
+patrol shifts, market hours) — night is a real mechanic (reduced vision cones → a real stealth/approach
+window, dimmer render, some fauna nocturnal), not a lighting filter. TIME-TIER AWARE: distant chunks (#14) advance
 time COARSELY (a dehydrated ship's ETA is clock math, not per-tick sailing) — the calendar must survive the
 sim-LOD split, same as everything else. Seasons/long weather cycles = the far layer (deep-sim era), reserved
 now so the clock has room for them.
@@ -329,3 +329,105 @@ mint — game-time is pure sim state, replay-safe).
 **Pass when:** EARLY — alongside #14 (seamless world), because tick-tiers and the calendar are the same
 substrate; several points above can't be fully designed until the clock's shape is fixed. Lightweight to
 design, load-bearing to get right.
+
+## 19. Ranged & projectile system — the shared substrate for guns, thrown, cannons, fruit shots
+**Moat:** a ranged attack you can't dodge and don't have to aim is the cheapest thing in games. Done right,
+ranged is a SKILL and a POSITIONING game — a musket line is terrifying at distance and helpless up close,
+and a good shot LEADS a runner while a bad one whiffs into the sea. What exists today is a PLACEHOLDER:
+`shape.swing === 'pistol'` resolves an instant HITSCAN CONE (`AbilitySystem.resolveHit` — a distance+angle
+fan tested in one tick, no travelling object; fine for Gomu Pistol because a rubber arm genuinely IS
+instant-reach, wrong for a lead ball). Cheap versions REFUSED: hitscan for real firearms (erases dodge +
+aim skill); HOMING as the default (the bullet aiming itself removes all counterplay — reserved as a rare
+exotic effect, e.g. a Devil-Fruit seeking shot, never a gun); "gun = melee with more range + more damage"
+(no trade-off — violates the moat test + the NAVAL upgrade law).
+**The shape (lean):**
+- **Projectiles TRAVEL — one primitive, many defs.** A shot spawns a lightweight projectile ENTITY
+  (transform + velocity + a `projectile` component: owner, damage payload, element/delivery tags for #16,
+  lifespan) that moves each tick and resolves on CONTACT (circle-vs-body via SpatialQuery; circle-vs-grid
+  for wall/structure stops — the two-layer collider already exists). ONE `ProjectileSystem`; gun bullets,
+  thrown knives, cannonballs (#NAVAL), and Fruit ranged attacks are all `ProjectileDef`/`shape` ROWS on it
+  (content-is-data, the melee-MOTIONS pattern). The muzzle FX becomes a real object, so `bullet_1.png` is
+  the drawn projectile, not decoration.
+- **Ballistics as a strategy row** (like swing motions): FLAT-FAST (musket — near-instant but still
+  travels/dodgeable at range), SPREAD (blunderbuss — N pellets in a cone, per-pellet + falloff, murder up
+  close, useless far), ARC (mortar/thrown — gravity-style drop, indirect over cover), HOMING (the reserved
+  exotic). One `ballistics` field routes to the row; no engine branch per weapon.
+- **AIM IS THE SKILL — leading, not homing.** The projectile flies a FIXED path; hitting a mover means
+  aiming where they WILL BE (deflection). The sim is deterministic and knows exact velocities, so the
+  PERFECT lead is computable — which makes it the AI difficulty dial: a skilled gunner gets the true
+  intercept, a low-skill one a DEGRADED solution (the exact mechanism SAILING.md already designed for cannon
+  AI — reuse it, don't reinvent). Player aim is hand-eye; the reticle already exists (`AimReticle`).
+- **ACCURACY = ONE LIVE SPREAD CONE the situation opens and the player closes.** NOT several flags — model a
+  single angle, `spread`, that eases toward a target each tick (the `1 - exp(-dt/tau)` form the codebase uses
+  — frame-rate-independent, deterministic). `targetSpread = gunFloor + movePenalty + recoilKick`; the shot's
+  actual angle is a seeded scatter within `spread` (replay-safe). Inputs, all WeaponDef data: the gun's
+  `accuracy` FLOOR (musket tight, blunderbuss wide by design — a shot's own scatter can even reuse the
+  ballistics SPREAD row); AIM-IN — held still, spread eases DOWN to the floor over `settleTime` (rewards
+  patience, punishes panic-fire; the sniper's held breath); MOVEMENT — walk widens, sprint widens hard (the
+  stop-to-shoot decision → positional play); RECOIL — jumps UP per shot, re-settles (pace your shots — the
+  ranged mirror of stamina discipline). The CRAFT is the ASYMMETRY: spread BLOOMS instantly (move/fire →
+  snaps wide now) but TIGHTENS slowly (earn accuracy back with stillness) — that's what makes it a skill, not
+  a stat. HONESTY CONTRACT: every widener MUST show on the reticle (the cone visibly blooms/contracts) — an
+  invisible accuracy input feels like the game cheating; a visible one is always fair, and it doubles as
+  counterplay (a Haki/Observation reader sees an enemy's cone settling and breaks the lane before the shot).
+- **RANGED SKILL UNLOCKS VERBS, NOT NUMBERS** (the SAILING skill-band rule at infantry scale). Skill dials
+  the spread INPUTS, so a higher band can DO what a lower band physically can't — different playstyle, not a
+  better dice roll: Recruit = plant-and-shoot only (moving sprays); Marksman = walk-and-shoot stays usable +
+  faster settle; Sharpshooter = run-and-gun viable + fast recoil recovery; Deadeye = near-instant settle +
+  gets the sim-PERFECT lead on movers + shrugs falloff; Legend = Observation pre-aim (shoot where they WILL
+  dodge) + the cone barely blooms. Leading a mover well is a HIGH band on purpose (predicting the future is
+  hard — a rookie who tries it whiffs). Skill = "how much of the true solution you're handed" — the cannon-AI
+  mechanism, reused. TWO WINS: (1) it's the AI difficulty dial FOR FREE — a grunt Marine plants and sprays,
+  a Vice Admiral's sharpshooter walks with you and leads your run, SAME weapon + code, only the AIProfile
+  band differs (an enemy's threat IS its crew's competence); (2) skill and gun are INDEPENDENT axes (moat
+  test #3 / NAVAL upgrade law) — a legend with a junk pistol can't out-range a musket (gun sets the floor), a
+  rookie with a masterwork rifle still sprays it (skill sets what they can DO) — so a skilled fighter with a
+  humble weapon beats a scrub with a great one.
+- **GUN vs SWORD = a DISTANCE-WAR duel, and the tier ladder is the cool.** The fight is two fighters warring
+  over the RANGE BAND: the gunner keeps the gap (where reload-time + lead-aim dominate), the swordsman
+  COLLAPSES it (where the reload window is a death sentence). Coolness scales by tier as a ladder of VERBS,
+  each an answer to the last (the anime arms-race feel — Mihawk/Rayleigh CUT the bullet): sword side —
+  Rookie DODGES the shot → Skilled CLOSES the gap (dash/Geppo before reload) → Expert DEFLECTS/CUTS the
+  bullet (a timed PARRY vs a projectile — COMBAT.md's parry retargeted, the substrate exists) → Legend
+  Armament-cuts anything + Observation sees the shot coming; gun side answers each — leads perfectly, uses
+  cover/angles, then Armament-coats ROUNDS so they can't just be cut, Observation-guided shots that lead the
+  dodge (the counter-to-the-counter). No hard stat walls — every rung is a LEARNABLE answer (moat test #2/#3);
+  all of it COMPOSES existing engines (parry, perception, #16 tags), never a new one.
+- **REALISM VERDICT: grounded MECHANICS, tiered LETHALITY, fantastical CEILING.** Be realistic in the
+  fundamentals (bullets travel + dodgeable, single-shot + punishing reload, blunderbuss deadly-close/useless-
+  far, wet-powder misfire, finite ammo) — because the realism IS the fun: the reload/range limits are what
+  CREATE the distance-war duel; remove them and gun-vs-sword collapses to raw DPS (the cheap thing). Be
+  fantastical only at the CEILING (cut bullets, Haki rounds, instant-reload Fruits, island-spanning snipers)
+  — high-tier techniques LAYERED on the realistic base, never replacing it (mundane rules, legendary
+  exceptions — the contrast is what makes the exceptions feel legendary; it's how One Piece's own guns work).
+  The ONE place realism is REJECTED: damage. Realistic guns one-shot people, which would gut tiers (a rookie
+  musket kills a Yonko?) — so lethality stays TIER-SCALED (#16's harsh-reality wall: a bullet that guts
+  fodder barely scratches an Armament-tier body). Realistic mechanics, tiered lethality.
+- **RELOAD is the counterplay that balances range.** A musket's identity is one shot then a long, vulnerable
+  reload window — that (not a damage nerf) is what stops ranged being strictly-better than melee, and what
+  makes CLOSING THE DISTANCE the melee fighter's answer. Reload time / magazine / a load animation-lock live
+  on the WeaponDef. This is the ranged mirror of stamina discipline (already shipped for melee).
+- **AMMO + conditions = the economy/element hooks.** Powder + shot as inventory (ties #7 economy, the
+  underworld note); wet-powder misfire ties #16 (water) + #18 (weather). Optional at v1 (a musket can ship
+  ammo-less first), but the `projectile` payload should carry the tags so it's a data add later, not a
+  rewrite.
+**FIRST BUILD is teed up (art already made): `weapon.musket` — a flat-fast single-shot with a real reload.**
+It wires in exactly like the sprite swords (`weapon/musket_1.png`, side-profile, muzzle +x; sprite rig +
+`gripAt` already handle it) but its `primary` grants a RANGED ability that spawns a `bullet_1.png`
+projectile instead of a swing. That one weapon proves the whole substrate end-to-end (projectile entity,
+travel, contact resolve, reload, lead-able aim) at the smallest possible scope.
+**Hard questions:** projectile-vs-body contact model (swept for fast bullets so they don't tunnel between
+ticks at 60Hz — a real risk for a fast musket ball); how airborne/layer (#MOVEMENT_AIR) interacts (can you
+shoot a Geppo flier? does a bullet have a layer?); friendly-fire (the current `canHarm` binary — a bullet
+through your own crew? ties #C34 FF-reduction); cover/line-of-sight as a real mechanic (peeking, blind
+lanes — feeds a future stealth/approach pass and the danger maps in PATHFINDING); how the projectile primitive stays ONE
+system across the character scale (bullets) and the ship scale (cannonballs hitting hull structures) without
+forking; whether reload interacts with the four combat layers (a Haki-coated shot? a Fruit that reloads
+instantly?); the spread cone's exact input weights + `settleTime` per band (a feel-tune the developer owns —
+land reasonable numbers + point at the knobs); how bullet-DEFLECT resolves (a parry TIMING window vs a
+travelling entity — reflect / destroy / negate?, and does it need Observation to even attempt at low tier);
+whether the reticle-tell for aim-in is readable ENOUGH to be fair counterplay without cluttering a busy
+fight.
+**Pass when:** SOON — it's small, the art exists, and it's the natural next combat-content pass after the
+foundation pillar; also the shared substrate NAVAL cannons (SAILING impacts phase) and #16 (elemental
+shots) both need, so designing it before those saves a refork.
