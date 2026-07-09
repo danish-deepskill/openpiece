@@ -19,7 +19,7 @@ export interface LayerDef extends Def {
  *  a fraction of the art from the POMMEL end (0 = the very end; the pommel overhangs behind the hand). */
 export type WeaponVisual =
   | { kind: 'blade' | 'club'; length: number; width: number; color: number }
-  | { kind: 'sprite'; art: string; length: number; width: number; tipAt?: 'top' | 'bottom'; gripAt?: number };
+  | { kind: 'sprite'; art: string; length: number; width: number; tipAt?: 'top' | 'bottom' | 'left' | 'right'; gripAt?: number };
 
 /** Weapon weight/archetype tier — drives the phase ladder (combat/phases.WEIGHT_PHASES: heavier = longer
  *  windup) and posture damage. The four classes ARE the full weight ladder now (CombatWeight = WeaponClass);
@@ -96,6 +96,21 @@ Weapons.register({
   visual: { kind: 'sprite', art: 'weapon/dagger_1.png', length: 22, width: 5, tipAt: 'bottom', gripAt: 0.3 }, // dagger art points DOWN; hand holds the grip near the top. length 22 = the blade's own reach (hitbox matches the drawn blade)
   modifiers: [{ stat: 'atk', op: 'flat', value: 3, source: 'weapon:weapon.dagger' }], // light = modest bonus (cutlass is +6)
   tags: ['weapon.class.light'],
+});
+
+// the MUSKET — the first RANGED weapon (docs DESIGN_BACKLOG #19). Its primary is a TRAVELLING shot, not a
+// swing: the ball flies, is dodgeable, and a wall stops it (ProjectileSystem). weaponClass 'ranged' feeds the
+// existing weight ladder; the +2 atk is modest (the reach + the shot ARE the value — a musket isn't also a
+// hard hitter). Art is drawn HORIZONTAL (muzzle to the RIGHT), so tipAt:'right' (the sprite rig orients it —
+// slice 3); length 34 = the barrel's drawn reach for the grip rig (visual only; the shot's range is the ability's).
+Weapons.register({
+  id: 'weapon.musket',
+  name: 'Musket',
+  weaponClass: 'ranged',
+  primary: 'ability.musketShot',
+  visual: { kind: 'sprite', art: 'weapon/musket_1.png', length: 34, width: 7, tipAt: 'right', gripAt: 0.12 },
+  modifiers: [{ stat: 'atk', op: 'flat', value: 2, source: 'weapon:weapon.musket' }],
+  tags: ['weapon.class.ranged'],
 });
 
 Fruits.register({

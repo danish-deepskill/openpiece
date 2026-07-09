@@ -23,6 +23,7 @@ const PRESENTATION_SYSTEMS = new Set([
   'InputSystem.ts',
   'InspectSystem.ts',
   'NameplateSystem.ts',
+  'ProjectileRenderer.ts',
   'RenderSystem.ts',
   'WeaponSpriteSystem.ts',
 ]);

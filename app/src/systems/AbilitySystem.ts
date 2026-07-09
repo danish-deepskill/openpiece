@@ -161,7 +161,8 @@ export class AbilitySystem {
     }
     if (d.grantEffect) this.effects.apply(e, d.grantEffect, actual);
     if (d.shape) {
-      if (d.shape.swing === 'pistol') this.resolveHit(e, d); // ranged: instant shot
+      if (d.shape.swing === 'pistol') this.resolveHit(e, d); // ranged: instant hitscan cone (Gomu rubber arm)
+      else if (d.shape.swing === 'shot') this.fireShot(e, actual, d); // ranged: spawn a travelling projectile
       else this.startSwing(e, actual, d); // melee: a moving hitbox MeleeSystem resolves on contact
     }
     // immediate dash (dodge/flash); a launchAt ability defers its impulse until mid-swing (grab → THEN rocket)
@@ -286,6 +287,23 @@ export class AbilitySystem {
     m.dvy = ny * speed;
     m.dodgeT = dur; // short hop by default; abilities tune it via impulseDur
     events.emit('fx:burst', { x: t.x, y: t.y, color: 0xffffff, n: 8, speed: 160 });
+  }
+
+  /** Fire a TRAVELLING shot (musket ball): spawn a projectile ENTITY from the muzzle along the committed aim
+   *  (+ a small scatter — the full spread cone is #19's follow-up pass). ProjectileSystem moves + resolves it,
+   *  so the actual hit happens on contact, not here — the ball can be dodged, led, and stopped by a wall. */
+  private fireShot(e: Entity, id: string, d: AbilityDef): void {
+    const t = e.transform!;
+    const shape = d.shape!;
+    const aim = this.scatter(t.angle); // committed aim + a touch of imprecision (per-gun accuracy = later)
+    const speed = shape.shotSpeed!; // boot-validated present + > 0 for a 'shot' shape
+    const life = speed > 0 ? shape.range / speed : 0; // range / speed = seconds aloft (the ball fizzles at range)
+    const muzzle = shape.muzzle ?? t.r; // born ahead of the shooter's body so it doesn't self-collide
+    this.world.create({
+      transform: { x: t.x + Math.cos(aim) * muzzle, y: t.y + Math.sin(aim) * muzzle, angle: aim, r: 2 },
+      projectile: { owner: e.id, ability: id, vx: Math.cos(aim) * speed, vy: Math.sin(aim) * speed, life, hit: [] },
+    });
+    events.emit('fx:burst', { x: t.x + Math.cos(aim) * muzzle, y: t.y + Math.sin(aim) * muzzle, color: 0xffe08a, n: 6, speed: 140 }); // muzzle flash
   }
 
   /** Instant ranged shot (pistol): a cone test from the muzzle; each chosen target resolved via StrikeResolver. */

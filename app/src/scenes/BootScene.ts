@@ -1,7 +1,12 @@
 import Phaser from 'phaser';
+import { Abilities } from '../combat/Ability';
 import { Accessories } from '../defs/accessories';
 import { Weapons } from '../defs/layers';
 import { accessoryDraws } from '../draw/accessoryDraws';
+
+/** Texture key for a projectile art file (the art path IS the key, so two abilities sharing one bullet art
+ *  load it once and ProjectileRenderer can derive the key from the shape). */
+export const shotArtKey = (art: string): string => `shot:${art}`;
 
 /** Bundled URL for every art asset, keyed by its src/art-relative path. Vite-only machinery lives HERE
  *  (presentation) so defs stay plain data a headless server can import (DESIGN_PATTERNS §9). */
@@ -34,6 +39,17 @@ export class BootScene extends Phaser.Scene {
       const url = ART_URLS[`../art/${w.visual.art}`];
       if (!url) throw new Error(`Weapon art not found: ${w.visual.art} (${w.id})`); // fail loud at boot
       this.load.image(w.id, url); // texture key = def id (the convention every sprite consumer uses)
+    }
+    // projectile arts (a 'shot' ability's flying ball) — keyed by the art path so shared arts load once
+    const shotArts = new Set<string>();
+    for (const a of Abilities.all()) {
+      const art = a.shape?.shotArt;
+      if (art) shotArts.add(art);
+    }
+    for (const art of shotArts) {
+      const url = ART_URLS[`../art/${art}`];
+      if (!url) throw new Error(`Projectile art not found: ${art}`); // fail loud at boot
+      this.load.image(shotArtKey(art), url);
     }
   }
 

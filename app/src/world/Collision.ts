@@ -65,6 +65,19 @@ export class Collision {
     return TileGrid.swimSpeedMul(this.grid.tileAtPx(x, y));
   }
 
+  /** Is a flying SHOT (a musket ball, a thrown knife) stopped by what's at this world point? A projectile
+   *  clears LOW obstacles — a stone wall, a tree trunk, the open sea — but a TALL one (a building wall/door,
+   *  the windmill: `blocksAir`) stops it. This is the SAME airborne rule a jumper uses (composed over both
+   *  layers), so "what a jump clears, a bullet clears" stays one truth — and it's what gives PHYSICAL COVER
+   *  for free: a tall structure between shooter and target eats the round. (AI cover-SEEKING — deliberately
+   *  routing behind one — is the reserved PATHFINDING/line-of-fire follow-up, not this.) */
+  shotBlockedAt(x: number, y: number): boolean {
+    const tx = Math.floor(x / TILE);
+    const ty = Math.floor(y / TILE);
+    if (!TileGrid.airWalkable(this.grid.tileAt(tx, ty))) return true; // tall terrain (none today, but the rule holds)
+    return this.grid.structures.blocks(tx, ty, this.use('foot', true, false)); // airborne ctx: only blocksAir structures stop it
+  }
+
   /** The stored ordinal under a world point — for callers that feed TileGrid's static rules (walkable/speedMul). */
   tileAtPx(x: number, y: number): number {
     return this.grid.tileAtPx(x, y);

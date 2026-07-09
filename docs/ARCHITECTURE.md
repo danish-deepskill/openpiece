@@ -104,7 +104,8 @@ ballpiece/
         AISystem.ts             # runs each ai.brain.think()
         MovementSystem.ts       # integrate movers via Collision (fixed SIM_DT steps)
         MeleeSystem.ts          # moving-hitbox contact resolution (shares swing geom with the render)
-        AbilitySystem.ts        # the single attack path: costs, cooldowns, swings, launches
+        ProjectileSystem.ts     # travelling shots (musket ball): swept path vs bodies + solid cells -> StrikeResolver
+        AbilitySystem.ts        # the single attack path: costs, cooldowns, swings, shots, launches
         StrikeResolver.ts       # (service) a confirmed hit -> damage/combo/stun; Damage.ts applies it
         BodyCollisionSystem.ts  # body-vs-body shove (mass-weighted)
         CombatantSystem.ts      # stamina delayed-regen, combo decay, hitstun
@@ -112,7 +113,7 @@ ballpiece/
         InteractionSystem.ts    # generic verb engine (talk/take/…; ship boarding is WALKING, not a verb)
         GameDirector.ts         # game state, objectives, death cleanup, possession
         RenderSystem.ts         # (presentation) OWNS the Graphics side-table; render components are data
-        FxSystem.ts / NameplateSystem.ts / AccessorySystem.ts / WeaponSpriteSystem.ts / InspectSystem.ts / DebugOverlay.ts   # (presentation)
+        FxSystem.ts / NameplateSystem.ts / AccessorySystem.ts / WeaponSpriteSystem.ts / ProjectileRenderer.ts / InspectSystem.ts / DebugOverlay.ts   # (presentation)
       draw/                     # (presentation) procedural draw fns + DrawFn type + world renderers
         actorDraws.ts / accessoryDraws.ts / shipDraws.ts / terrainBakes.ts / structureDraws.ts / TerrainRenderer.ts / StructureRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
       scripts/                  # dev tools run via vite-node (art:template — the artist mannequin SVG)

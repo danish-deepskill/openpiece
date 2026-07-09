@@ -370,6 +370,23 @@ export interface Structure {
   open?: boolean;
 }
 
+/** A TRAVELLING shot — a musket ball, a thrown knife, later a cannonball or a Fruit projectile. Its own
+ *  entity (transform + `projectile` + render), moved each tick by ProjectileSystem, which SWEEPS its path
+ *  (last → new point) against hostile bodies AND solid grid cells so a fast ball can't tunnel through a wall
+ *  or an enemy between ticks. The damage isn't cached here — `ability` is looked up at contact so knockback/
+ *  stun/tags/damage all resolve through the SAME StrikeResolver a melee hit uses (guard/parry/Logia for free).
+ *  `owner` is the shooter (id at rest — resolved at impact; a dead/gone shooter still lands the shot in flight). */
+export interface Projectile {
+  owner: number; // shooter entity id — resolved at contact for damage attribution + the harm predicate
+  ability: ContentId; // the firing ability — its damage/knockback/stun/shape read at impact (never cached)
+  vx: number; // px/s — a straight, FIXED path (leading is the shooter's skill, NOT homing); no per-tick steering
+  vy: number;
+  life: number; // seconds remaining before it expires harmlessly (range = life × speed); ticked down each frame
+  /** Bodies already struck (ids) — lets a future PIERCING round pass through more than one; a plain single
+   *  shot dies on the first contact, so this holds at most one before the projectile is despawned. */
+  hit: number[];
+}
+
 /** Full component registry. Reserved (sim/One-Piece) components — inventory, needs, job,
  * rideable, vehicle, reputation, devilFruit, haki, rank — slot in here later. */
 export interface Components {
@@ -402,6 +419,8 @@ export interface Components {
   onDeck: OnDeck;
   // world statics
   structure: Structure;
+  // combat
+  projectile: Projectile;
 }
 
 export type ComponentName = keyof Components;

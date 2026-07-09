@@ -23,6 +23,7 @@ import { AimReticle } from '../systems/AimReticle';
 import { AccessorySystem } from '../systems/AccessorySystem';
 import { MeleeSystem } from '../systems/MeleeSystem';
 import { MovementSystem } from '../systems/MovementSystem';
+import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { SwimSystem } from '../systems/SwimSystem';
 import { BodyCollisionSystem } from '../systems/BodyCollisionSystem';
 import { InteractionSystem } from '../systems/InteractionSystem';
@@ -30,6 +31,7 @@ import { DialogueSystem } from '../systems/DialogueSystem';
 import { NameplateSystem } from '../systems/NameplateSystem';
 import { RenderSystem } from '../systems/RenderSystem';
 import { WeaponSpriteSystem } from '../systems/WeaponSpriteSystem';
+import { ProjectileRenderer } from '../systems/ProjectileRenderer';
 import { ShipSystem } from '../systems/ShipSystem';
 import { HullCollisionSystem } from '../systems/HullCollisionSystem';
 import { StrikeResolver } from '../systems/StrikeResolver';
@@ -57,9 +59,11 @@ export class WorldScene extends Phaser.Scene {
   private swimSys!: SwimSystem;
   private bodySys!: BodyCollisionSystem;
   private meleeSys!: MeleeSystem;
+  private projectileSys!: ProjectileSystem;
   private combatantSys!: CombatantSystem;
   private renderSys!: RenderSystem;
   private weaponSpriteSys!: WeaponSpriteSystem;
+  private projectileRenderer!: ProjectileRenderer;
   private nameplateSys!: NameplateSystem;
   private accessorySys!: AccessorySystem;
   private abilitySys!: AbilitySystem;
@@ -151,6 +155,7 @@ export class WorldScene extends Phaser.Scene {
     this.hullSys = hulls;
     this.squadSys = squads;
     this.meleeSys = new MeleeSystem(world, strikes);
+    this.projectileSys = new ProjectileSystem(world, strikes, collision);
     this.combatantSys = new CombatantSystem(world);
     this.doorSys = new DoorSystem(world);
     this.doorRenderer = new DoorRenderer(this, world);
@@ -165,6 +170,7 @@ export class WorldScene extends Phaser.Scene {
     this.bodySys = new BodyCollisionSystem(world, query, collision);
     this.renderSys = new RenderSystem(this, world, level.grid);
     this.weaponSpriteSys = new WeaponSpriteSystem(this, world, this.renderSys);
+    this.projectileRenderer = new ProjectileRenderer(this, world);
     this.nameplateSys = new NameplateSystem(this, world);
     this.accessorySys = new AccessorySystem(this, world, this.renderSys);
     this.aimReticle = new AimReticle(this, world, this.inputSys); // the '+' aim marker ahead of the controlled unit
@@ -229,6 +235,7 @@ export class WorldScene extends Phaser.Scene {
     this.fx.update(dt);
     this.renderSys.update(dt);
     this.weaponSpriteSys.update(); // sprite weapons pin to the same grip anchor the body draw just used
+    this.projectileRenderer.update(); // pin bullet sprites to shots in flight
     this.accessorySys.update();
     this.nameplateSys.update();
     this.inspectSys.update(); // publish the inspected unit's plate + selection ring (presentation-only)
@@ -251,6 +258,7 @@ export class WorldScene extends Phaser.Scene {
       this.shipSys.update(dt); // integrate hulls + parent on-deck actors AFTER foot movement (deck position wins)
       this.hullSys.update(); // solid hull: push world walkers out of any ship (except the gangplank) + board handoff
       this.meleeSys.update(dt); // resolve active swings by contact against current positions
+      this.projectileSys.update(dt); // travel + swept-contact resolve of shots in flight (after melee; a ball fired this tick starts moving next)
       this.abilitySys.update(dt); // ability cooldowns
       this.combatantSys.update(dt); // stamina regen + combo decay
       this.effectSys.update(dt); // expire timed effects (i-frames, armament) after combat resolved this tick

@@ -7,7 +7,24 @@ export interface AbilityShape {
   range: number;
   arc: number; // half-angle of the hit cone (radians) — used by 'arc' pattern
   single?: boolean; // hits only the nearest target in the cone/line
-  swing: 'melee' | 'pistol';
+  /** Attack DELIVERY: 'melee' = a moving hitbox resolved on contact (MeleeSystem); 'pistol' = an INSTANT
+   *  hitscan cone (a rubber arm genuinely IS instant-reach — Gomu); 'shot' = a TRAVELLING projectile
+   *  (ProjectileSystem — a musket ball you can dodge/lead, and that a wall stops). See docs DESIGN_BACKLOG #19. */
+  swing: 'melee' | 'pistol' | 'shot';
+  /** 'shot' only: projectile SPEED (px/s). With `range`, sets the ball's lifespan (life = range / speed) —
+   *  a fast flat musket ball vs a lazy lob. Required for a 'shot' shape (boot-validated). */
+  shotSpeed?: number;
+  /** 'shot' only: how far AHEAD of the shooter's center (px) the ball is born, so it clears the body it's
+   *  fired from (muzzle placement). Default = the shooter's own radius. */
+  muzzle?: number;
+  /** 'shot' only: art file for the flying projectile (src/art-relative, e.g. 'weapon/bullet_1.png') — a
+   *  musket ball vs a cannonball differ by this ROW (content-is-data). Loaded at boot; drawn by
+   *  ProjectileRenderer. Unset ⇒ a small procedural dot (no art needed for a basic shot). */
+  shotArt?: string;
+  /** 'shot' only: on-screen size of the drawn projectile (px diameter). Default 6. Visual only — the hit
+   *  radius is the ball's own tiny transform.r; a big cannonball art can still be a small point-hit, or set
+   *  the projectile's r via a future field. */
+  shotSize?: number;
   /** Hit shape: 'arc' = swing (sweep); 'line' = stab (thrust); 'mixed' = random; 'stretch' = Gomu rubber arm;
    *  'gore' = headbutt capsule; 'axe' = overhead axe-kick (the limb rises/scales UP, then slams an AoE straight down). */
   pattern?: 'arc' | 'line' | 'mixed' | 'stretch' | 'gore' | 'axe';
@@ -118,6 +135,7 @@ export const Abilities = new Registry<AbilityDef>('Abilities', (a) => {
   if (a.cooldown < 0) return 'cooldown must be ≥ 0';
   if ((a.costStam ?? 0) < 0) return 'costStam must be ≥ 0';
   if (a.shape && a.shape.range < 0) return 'shape.range must be ≥ 0';
+  if (a.shape?.swing === 'shot' && !((a.shape.shotSpeed ?? 0) > 0)) return `a 'shot' ability needs shotSpeed > 0 (got ${a.shape.shotSpeed})`;
   if (a.airCatch !== undefined && (a.airCatch < 0 || a.airCatch > 1)) return `airCatch must be in [0, 1] (got ${a.airCatch})`;
   const ph = a.shape?.phases;
   if (ph) {
@@ -204,6 +222,13 @@ Abilities.registerAll([
   // the wave's window sits INSIDE the heavy rung's active phase [0.38, 0.72] — a telegraph must never
   // deal damage (the canon review caught the old [0.15, 0.7], authored against the deleted pre-phase timeline)
   { id: 'ability.swordFinisher', name: 'Cross Cut', cooldown: 2.4, shape: { range: 0, arc: 0.7, swing: 'melee', pattern: 'arc', swingTime: 0.85, chargeHold: true, hitVolumes: [{ kind: 'weaponSegment', from: 0.3 }, { kind: 'arc', radius: 52, halfAngle: 0.9, thickness: 26, follow: 'swing', active: [0.38, 0.72] }] }, damageStat: 'atk', damageFlat: 8, knockback: 320, costStam: 8, stun: 1.0, shake: 4 }, // chargeHold: snap-and-hold the load = a big readable wind-up tell // keeps the blade's dead zone; the wave still covers the mid-range
+  // MUSKET SHOT — the first TRAVELLING projectile (docs DESIGN_BACKLOG #19). swing:'shot' spawns a ball
+  // (ProjectileSystem) that flies straight + dodgeable + wall-stopped — NOT the instant hitscan cone the
+  // Gomu Pistol uses. RELOAD is the counterplay that balances range: the long `cooldown` (2.2s) IS the
+  // one-shot-then-vulnerable window for v1 (a dedicated reload-lock animation is a #19 follow-up). shotSpeed
+  // 620 px/s over range 520 → ~0.84s aloft: fast + flat, but you CAN sidestep a shot fired from across the
+  // field. Heavy damage + knockback + a real stun — a hit hurts, but landing it is the skill (lead the mover).
+  { id: 'ability.musketShot', name: 'Musket Shot', cooldown: 2.2, shape: { range: 520, arc: 0, swing: 'shot', shotSpeed: 620, muzzle: 20, shotArt: 'weapon/bullet_1.png', shotSize: 8 }, damageStat: 'atk', damageFlat: 14, knockback: 240, costStam: 8, stun: 0.5, shake: 2 },
   // fighting style (flash step)
   { id: 'ability.flashDash', name: 'Flash Dash', cooldown: 0.45, costStam: 10, selfImpulse: 420, grantEffect: 'effect.invuln' },
   // devil fruit (gomu) — rubber-arm STRETCH punches: the fist cocks back then shoots far out (the arm is the hitbox)
@@ -246,7 +271,7 @@ Abilities.registerAll([
  */
 export function abilityRange(ab: AbilityDef, bodyReach: number): number {
   if (!ab.shape) return 0;
-  if (ab.shape.swing !== 'melee') return ab.shape.range;
+  if (ab.shape.swing !== 'melee') return ab.shape.range; // pistol cone + shot both reach their fixed range
   if (ab.shape.pattern === 'stretch') return ab.shape.range; // rubber arm reaches its full stretch length
   const weaponLen = ab.shape.range; // 0 for fists
   const arm = weaponLen > 0 ? 0.3 : 1; // armed → arm stays home; fist → arm extends fully
