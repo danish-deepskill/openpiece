@@ -15,7 +15,9 @@ Start at **VISION.md**.
 - [features/big-walkable-ship.md](features/big-walkable-ship.md) — ships as WALKABLE platforms (walk the deck, man the helm/cannons; the deck-local-space model). **Design only, not built.**
 - [EVENTS.md](EVENTS.md) — sea & land events, factions, reputation, the event director, Adventure Dex.
 - [ECONOMY_ACTIVITIES.md](ECONOMY_ACTIVITIES.md) — gathering, crafting, blacksmithing, market, talents, mounts.
-- [AI_INTELLIGENCE.md](AI_INTELLIGENCE.md) — the INT axis (1–10): one AI stack where intelligence gates perception, knowledge, decision, execution, and command at unit/leader/faction scale; the information economy; counter-play via habit counters; ML offline-only.
+- [ai/AI_INTELLIGENCE.md](ai/AI_INTELLIGENCE.md) — the INT axis (1–10): one AI stack where intelligence gates perception, knowledge, decision, execution, and command at unit/leader/faction scale; the information economy; counter-play via habit counters; ML offline-only.
+- [ai/AI_FOUNDATION.md](ai/AI_FOUNDATION.md) — the decision ENGINE that executes the INT axis: the gather→gate→score→pick→commit→execute pipeline, one intent pipe shared with player input (the PlayerIntent keystone), executor recursion (maneuver pools), command scopes as entities, the nine decision DOMAINS + the domain arbiter, prior art, build phases + triggers.
+- [ai/AI_GYM.md](ai/AI_GYM.md) — the offline tuning pipeline: maximize INT 10, CALIBRATE 1–9 against authored target profiles; scenarios + opponent league as def rows; the same-kit ladder gate; parallel headless runs, flagged-seed replays.
 - [DEEP_SIMULATION.md](DEEP_SIMULATION.md) — the Moat, the "be-the-Yonko" vision, deep-sim tiers, seamless world, tiered ticks, and the full tech/multiplayer plan for **ballpiece.io**.
 - [REFERENCES.md](REFERENCES.md) — the **ideas** from every reference game (Mount & Blade, Kenshi, DF, RimWorld, moomoo, Arcane Odyssey, …), tier-listed S/A/B/C by worth for ballpiece, each tagged with its source + build status.
 

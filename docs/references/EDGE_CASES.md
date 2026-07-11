@@ -37,6 +37,67 @@
 - Combine X *and* Y velocity (don't overwrite one axis → "only moves right").
 - ⚙️ Solid vs passable, wall blocking, shoving, **fast-body tunneling** → these live in `Collision`/`MovementSystem` (circle-vs-tile, `mass`, `tryMove`), *not* Arcade bodies. Tunneling: watch dash/`dvx` at high speed vs thin walls.
 
+### The continuous × tile SEAM ⚙️ (hybrid movement — where the two truths meet)
+> Bodies are floats, the world is tiles (`../qna/movement-tile-vs-continuous.md`); every bug in this family
+> is the two views DISAGREEING. Three relationships with the grid = three failure families — READ (label
+> lookups), COLLIDE (enforcement), PLAN (search → steer handoff) — plus the dynamic-world drift family.
+> Overhaul owner: `../design/PATHFINDING.md`; the AI side: `../design/ai/AI_FOUNDATION.md` §4.
+
+**READS — the body asks the ground:**
+- Straddling a boundary (the shoreline): any mode/label MUST come from ONE rule — the tile under the
+  CENTER, read AFTER the move. Prediction/hysteresis "cleverness" was the whole swim/foot flicker family. ✅
+  (`MovementSystem` mode rule)
+- Read the TERRAIN, never the derived mode — a derived label is one tick stale by definition (speed read
+  from mode while mode lags = a tick of wrong speed at every shoreline). ✅
+- Every NEW tile effect (fire DoT, mud, ice, poison pools) must CHOOSE its semantics — center-tile (like
+  mode) or circle-overlap (like solids) — and state why. Center-only lava lets a fat body hang safely over
+  it; overlap-fire burns a swimmer whose shoulder grazes the shore. 🔨
+- Exact-edge coordinates: `floor(x/TILE)` is deterministic AT a boundary, but negative/local coords need
+  `Math.floor`, not truncation (trunc rounds toward zero → off-by-one west/north of an origin). ⚙️ decks +
+  any future local frame.
+
+**COLLIDE — enforcement; nobody opts out:**
+- FAST impulses (dash, wall-slam shove, Rocket leap) vs THIN walls: tunneling between ticks. Audit any new
+  impulse whose per-tick travel approaches a tile width. ⚙️
+- Corner grazes: SAMPLED line checks (half-tile steps) can miss a body radius clipping a corner between
+  samples — the exact swept-circle DDA (PATHFINDING Layer 0) is the fix; until then treat "slipped through
+  a corner" reports as this. 🔨
+- A body INSIDE solid (spawned there, shoved there, a ship swept over it) must DEPENETRATE before it moves —
+  and a perched body (`onLedge`) is legally "inside" a low wall; depenetration must respect the perch. ✅
+  (per-tick `unstick`)
+- Wall-impact detection uses headway PROJECTED onto the intended heading, never total distance moved — a
+  diagonal hit slides along the wall (high distance, no headway) and a distance test misses it. ✅ (the
+  wall-slam projection)
+
+**PLAN → WALK — tiles think, vectors move:**
+- A committed continuous destination can be a WALL (the blind juke): pre-validate candidates with a cheap
+  walkability read where INT allows (AI_FOUNDATION §4 — the INT-5 rung), and ALWAYS keep the failure
+  ladder underneath (stuck watchdog → give up → re-decide). A silent forever-jog into a wall is the banned
+  shape. ✅ give-up (`KITE_STUCK_GIVEUP`) · 🔨 candidate pre-read
+- Waypoint ARRIVAL is a radius, never equality — a float body is never exactly at a tile center. Too tight =
+  orbiting jitter at the waypoint; too loose = corners cut into walls. ⚙️ every new follower/executor.
+- A* output is a tile STAIRCASE — the line-of-sight shortcut is what makes the walk read smooth. A walker
+  slavishly visiting tile centers is a bug even when it "works". ✅ (`clearLine` shortcut)
+- The GOAL tile can be unwalkable while the goal is legitimate (target perched on a wall/rail, standing on
+  a ship): plan to the nearest walkable ADJACENT cell; returning "unreachable" strands every melee chaser. 🔨
+- Moving targets: the repath THROTTLE (0.5s) and the stuck WATCHDOG are different clocks — verify the
+  throttle can never mute the watchdog, or a pinned chaser waits out both. ⚙️
+- UNREACHABLE goals burn the full node budget before failing (locked compound, another island — the common
+  case, not the edge): the Layer-1 reachability oracle is the fix; until it lands, cap how many chasers can
+  flood per tick. 🔨
+
+**TWO TRUTHS DRIFTING — dynamic worlds:**
+- A structure built/destroyed MID-WALK makes every planned path stale: the watchdog + repath must recover
+  (never walk the ghost corridor); `StructureIndex.version` is the dirty signal. 🔨 territory building.
+- Ships are MOVING tile grids: a hull is a wall the static grid can't know (the hull veto), and an EMBEDDED
+  body must be able to walk itself free — vetoing every still-overlapping step was the frozen-at-the-rail
+  deadlock. ✅
+- Frame transitions (world↔deck) are ZERO-displacement address-book switches — moving the body at the seam
+  always reads as a teleport, however small the nudge. ✅ (gangplank/rail exit rules)
+- AI sight and projectile collision must share ONE occlusion truth — sampled sight + exact bullets (or the
+  reverse) = "he shoots walls" / "he sees through walls". The fumbled-shot-through-wall bug was this
+  family's first member. ⚙️
+
 ### Combat / Enemy AI ✅ (strong)
 - Attack **only within range** (use squared distance); aim recomputed each frame (target moves). ✅
 - Exclude self from targeting **and** own hits/projectiles (`o === e`). ✅

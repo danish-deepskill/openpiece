@@ -24,7 +24,7 @@ must answer, my current LEANS (marked — not canon until a pass lands them), an
 Already-designed ledger (passes DONE, don't re-open casually): sailing model + skill bands (`SAILING.md`),
 ship classes as axes + upgrade law (`NAVAL.md`), seamless chunked sea (`WORLD.md` + `ARCHITECTURE_SCALE §5`),
 movement frames + transition rulebook (`features/movement-frames.md`), pathfinding stack (`PATHFINDING.md`),
-AI INT ladder (`AI_INTELLIGENCE.md`), combat stamina/posture/parry direction (`COMBAT.md`).
+AI INT ladder (`ai/AI_INTELLIGENCE.md`), combat stamina/posture/parry direction (`COMBAT.md`).
 
 ---
 
@@ -85,6 +85,14 @@ cannot touch, conqueror is a LEGEND threshold (you don't train it; you become it
 axis: crafted, shipwright-adjacent, maintainable — the Franky path for players who want power without RNG
 fruit luck. The COUNTER-MATRIX (armament>logia, observation>feints, conqueror>fodder) ships as DATA and as
 in-world KNOWLEDGE — you learn it from the world, not a wiki (moat test #2).
+**Lean (2026-07) — the roster IS a substrate roadmap.** Pick the first ~12 fruits for MECHANICAL
+ORTHOGONALITY, one new engine substrate each, so fruits 13–50 become def rows: Gomu (shipped — reach +
+self-impulse) · Mera/Doku (persistent TILE state, #16) · Hie (runtime walkability rewrite) · Bari (player-
+authored geometry → repath stress) · Doa (portals as content, PATHFINDING L2) · Moku (occlusion/perception)
+· Ope (teleport vs intent commitment) · Zushi (remote impulse) · Noro (per-entity timescale) · Kage
+(summons under a command scope) · Ito (control-writer theft — the Moat weaponized). Abilities are CHANNEL
+composites (entity / body-continuous / world-tile) — the AI side needs only role tags + a targeting kind
+(AI_FOUNDATION §12.3b), never per-fruit brains.
 **Pass when:** after the crew era, before Grand Line content (fruits are the tier-2 power spike).
 
 ## 5. Progression that isn't cheap (the pass over PROGRESSION.md)
@@ -150,7 +158,7 @@ Events are `EventDef`s with preconditions read FROM the sim, so the director can
 **Pass when:** with #7 (they share the world-sim substrate).
 
 ## 9. Knowledge as a PLAYER resource — charts, log pose, rumors, identification
-**Moat:** the information economy already designed for AI (`AI_INTELLIGENCE.md`) gets its player-facing half.
+**Moat:** the information economy already designed for AI (`ai/AI_INTELLIGENCE.md`) gets its player-facing half.
 Exploration games die when the map is just fog; here KNOWLEDGE IS LOOT.
 **Hard questions:** chart/fog model per player; log pose as route-gating (is the Grand Line a navigation
 puzzle?); rumor market (taverns selling info of varying truthfulness); fruit/technique identification;

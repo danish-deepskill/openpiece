@@ -1,9 +1,11 @@
 # Ballpiece — AI Intelligence (the INT axis)
 
-> Design capture, ahead of the code. Companions: `DEEP_SIMULATION.md` (the runtime/scale side of AI),
-> `REFERENCES.md` (#5 Nemesis · #9 squads · #12 director · #13 bounty · #26 agent needs),
-> `../references/rimworld-simple/08-ai-thinktrees-jobs.md` + `adoption-tiers.md` (S#2 intent split, A#14 duty),
-> `../references/library/` (F.E.A.R., Sims 3, Game AI Pro — the shipped-AI evidence base).
+> Design capture, ahead of the code. Companions: `AI_FOUNDATION.md` (the decision-engine ARCHITECTURE that
+> executes this axis — the pipeline, executor recursion, command scopes, the gym, build phases),
+> `../DEEP_SIMULATION.md` (the runtime/scale side of AI),
+> `../REFERENCES.md` (#5 Nemesis · #9 squads · #12 director · #13 bounty · #26 agent needs),
+> `../../references/rimworld-simple/08-ai-thinktrees-jobs.md` + `adoption-tiers.md` (S#2 intent split, A#14 duty),
+> `../../references/library/` (F.E.A.R., Sims 3, Game AI Pro — the shipped-AI evidence base).
 > Code seeds today: `defs/aiProfiles.ts`, `ai/perception.ts`, `ai/Brain.ts`/`brains.ts`, `systems/SquadSystem.ts`.
 
 ## 1. Thesis
@@ -113,7 +115,9 @@ brain. 🧊 far-future flavor: Drivatar-style ghost profiles of real players as 
 ## 10. Architecture mapping (lands as data + small systems)
 
 - **Prerequisite:** the decide/execute **intent split** (`adoption-tiers.md` S#2) — INT-gated decisions need
-  inspectable intents; also the PlayerIntent/multiplayer keystone. Build first.
+  inspectable intents; also the PlayerIntent/multiplayer keystone. Build first — **now fully designed as
+  `AI_FOUNDATION.md`** (the pipeline, one intent pipe, executor recursion, command scopes, the gym, phased
+  build triggers). That doc owns the architecture; this one owns what INT means.
 - **Exists today 🌱:** `AIProfileDef` knobs (reaction aim-lag = the first honest-handicap knob),
   `ai/perception.ts`, FSM brains + `flee`, `SquadSystem`, PowerTier/bounty, faction matrix.
 - **INT adds 🔨:** an `int` field + capability gates/knob curves on `AIProfileDef` · a `knowledge` component

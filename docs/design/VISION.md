@@ -43,7 +43,7 @@ direct-control action combat, a living faction world, sailing the seas between m
 - `PROGRESSION.md` — stats/haki/talents, dexes, class system, ability sources, races, EXP tiers.
 - `EVENTS.md` — sea events, land events, factions, reputation, the event director.
 - `ECONOMY_ACTIVITIES.md` — gathering, crafting, blacksmithing, market, activities/talents, mounts, items.
-- `AI_INTELLIGENCE.md` — the INT axis: one AI stack where INT 1–10 gates perception, knowledge, decision,
+- `ai/AI_INTELLIGENCE.md` — the INT axis: one AI stack where INT 1–10 gates perception, knowledge, decision,
   execution, and command; the information economy; counter-play; offline-only ML.
 - `DEEP_SIMULATION.md` — the Moat, the living sea, world structure, the multi-scale runtime, the road to
   ballpiece.io. `REFERENCES.md` — ideas from reference games, tier-listed.

@@ -100,7 +100,7 @@ navigator ROLE = the character whose job is to hold that number high. ONE ROLE, 
 INFORMATION comes from the best navigation skill ABOARD (the navigator warns from the map table);
 EFFICIENCY + AUTONOMY apply only to the actual helmsman. One Nami covers a small crew; if a battleship
 bridge ever wants both posts, that's two job rows in data, not architecture. Three axes, deliberately
-ordered information > efficiency > raw stats (the knowledge-economy philosophy, AI_INTELLIGENCE.md):
+ordered information > efficiency > raw stats (the knowledge-economy philosophy, ai/AI_INTELLIGENCE.md):
 
 1. **INFORMATION** — hazards (whirlpools, reefs, storms) revealed earlier/farther with skill; and the
    **WIND FORECAST**: wind drifts on a SEEDED stream, so a skilled navigator literally reads the future the

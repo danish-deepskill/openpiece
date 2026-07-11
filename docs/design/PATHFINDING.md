@@ -2,7 +2,7 @@
 
 **Status: DESIGNED (2026-07). Layer 2 slice 1 (gangplank portal) is the first build; other layers fire on
 their recorded triggers.** Companion: `features/movement-frames.md` (frames, the transition rulebook),
-`AI_INTELLIGENCE.md` (the INT ladder this plugs into), the RimWorld atlas (`references/rimworld-simple/` —
+`ai/AI_INTELLIGENCE.md` (the INT ladder this plugs into), the RimWorld atlas (`references/rimworld-simple/` —
 adoption-tiers #32 tiered regions C/"defer until pain"; the pains are now enumerated here as triggers).
 
 ## The honest audit (what's actually wrong vs. what only looks old)
@@ -138,7 +138,7 @@ whole planning stack free to change shape between versions without save migratio
 - **Time-sliced planning budget** (a per-tick path-request queue) — only if a profile shows planning spikes;
   must stay deterministic (queue order = stable entity order).
 - **Knowledge-graph data shape** (which regions/edges a unit KNOWS — the INT ladder's memory) — design in
-  `AI_INTELLIGENCE.md` when the knowledge economy lands; Layer 5 only reserves the seam.
+  `ai/AI_INTELLIGENCE.md` when the knowledge economy lands; Layer 5 only reserves the seam.
 - **The job system itself** (job defs, priorities, interruption) and **the strategic ORDER language**
   (division/fleet commands as data) — each gets its own design doc when its milestone arrives; this doc
   only fixes the queries they'll stand on (nearest-reachable, region orders).
