@@ -51,7 +51,9 @@ const jabCache = new Map<string, readonly HitVolume[]>();
 export function strikeVolumes(e: Entity, d: AbilityDef, activeSpan: readonly [number, number]): readonly HitVolume[] {
   const shape = d.shape!; // callers only resolve volumes for shaped (swinging) abilities
   if (shape.hitVolumes) return shape.hitVolumes;
-  const kitted = kitWeapon(e, d);
+  // a LIMB motion never inherits the weapon's volumes — a kick granted BY the musket (its slot kit) is still
+  // a kick, not the barrel: it synthesizes its own limb volume below
+  const kitted = shape.limb ? undefined : kitWeapon(e, d);
   if (kitted?.hitVolumes) return kitted.hitVolumes;
   const jabs = shape.jabs ?? 1;
   if (jabs > 1) {
@@ -109,7 +111,9 @@ export interface StrikeFrame {
  *  tests with the FIST's radius, not the sheathed blade's. */
 export function strikeFrameOf(e: Entity, m: MeleeSwing, d: AbilityDef, pose: SwingPose): StrikeFrame {
   const t = e.transform!; // callers iterate world.with('melee', 'transform')
-  const wv = kitWeapon(e, d)?.visual;
+  // same LIMB rule as strikeVolumes: a slot-kit kick (Shock Kick) tests at the FIST radius, not the barrel's
+  // half-width — being granted by the weapon doesn't make a foot a blade
+  const wv = d.shape?.limb ? undefined : kitWeapon(e, d)?.visual;
   return {
     x: t.x,
     y: t.y,

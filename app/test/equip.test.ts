@@ -4,14 +4,17 @@ import { StatBlock } from '../src/combat/StatBlock';
 import { TagSet } from '../src/combat/TagSet';
 import type { Entity } from '../src/ecs/components';
 
-/** A bare combat entity (no Phaser components) — equip() only touches attributes/tags/loadout/equipment. */
+/** A bare combat entity (no Phaser components) — equip() only touches attributes/tags/loadout/equipment.
+ *  `innate` mirrors the Spawner's base-kit contract: refreshLoadout derives granted = innate ∪ equipment. */
 function makeFighter(): Entity {
+  const innate = ['ability.punch', 'ability.kick', 'ability.jump', 'ability.roll'];
   return {
     id: 1,
     attributes: new StatBlock({ atk: 9, def: 0 }),
     tags: new TagSet(),
     loadout: {
-      granted: new Set(['ability.punch', 'ability.roll']),
+      granted: new Set(innate),
+      innate,
       cd: new Map(),
       cdMax: new Map(),
       primary: 'ability.punch',

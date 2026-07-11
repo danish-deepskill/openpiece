@@ -1,13 +1,15 @@
 import { Abilities, abilityRange, type AbilityDef } from '../combat/Ability';
+import { TAG_SLOWED, TAG_STUNNED } from '../combat/Effect';
 import { phaseAt, resolvePhases } from '../combat/phases';
 import { beginFall } from './MovementSystem';
 import { spendStamina } from '../combat/stamina';
 import { harmableBy } from '../combat/targeting';
+import { SPREAD_SHOT_KICK } from '../config/constants';
 import { events } from '../core/EventBus';
 import { angleDiff, dist, norm } from '../core/math';
 import type { Rng } from '../core/Rng';
 import type { ContentId } from '../core/Registry';
-import type { Entity, Loadout } from '../ecs/components';
+import type { Entity, Loadout, MeleeSwing } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { EffectSystem } from './EffectSystem';
 import type { StrikeResolver } from './StrikeResolver';
@@ -76,6 +78,13 @@ export class AbilitySystem {
           m.landed = true;
           this.landAoe(e, d);
         }
+      } else if (m.motion === 'shot' && !m.shotFired) {
+        // SHOT: the ball leaves the barrel when the swing crosses into ACTIVE (after the windup) — so a big windup
+        // (Buckshot) is a real "winding up the scatter" TELL you can dodge, not an instant spawn. Fired once.
+        if (m.t / m.dur >= m.phases.windup) {
+          m.shotFired = true;
+          this.spawnShot(e, m, d);
+        }
       }
     }
   }
@@ -114,7 +123,7 @@ export class AbilitySystem {
   }
 
   activate(e: Entity, id: string): boolean {
-    if ((e.combatant?.stunT ?? 0) > 0) return false; // staggered (hitstun) — can't act
+    if (e.tags?.has(TAG_STUNNED) || e.tags?.has(TAG_SLOWED)) return false; // frozen OR staggered — can't act (CC = effect tags)
     const lo = e.loadout;
     // combo chain: a repeat press of the same slot inside the window fires the NEXT step instead of
     // restarting — gates (cooldown/cost/granted) are checked against the step that actually fires
@@ -174,6 +183,8 @@ export class AbilitySystem {
       this.impulse(e, d.selfImpulse, dur);
       if (d.roll && e.mover) { e.mover.rollT = dur; e.mover.rollDur = dur; } // start the roll-anim clock (drawActor reads it)
     }
+    // (A melee ability's recoilPush is now HIT-GATED — the leap-back fires from MeleeSystem only when the kick
+    //  CONNECTS, not at cast, so a whiff leaves the kicker planted. The 'shot' path still recoils on fire.)
     // JUMP: enter the AIR layer for `jump` seconds (MovementSystem lands it). Refreshes airT if already aloft —
     // the seed for Geppo (a re-launch mid-air just resets the timer). airDur holds the total for the draw's arc.
     if (d.jump && e.mover) {
@@ -262,6 +273,8 @@ export class AbilitySystem {
       const life = (shape.swingTime ?? 0.18) * (e.melee.phases.active + e.melee.phases.recover); // spans active→recover
       events.emit('fx:swing', { type: 'melee', x: t.x, y: t.y, angle: e.melee.angle, len: wave.radius, arc: wave.halfAngle, life, max: life, enemy: !e.control });
     }
+    // (ELECTRIC swing visual is now drawn ON the foot itself — draw/actorDraws.drawFoot reads shape.swingFx —
+    //  so the charge is welded to the limb through the whole swing, not a one-shot spark guessed near it.)
   }
 
   /** Rocket the body along `angle` (Gomu Rocket) — a far, committed leap, longer-carrying than a dodge hop. */
@@ -289,21 +302,107 @@ export class AbilitySystem {
     events.emit('fx:burst', { x: t.x, y: t.y, color: 0xffffff, n: 8, speed: 160 });
   }
 
-  /** Fire a TRAVELLING shot (musket ball): spawn a projectile ENTITY from the muzzle along the committed aim
-   *  (+ a small scatter — the full spread cone is #19's follow-up pass). ProjectileSystem moves + resolves it,
-   *  so the actual hit happens on contact, not here — the ball can be dodged, led, and stopped by a wall. */
+  /** BEGIN a TRAVELLING shot: set up the recoil-pose swing at activation, but DON'T fire the balls yet — the
+   *  projectiles leave the barrel at the WINDUP→ACTIVE cue (spawnShot, driven by update()), so a big windup
+   *  (Buckshot) is a real "winding up" tell you can dodge, not an instant spawn. The aim is COMMITTED here (the
+   *  swing.angle = current facing) so a moving/turning shooter can't re-aim mid-wind. A VISUAL-ONLY 'shot' swing
+   *  (noHit → MeleeSystem skips it) drives the pose. */
   private fireShot(e: Entity, id: string, d: AbilityDef): void {
     const t = e.transform!;
     const shape = d.shape!;
-    const aim = this.scatter(t.angle); // committed aim + a touch of imprecision (per-gun accuracy = later)
+    e.melee = {
+      ability: id,
+      t: 0,
+      dur: shape.swingTime ?? 0.4,
+      motion: 'shot',
+      phases: { ...resolvePhases(e, d) },
+      side: 1,
+      angle: t.angle, // COMMIT the aim now (fired at the active cue along this heading)
+      hitByVolume: [],
+    };
+  }
+
+  /** FIRE the shot — spawn the projectile(s) + muzzle flash + recoil pushback. Called at the windup→active cue
+   *  (update()), NOT at activation, so the windup telegraphs. Aim = the swing's committed angle + the LIVE spread
+   *  scatter (settled/bloomed by CombatantSystem). Buckshot (pellets>1) fans a cone; each pellet rolls electric. */
+  private spawnShot(e: Entity, m: MeleeSwing, d: AbilityDef): void {
+    const t = e.transform!;
+    const shape = d.shape!;
+    // scatter within the shooter's LIVE aim cone (combatant.spread — narrow when aimed+still, wide when
+    // hip-firing/moving; CombatantSystem eases it). No combatant (a turret) ⇒ the fixed AIM_SPREAD.
+    const half = e.combatant?.spread ?? AIM_SPREAD;
+    const aim = m.angle + (this.rng.next() - this.rng.next()) * half; // committed heading + a scatter (biased to 0)
+    // RECOIL BLOOM: THIS shot fired from the current cone; now kick it WIDER (the settle re-tightens it as you
+    // hold aim) — so paced shots stay tight but a rapid string sprays. The "don't spray" skill (#19).
+    if (e.combatant) e.combatant.spread = (e.combatant.spread ?? half) + SPREAD_SHOT_KICK;
     const speed = shape.shotSpeed!; // boot-validated present + > 0 for a 'shot' shape
     const life = speed > 0 ? shape.range / speed : 0; // range / speed = seconds aloft (the ball fizzles at range)
     const muzzle = shape.muzzle ?? t.r; // born ahead of the shooter's body so it doesn't self-collide
-    this.world.create({
-      transform: { x: t.x + Math.cos(aim) * muzzle, y: t.y + Math.sin(aim) * muzzle, angle: aim, r: 2 },
-      projectile: { owner: e.id, ability: id, vx: Math.cos(aim) * speed, vy: Math.sin(aim) * speed, life, hit: [] },
-    });
-    events.emit('fx:burst', { x: t.x + Math.cos(aim) * muzzle, y: t.y + Math.sin(aim) * muzzle, color: 0xffe08a, n: 6, speed: 140 }); // muzzle flash
+    // CLOSE-RANGE PASS-THROUGH baked at FIRE time (shared by every pellet — same barrel, same jam risk).
+    const passChance = this.closePass(e, shape);
+    // BUCKSHOT: a 'shot' with pellets > 1 fires a CONE of balls in ONE trigger pull — each pellet gets its own
+    // scatter (across shotSpreadArc) + its OWN electric roll (a lucky pellet can zap). pellets 1 (default) = the
+    // single musket ball. All pellets share the recoil pose + pushback below (one shot, many balls).
+    const pellets = Math.max(1, shape.pellets ?? 1);
+    const spreadArc = shape.shotSpreadArc ?? 0; // extra per-pellet fan HALF-angle (rad); 0 ⇒ dead-on the aim
+    for (let i = 0; i < pellets; i++) {
+      // fan the pellets across [-spreadArc, +spreadArc]: evenly for a tight pattern, plus a small jitter so it
+      // isn't a rigid comb. A single ball (pellets 1, spreadArc 0) keeps the exact old dead-on-aim behavior.
+      const spread = pellets > 1 ? ((i / (pellets - 1)) * 2 - 1) * spreadArc + (this.rng.next() - this.rng.next()) * spreadArc * 0.3 : 0;
+      const pa = aim + spread;
+      const mx = t.x + Math.cos(pa) * muzzle;
+      const my = t.y + Math.sin(pa) * muzzle;
+      // CHARGED-ROUND roll PER PELLET (at fire time): a proc'd ball carries its effect payload (shocked/…) +
+      // damage mult — ProjectileSystem applies it on contact; the renderer themes the ball by the effect color.
+      const pe = shape.procEffect;
+      const proc = pe && pe.chance > 0 && this.rng.chance(pe.chance) ? { effect: pe.effect, dur: pe.dur, damageMult: pe.damageMult ?? 1 } : undefined;
+      this.world.create({
+        transform: { x: mx, y: my, angle: pa, r: 2 },
+        projectile: { owner: e.id, ability: m.ability, vx: Math.cos(pa) * speed, vy: Math.sin(pa) * speed, life, hit: [], passChance, proc },
+      });
+    }
+    const mx = t.x + Math.cos(aim) * muzzle; // muzzle flash at the barrel (the aim line, not a pellet)
+    const my = t.y + Math.sin(aim) * muzzle;
+    events.emit('fx:burst', { x: mx, y: my, color: 0xffe08a, n: 6, speed: 140 }); // muzzle flash
+    // RECOIL PUSHBACK: shove the shooter BACKWARD (opposite the aim), mass-scaled — a musket kicks a light body
+    // back a step. Fired WITH the ball (the active cue), so the kick lands as the shot leaves.
+    if (d.recoilPush) this.applyRecoil(e, aim, d.recoilPush);
+  }
+
+  /** Shove `e` BACKWARD (opposite `facing`), mass-scaled — the fired shot's recoil kick. (A MELEE move's on-hit
+   *  shove-off is a different mechanic: MovementSystem.leapBack, a jump-style hop gated on the hit LANDING.)
+   *  Rides the dodge-impulse channel (dvx/dvy + dodgeT) so it does NOT delete the swing the way a `selfImpulse`
+   *  dodge does. A heavier body barely budges. `dur` = the impulse window (s); a gun's recoil is a brief twitch. */
+  private applyRecoil(e: Entity, facing: number, push: number, dur = 0.12): void {
+    const m = e.mover;
+    if (!m) return;
+    const mass = Math.max(0.2, m.mass); // guard a zero/absurd mass; heavier = less shove
+    const p = push / mass;
+    m.dvx = -Math.cos(facing) * p;
+    m.dvy = -Math.sin(facing) * p;
+    m.dodgeT = Math.max(m.dodgeT, dur);
+  }
+
+  /** CLOSE-RANGE PASS-THROUGH chance (0..1) baked when the shot is fired. A long musket shoved point-blank
+   *  can't cleanly bear on a rushing body, so a shot fired up close has a chance to phase THROUGH (no hit) —
+   *  measured to the NEAREST harmable body (whoever the barrel's jammed against), not the eventual impact.
+   *  STEEP quadratic fade: `peak · (1 − d/range)²`, zero beyond `closePassRange`. This is proximity fumble at
+   *  fire time — NOT a conscious deflect (that's a future parry-vs-projectile mechanic on the guard). */
+  private closePass(e: Entity, shape: NonNullable<AbilityDef['shape']>): number {
+    const peak = shape.closePassChance ?? 0;
+    const range = shape.closePassRange ?? 0;
+    if (peak <= 0 || range <= 0) return 0; // opted out (no knob) ⇒ always connects
+    const t = e.transform!; // shooter has a transform (proven by fireShot's caller)
+    const canHit = harmableBy(e);
+    let nearest = Infinity;
+    for (const o of this.world.with('transform', 'health', 'faction')) {
+      if (o.id === e.id || !canHit(o)) continue;
+      const gap = dist(t.x, t.y, o.transform.x, o.transform.y) - o.transform.r; // surface gap, not center
+      if (gap < nearest) nearest = gap;
+    }
+    if (nearest >= range) return 0; // no one point-blank ⇒ a clean shot
+    const k = 1 - Math.max(0, nearest) / range; // 1 at contact → 0 at the range edge
+    return peak * k * k; // STEEP: squared, so only truly point-blank shots risk fumbling
   }
 
   /** Instant ranged shot (pistol): a cone test from the muzzle; each chosen target resolved via StrikeResolver. */

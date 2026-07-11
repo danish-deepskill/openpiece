@@ -67,7 +67,7 @@ describe('body × race × size — the three build axes compose', () => {
     const base = Bodies.get('body.humanoid');
     expect(e.transform!.r).toBe(base.r);
     expect(e.attributes!.get('reach')).toBe(base.reach);
-    expect(e.render!.draw).toBe('actor');
+    expect(e.render!.draw).toBe(base.draw); // draw comes FROM the body def (not a hardcoded style — the oval/blocky toggle is data)
   });
 
   it('the Brawler boss is BIG via race.giant on the plain humanoid body (no special boss rig)', () => {
@@ -76,6 +76,6 @@ describe('body × race × size — the three build axes compose', () => {
     const brawler = sp.spawnUnit('unit.brawler', 0, 0);
     const thug = sp.spawnUnit('unit.thug', 40, 0); // humanoid body + human race
     expect(brawler.transform!.r).toBeGreaterThan(thug.transform!.r); // giant multiplier towers over fodder
-    expect(brawler.render!.draw).toBe('actor'); // SAME humanoid silhouette — big purely from race.giant
+    expect(brawler.render!.draw).toBe(thug.render!.draw); // SAME humanoid silhouette — big purely from race.giant
   });
 });

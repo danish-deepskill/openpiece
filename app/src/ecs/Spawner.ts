@@ -1,11 +1,10 @@
 import { actorBrain } from '../ai/brains';
-import { MAX_STAM } from '../config/constants';
-import { deriveAttributeStats, tierAttributes } from '../combat/attributes';
+import { deriveAttributeStats, STAM_BASE, STAM_PER_ENDURANCE, syncDerivedResources, tierAttributes } from '../combat/attributes';
 import { tierIndex, tierStats } from '../combat/PowerTier';
 import { StatBlock } from '../combat/StatBlock';
 import { TagSet } from '../combat/TagSet';
 import { wearAccessory } from '../combat/apparel';
-import { equip, giveStyle, giveWeapon, refreshLoadout } from '../combat/equip';
+import { equip, refreshLoadout } from '../combat/equip';
 import type { Rng } from '../core/Rng';
 import { Bodies } from '../defs/bodies';
 import { Races } from '../defs/races';
@@ -15,7 +14,7 @@ import { ShipHulls } from '../defs/ships';
 import type { FactionId } from '../defs/factions';
 import { Accessories } from '../defs/accessories';
 import { itemName, type ItemRef } from '../defs/items';
-import { Traits } from '../defs/traits';
+import { MULTIPLIER_STAT_SEEDS, Traits } from '../defs/traits';
 import { Weapons } from '../defs/layers';
 import { BASE_KIT, DASH_MIN_TIER, GUARD_KIT, Units } from '../defs/units';
 import type { Combatant, Entity } from './components';
@@ -26,8 +25,9 @@ export const BASE_POSTURE = 20;
 
 /** The shared per-fight resource block — one literal, no drift. Spawns pass the endurance-derived
  *  `maxStam` / willpower-derived `maxPosture` attributes; the defaults cover attribute-less targets
- *  (possessing a prop/ship). */
-export function defaultCombatant(maxStam: number = MAX_STAM, maxPosture: number = BASE_POSTURE): Combatant {
+ *  (possessing a prop/ship) — and MATCH the spawned F- floor (STAM_BASE + 1 endurance grade = 110), so a
+ *  possessed backfilled body isn't quietly weaker than every spawned unit. */
+export function defaultCombatant(maxStam: number = STAM_BASE + STAM_PER_ENDURANCE, maxPosture: number = BASE_POSTURE): Combatant {
   return { stam: maxStam, maxStam, combo: 0, comboT: 0, posture: 0, maxPosture };
 }
 
@@ -77,8 +77,10 @@ export class Spawner {
     const bodyMass = body.mass * race.massMul * stature;
     const seedTier = u.statTier ?? u.tier; // stats from statTier (else rank tier)
     const ts = tierStats(seedTier); // atk/atkSpeed magnitudes; hp/def flow through the attribute seed below
-    // Six attributes (tier seed, then the def's per-unit spread wins) + the non-attribute combat stats.
-    const base: Record<string, number> = { ...tierAttributes(seedTier), atk: ts.atk, atkSpeed: ts.atkSpeed, reach: bodyReach };
+    // Six attributes (tier seed, then the def's per-unit spread wins) + the non-attribute combat stats +
+    // the MULTIPLIER-stat seeds (base 1 — an absent stat reads 0 from StatBlock, which for a multiplier means
+    // "frozen"; seeding neutral lets traits/gear compose with mulPct instead of override).
+    const base: Record<string, number> = { ...tierAttributes(seedTier), ...MULTIPLIER_STAT_SEEDS, atk: ts.atk, atkSpeed: ts.atkSpeed, reach: bodyReach };
     for (const [k, v] of Object.entries(u.attributes ?? {})) if (v !== undefined) base[k] = v;
     const attributes = new StatBlock(base);
     deriveAttributeStats(attributes); // maxHp/maxStam/def derive from health/endurance/defense
@@ -93,13 +95,16 @@ export class Spawner {
     const ti = tierIndex(u.tier);
     const canSprint = (u.traits ?? []).includes('trait.sprinter');
     const canDash = ti >= tierIndex(DASH_MIN_TIER);
-    // the primary starts as the base-kit fist; a STYLE (giveStyle) then a WEAPON (giveWeapon) override it
-    // below in precedence order. No per-unit attack field — the attack comes from an equipped layer.
-    const granted = new Set<string>([BASE_KIT.primary, 'ability.jump']); // jump = a fundamental movement verb (SPACE), granted to all (like guard); AI just won't call it until it has jump logic
-    if (canDash) granted.add('ability.roll');
-    // guard is a FUNDAMENTAL verb (COMBAT.md): every real fighter is granted block/parry, so "can this unit
-    // guard" = "is it in its loadout" (the Moat — same question as any ability). Non-fighters opt out via noGuard.
-    if (!u.noGuard) for (const a of GUARD_KIT) granted.add(a);
+    // The unit's INNATE kit — the non-equipment half of the loadout, recorded on loadout.innate so
+    // refreshLoadout re-derives granted = innate ∪ equipment on every equip/unequip (no drift, no preserve
+    // special-cases). Base verbs: fist + kick (the base attacks), jump (SPACE — a fundamental movement verb);
+    // roll gated by tier; guard (block/parry — COMBAT.md fundamentals) unless the unit opts out via noGuard;
+    // TRAIT grants (sprint…) are innate too — a talent isn't equipment, so a loadout rebuild must keep it.
+    const innate: string[] = [BASE_KIT.primary, BASE_KIT.heavy, 'ability.jump'];
+    if (canDash) innate.push(BASE_KIT.dash);
+    if (!u.noGuard) innate.push(...GUARD_KIT);
+    for (const id of u.traits ?? []) for (const a of Traits.get(id).grants ?? []) innate.push(a);
+    const granted = new Set<string>(innate);
     const e = this.world.create({
       transform: { x, y, angle: 0, r: bodyR },
       mover: { vx: 0, vy: 0, speed: bodySpeed, mass: bodyMass, mode: 'foot', dodgeT: 0, dvx: 0, dvy: 0 },
@@ -108,33 +113,34 @@ export class Spawner {
       combatant: defaultCombatant(maxStam, Math.round(attributes.get('maxPosture'))),
       attributes,
       tags: new TagSet(),
-      loadout: { granted, cd: new Map(), cdMax: new Map(), primary: BASE_KIT.primary, heavy: '', dash: canDash ? 'ability.roll' : '', slots: [] },
+      loadout: { granted, innate, cd: new Map(), cdMax: new Map(), primary: BASE_KIT.primary, heavy: BASE_KIT.heavy, dash: canDash ? BASE_KIT.dash : '', slots: [] },
       effects: { active: [], seq: 0 }, // EVERY actor can carry effects (dodge i-frames…) — the Moat, not hero-only
       ai: { brain: actorBrain, bb: { state: 'wander', home: { x, y }, wanderT: this.rng.range(0, 2), boss: !!u.boss, profile, canSprint, betrayHpFrac: u.betrayHpFrac ?? profile.betrayHpFrac, lastSeenX: x, lastSeenY: y, lostT: 0 } },
       // look = the BODY's rig (draw) + skin, with the unit's OUTFIT (garb) layered on; garb omitted ⇒ the
       // draw darkens the skin as a fallback (see actorDraws). hatColor is a per-unit accent (dialogue ring).
-      render: { draw: body.draw, baseColor: body.skin, garbColor: u.garb, hatColor: u.hatColor, bob: 0, showHpBar: true },
+      render: { draw: body.draw, baseColor: body.skin, garbColor: u.garb, accentColor: u.accent, rankStripes: u.rankStripes, hatColor: u.hatColor, bob: 0, showHpBar: true },
       identity: { name: u.name, tier: u.tier },
     });
     if (u.gold != null) e.loot = { gold: u.gold }; // only lootable units carry gold (townsfolk don't)
     if (u.dialogue) e.npc = { dialogue: u.dialogue, recruitable: u.recruitable }; // conversable (verb.talk); may offer recruit
     if (squad) e.squad = squad;
-    if (u.style) giveStyle(e, u.style); // the fighting style FIRST (its unarmed strike becomes the primary)…
+    // EQUIPMENT — all through the ONE path (equip → refreshLoadout), same as the player mid-game; the old
+    // giveWeapon/giveStyle spawn shortcuts hand-patched the loadout and drifted from refreshLoadout repeatedly.
+    // Order no longer matters: refreshLoadout resolves the canonical primary precedence (weapon ?? fruit ??
+    // style ?? fist) from ALL equipment every time.
+    if (u.style) equip(e, 'style', u.style);
     const weaponId = weapon ?? u.weapon; // explicit override, else the unit's defined weapon (e.g. Brute's cutlass)
-    if (weaponId) giveWeapon(e, weaponId); // …then a weapon OVERRIDES it (a drawn blade out-prioritises bare martial arts)
-    // …then a DEVIL FRUIT (Luffy's Gomu): equip() runs refreshLoadout, which re-derives the loadout from ALL
-    // equipment and resolves the canonical primary precedence (weapon ?? fruit ?? style ?? fist) — so the fruit's
-    // light/heavy take over while unarmed, exactly like the player. Same path as the hero; the AI just isn't special.
+    if (weaponId) equip(e, 'weapon', weaponId);
     if (u.fruit) equip(e, 'fruit', u.fruit);
     for (const id of u.accessories ?? []) wearAccessory(e, id);
-    // TRAITS: innate talents — grant each trait's modifiers + tags + abilities (the same plumbing accessories,
-    // layers, and the loadout use, so a trait needs NO bespoke read code). Source-tracked, so a retrait wipes it.
+    // TRAITS: innate talents — modifiers + tags apply here (source-tracked, so a retrait wipes them); the
+    // ability GRANTS were already folded into loadout.innate above (refreshLoadout re-derives them from there).
     for (const id of u.traits ?? []) {
       const tr = Traits.get(id);
       if (tr.modifiers) e.attributes!.addAll(tr.modifiers);
       if (tr.tags) for (const t of tr.tags) e.tags!.add(t);
-      if (tr.grants) for (const a of tr.grants) e.loadout!.granted.add(a); // trait-granted CAPABILITIES (e.g. sprint)
     }
+    syncDerivedResources(e); // trait modifiers may move maxHp/maxStam ceilings — sync even for equipment-less units
     return e;
   }
 

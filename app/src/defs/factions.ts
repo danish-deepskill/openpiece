@@ -10,7 +10,7 @@ export type FactionId =
   | 'bandits'
   | 'civilians'
   | 'wildlife'
-  | 'marines'
+  | 'marine'
   | 'revolutionary'
   | 'worldgov'
   | 'pirates';
@@ -32,7 +32,7 @@ export const FactionDefs: Record<FactionId, FactionDef> = {
     name: 'Straw Hat Crew',
     color: 0xd4483b,
     default: 'neutral',
-    stances: { bandits: 'hostile', marines: 'hostile', worldgov: 'hostile', civilians: 'ally' },
+    stances: { bandits: 'hostile', marine: 'hostile', worldgov: 'hostile', civilians: 'ally' },
   },
   bandits: {
     id: 'bandits',
@@ -56,8 +56,8 @@ export const FactionDefs: Record<FactionId, FactionDef> = {
     default: 'neutral', // …but the player can still strike them (see Factions.canHarm), so they're huntable
   },
   // --- defined for the road ahead; not yet spawned ---
-  marines: {
-    id: 'marines',
+  marine: {
+    id: 'marine',
     name: 'Marines',
     color: 0x2f6fae,
     default: 'neutral',
@@ -68,7 +68,7 @@ export const FactionDefs: Record<FactionId, FactionDef> = {
     name: 'Revolutionary Army',
     color: 0x8a5ad8,
     default: 'neutral',
-    stances: { worldgov: 'hostile', marines: 'hostile' },
+    stances: { worldgov: 'hostile', marine: 'hostile' },
   },
   worldgov: {
     id: 'worldgov',
@@ -82,7 +82,7 @@ export const FactionDefs: Record<FactionId, FactionDef> = {
     name: 'Rival Pirates',
     color: 0x6a3f8a,
     default: 'neutral',
-    stances: { marines: 'hostile', worldgov: 'hostile' },
+    stances: { marine: 'hostile', worldgov: 'hostile' },
   },
 };
 

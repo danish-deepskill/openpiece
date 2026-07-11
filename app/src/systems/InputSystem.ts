@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { toggleAttackMode } from '../combat/equip';
+import { isRanged, toggleAttackMode } from '../combat/equip';
 import { BLOCK_MOVE_MULT, endGuard, tryGuard } from '../combat/guard';
+import { AIM_MOVE_MULT } from '../config/constants';
 import { trySprint } from '../combat/stamina';
 import { attackMoveSpeed } from '../combat/attackMove';
 import { FRIENDLY_FIRE_TAG } from '../combat/targeting';
@@ -32,6 +33,9 @@ const MOUSELOOK_SENS = 0.0032;
 const AUTO_AIM_TRACK = 7;
 /** Auto-aim acquisition radius (px) — input feel, so file-local rather than sim data. */
 const AUTO_AIM_RANGE = 700;
+/** RMB TAP threshold (s): releasing RMB within this = a TAP (the musket bash); holding past it engages AIM.
+ *  Short enough that a hold-to-aim feels instant, long enough that a deliberate click always reads as the bash. */
+const RMB_TAP_MAX = 0.18;
 
 /**
  * Drives whichever entity holds the `control` tag. Movement sets `mover` intent; combat keys activate the
@@ -48,6 +52,8 @@ export class InputSystem {
    *  reads `shiftLock` to rotate the view + counter-rotate world text. Public getter, toggled here (input-owned). */
   private shiftLock = false;
   private mouseDX = 0; // mouselook delta accumulated from pointermove events, consumed once per update()
+  private rmbHeldT = 0; // how long RMB has been held (s) — a quick tap (< RMB_TAP_MAX) is the bash, a hold aims
+  private rmbPrev = false; // RMB down last sim step — to detect the release edge (fire the bash on a quick tap)
   get shiftLocked(): boolean { return this.shiftLock; }
   /** Edge-taps latched per RENDER frame (sample()) and consumed by exactly one sim step (tap()) — under the
    *  fixed timestep a frame can run 0 sim steps, and Phaser clears JustDown on keyup, so polling JustDown
@@ -214,6 +220,7 @@ export class InputSystem {
     const moving = ix !== 0 || iy !== 0;
     let speed = m.speed;
     if (c?.blocking) speed *= BLOCK_MOVE_MULT; // bracing is not a walk — and it forfeits the sprint
+    else if (c?.aiming) speed *= AIM_MOVE_MULT; // ADS-walk: you can advance while aiming, at half pace (and no sprint)
     else if (this.down('SHIFT') && moving) speed = trySprint(e, speed, dt); // trySprint self-gates on the ability.sprint grant + stamina — the SAME rule the AI uses (the Moat)
     speed = attackMoveSpeed(e, speed); // rooted (or slowed) while a swing is in flight — the SAME rule the AI uses
     // The movement INTENT is a world-space velocity (nx·speed, ny·speed) — frame-NEUTRAL. InputSystem's job ENDS
@@ -253,8 +260,26 @@ export class InputSystem {
     }
 
     const lmb = ptr.leftButtonDown() && !this.inspect.modifierHeld; // V+click = inspect pick, never a swing
-    if ((lmb || this.down('J')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.primary); // light: LMB / J
-    if ((ptr.rightButtonDown() || this.down('K')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.heavy); // heavy: RMB / K
+    if ((lmb || this.down('J')) && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.primary); // fire/light: LMB / J
+    // RMB is TAP-vs-HOLD on a RANGED weapon: a quick TAP (released < RMB_TAP_MAX) fires the HEAVY — the musket's
+    // butt-stroke BASH, the close-range shove for a rusher; HOLDING past that threshold engages the braced AIM
+    // (ADS). So the tap can't flash the aim, and the hold can't accidentally bash. LMB fires the shot either way;
+    // K fires the heavy directly (no ambiguity). For a MELEE weapon RMB is just the heavy attack (on press).
+    const ranged = isRanged(e);
+    const rmbDown = ptr.rightButtonDown();
+    if (ranged) {
+      if (rmbDown) this.rmbHeldT += dt;
+      else if (this.rmbPrev && this.rmbHeldT < RMB_TAP_MAX && m.dodgeT <= 0) {
+        this.abilities.activate(e, e.loadout.heavy); // RELEASE of a quick tap → the bash
+      }
+      if (!rmbDown) this.rmbHeldT = 0; // reset on release
+      if (c) c.aiming = rmbDown && this.rmbHeldT >= RMB_TAP_MAX; // HELD past the tap window → aim
+    } else {
+      if (c) c.aiming = false;
+      if (rmbDown && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.heavy); // melee: RMB = the heavy attack
+    }
+    this.rmbPrev = rmbDown;
+    if (this.down('K') && m.dodgeT <= 0) this.abilities.activate(e, e.loadout.heavy); // K: the heavy directly (either weapon)
     if (this.down('ONE') && e.loadout.slots[0]) this.abilities.activate(e, e.loadout.slots[0]); // special 1 (key 1)
     if (this.down('TWO') && e.loadout.slots[1]) this.abilities.activate(e, e.loadout.slots[1]); // special 2 (key 2)
     if (this.down('THREE') && e.loadout.slots[2]) this.abilities.activate(e, e.loadout.slots[2]); // special 3 (key 3)

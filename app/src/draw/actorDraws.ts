@@ -53,6 +53,7 @@ export const ANATOMY = {
  *  read ONE object and can never disagree about where a hat sits. */
 export const SLOT_ANCHOR: Record<AccessorySlot, number> = {
   head: -ANATOMY.headBack,
+  hair: -ANATOMY.headBack, // on the head, same pin as a hat (renders under the hat via SLOT_DEPTH)
   face: -ANATOMY.headBack + ANATOMY.headR * 0.55, // the facing half of the head
   chest: ANATOMY.torsoFwd,
   back: -(ANATOMY.headBack + ANATOMY.headR * 0.5), // away from facing, over the head's far half (capes)
@@ -63,6 +64,41 @@ export const SLOT_ANCHOR: Record<AccessorySlot, number> = {
  *  (docs/art/unit-template.svg — `npm run art:template`), so fit is by construction, not by math.
  *  Covers the full silhouette (1.12·r) with margin for capes/brims (anatomy.test locks the coverage). */
 export const BODY_FRAME_R = 1.5;
+
+/**
+ * The BLOCKY body style (true top-down, Roblox-ish): ONE rounded-rect torso, head + fists concentric — no
+ * perspective cheat. This object is the SINGLE source of truth shared by the in-game draw (`actorBlocky`)
+ * and the authoring template (`npm run art:blocky`, scripts/blockyTemplate.ts): tune HERE, and the game and
+ * the SVG both update — deciding "template C" is editing these numbers (+ the one draw-key flip in
+ * defs/bodies.ts). Hands are NOT sized/animated here — they stay on the shared combat contract
+ * (HAND_R_FRAC + swingPose/swimHand/stretch: what you see is what hits); only the IDLE rest spot follows
+ * armOut/armFwd (swing.ts blesses that: the resting stance is art-tunable, guard/swing poses are not).
+ */
+export const BLOCKY = {
+  torsoHalfL: 0.5, // ×r — torso half-extent ALONG facing (the rect's depth)
+  torsoHalfW: 1.2, // ×r — torso half-extent ACROSS facing (the rect's width; >headR so it frames the head)
+  corner: 0.28, // rounded-rect corner radius, as a fraction of the rect's short side
+  armOut: 1.0, // ×r — idle fist distance sideways from center
+  armFwd: 0.3, // ×r — idle fist offset ALONG facing (+ = toward the aim / the "top" on the template)
+} as const;
+
+/** BLOCKY idle rest-hand spot — armOut/armFwd rotated into world space (the blocky analogue of restHand).
+ *  IDLE ONLY: the moment a swing/guard/swim pose takes a hand, the shared combat machinery owns it. */
+function blockyRest(angle: number, side: number, r: number): [number, number] {
+  const f = BLOCKY.armFwd * r;
+  const s = side * BLOCKY.armOut * r;
+  return [Math.cos(angle) * f - Math.sin(angle) * s, Math.sin(angle) * f + Math.cos(angle) * s];
+}
+
+/** Per-style IDLE rest-hand override, keyed by the body draw key (absent → the shared restHand). ONE
+ *  authority for everything pinned to the resting fist — the drawn hand AND the idle weapon grip
+ *  (weaponAnchor) — so a style can't move the fist and leave the sword floating at the old spot. */
+const IDLE_REST: Record<string, (angle: number, side: number, r: number) => [number, number]> = {
+  actorBlocky: blockyRest,
+};
+function idleRest(e: Entity, angle: number, side: number, r: number): [number, number] {
+  return (IDLE_REST[e.render?.draw ?? ''] ?? restHand)(angle, side, r);
+}
 
 /** Darken an 0xRRGGBB color (×f per channel) — the garb fallback for a body def without an explicit `garb`. */
 function darken(c: number, f = 0.72): number {
@@ -108,8 +144,10 @@ function drawWeapon(g: Phaser.GameObjects.Graphics, hx: number, hy: number, a: n
 }
 
 /** A skin-toned foot — an oval sole + an ankle ball — centered at (cx,cy), oriented along `ang`. Shared by the
- *  side-kick and the stretching Gomu Stamp (so the rubber kick reads as a leg + foot, not an arm + fist). */
-function drawFoot(g: Phaser.GameObjects.Graphics, cx: number, cy: number, ang: number, handR: number, c: number, side: number): void {
+ *  side-kick and the stretching Gomu Stamp (so the rubber kick reads as a leg + foot, not an arm + fist).
+ *  `electric` = draw a cyan glow + crackle ON the foot (the Shock Kick), so the charge reads as the LIMB itself
+ *  being electrified — welded to the drawn foot through the whole swing, not a one-shot spark near it. */
+function drawFoot(g: Phaser.GameObjects.Graphics, cx: number, cy: number, ang: number, handR: number, c: number, side: number, electric = false): void {
   const Tx = handR * 1; // sole thickness (along the kick) — short axis
   const Ly = handR * 2; // sole length (across the kick) — long axis
   const ankleR = handR * 0.6;
@@ -118,12 +156,30 @@ function drawFoot(g: Phaser.GameObjects.Graphics, cx: number, cy: number, ang: n
   g.save();
   g.translateCanvas(cx, cy);
   g.rotateCanvas(ang);
+  if (electric) {
+    g.fillStyle(0x6cf0ff, 0.28); // soft outer charge glow (under the silhouette)
+    g.fillEllipse(0, 0, Tx + 12, Ly + 12);
+  }
   g.fillStyle(OUTLINE, 1); // one unified charcoal silhouette
   g.fillEllipse(0, 0, Tx + 4, Ly + 4);
   g.fillCircle(ax, ay, ankleR + 2);
   g.fillStyle(c, 1); // skin on top (a ~2px outline border remains)
   g.fillEllipse(0, 0, Tx, Ly);
   g.fillCircle(ax, ay, ankleR);
+  if (electric) {
+    // a bright rim + a few kinked bolts hugging the sole — the charge crackling on the foot
+    g.lineStyle(1.5, 0xd8faff, 0.95);
+    g.strokeEllipse(0, 0, Tx + 2, Ly + 2);
+    const bolts = 4;
+    for (let i = 0; i < bolts; i++) {
+      const a = (i / bolts) * Math.PI * 2;
+      const r0 = Ly * 0.5, r1 = Ly * 0.72;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * Tx * 0.5, Math.sin(a) * r0);
+      g.lineTo(Math.cos(a + 0.4) * Tx * 0.9, Math.sin(a + 0.4) * r1); // a kinked spark outward
+      g.strokePath();
+    }
+  }
   g.restore();
 }
 
@@ -158,6 +214,9 @@ export function weaponAnchor(e: Entity): { x: number; y: number; angle: number }
   const m = e.melee;
   const shape = m ? Abilities.get(m.ability).shape : undefined;
   if (m && shape && m.motion === 'stretch' && shape.limb !== 'foot') return undefined; // rubber arms out — weapon stowed
+  // SWIMMING (surface stroke, not mid-attack): the weapon is STOWED — both hands breaststroke, so the sprite gun
+  // must hide (else the musket floats at a firing grip while the hands swim). A swing still shows the weapon.
+  if (!m && e.mover?.mode === 'swim' && !e.mover.submerged) return undefined;
   const pose = m && shape ? swingPose(m, shape, swingGeomOf(e)) : undefined;
   const drawA = pose ? pose.drawAngle : t.angle;
   if (pose && shape!.limb !== 'foot') return { x: t.x + pose.hx, y: t.y + pose.hy, angle: drawA }; // swinging: the acting hand (`!` safe: pose exists only when shape did)
@@ -171,7 +230,15 @@ export function weaponAnchor(e: Entity): { x: number; y: number; angle: number }
     const [gx, gy] = guardGrip(drawA, t.r);
     return { x: t.x + gx, y: t.y + gy, angle: drawA - GUARD_BLADE_TILT };
   }
-  const [hx, hy] = restHand(drawA, 1, t.r); // idle: held at the lead rest hand
+  // a RANGED weapon has TWO holds: AIMING → shouldered + barrel LEVEL along the aim (the braced firing stance);
+  // NOT aiming → a low PORT carry (barrel angled down-across the body — armed but not leveled). Both keep the
+  // grip the drawn hands match (drawActor's rangedIdle), so the barrel never floats off the fists.
+  if (e.equipment?.weapon && Weapons.get(e.equipment.weapon).weaponClass === 'ranged') {
+    const aiming = cb?.aiming === true;
+    const [gx, gy] = aiming ? rangedGrip(drawA, t.r) : portGrip(drawA, t.r);
+    return { x: t.x + gx, y: t.y + gy, angle: aiming ? drawA : drawA - PORT_CARRY_TILT }; // level when aiming, muzzle down-BACK (−tilt) at port
+  }
+  const [hx, hy] = idleRest(e, drawA, 1, t.r); // idle: held at the lead rest hand (style-aware — the blocky fist too)
   return { x: t.x + hx, y: t.y + hy, angle: drawA };
 }
 
@@ -181,6 +248,48 @@ export function guardGrip(aim: number, r: number): [number, number] {
   const [gx, gy] = guardHand(aim, 1, r); // the combat guard hand (up + forward)
   const fwd = r * GUARD_HAND_FWD; // a bit further forward toward the aim
   return [gx + Math.cos(aim) * fwd, gy + Math.sin(aim) * fwd];
+}
+
+/** Offset a point by `fwd` along `aim` + `side` perpendicular to it (both ×r). The ONE aim-relative placement
+ *  helper both ranged grips use, so "forward/back" and "left/right across the body" stay one primitive. */
+function aimOffset(x: number, y: number, aim: number, r: number, fwd: number, side: number): [number, number] {
+  return [
+    x + (Math.cos(aim) * fwd - Math.sin(aim) * side) * r,
+    y + (Math.sin(aim) * fwd + Math.cos(aim) * side) * r,
+  ];
+}
+
+/** SHOULDERED ranged grip offsets (×r) from the guard hand. FWD = along the aim (−back toward the shoulder /
+ *  +forward at arm's length). SIDE = perpendicular (+/− shifts the grip right/left across the body). */
+const RANGED_HAND_FWD = -0.5;
+const RANGED_HAND_SIDE = -0.2;
+
+/** The SHOULDERED ranged grip point (×r offsets, LOCAL) — the trigger (lead) hand, held close to the body so
+ *  the musket reads as stocked, not thrust forward. Shared by weaponAnchor's ranged-idle branch + drawActor's
+ *  rangedIdle hand so the barrel pins to the fist. */
+export function rangedGrip(aim: number, r: number): [number, number] {
+  const [gx, gy] = guardHand(aim, 1, r); // start from the combat guard hand (up + a touch forward)
+  return aimOffset(gx, gy, aim, r, RANGED_HAND_FWD, RANGED_HAND_SIDE); // …back toward the shoulder + across a touch
+}
+
+/** How far the BODY turns off the aim line (rad) when AIMING a ranged weapon — a braced firing stance stands
+ *  bladed/side-on to the target (the reference photo), not square. 1.2 rad ≈ 69° — a hard side-on blade (hand-
+ *  tuned up from the original ~17°); the WEAPON still points true down the aim. Sign is cosmetic. */
+const AIM_BLADE_TILT = 1.2;
+/** How far the barrel is tilted OFF the aim (rad) while carried at PORT — nearly perpendicular (~75°), so the
+ *  muzzle clearly points DOWN-and-across the body: unmistakably "carried, not leveled" vs the flat aim stance. */
+const PORT_CARRY_TILT = 1.3;
+/** PORT grip position (×r): how far FORWARD of center and how far to the LEAD SIDE the hands drop to carry the
+ *  musket low across the waist (not up at the shoulder). Tune to taste — larger side = more across the body. */
+const PORT_GRIP_FWD = 0.35;
+const PORT_GRIP_SIDE = 0.55;
+
+/** The LOW PORT carry grip (×r offsets, LOCAL) — a not-aiming ranged weapon held low across the WAIST, hands
+ *  dropped off the shoulder to the lead side. Built directly from aim + a perpendicular side offset (NOT from
+ *  restHand, whose shoulder-height side-hang kept the musket reading 'leveled'); the barrel angle
+ *  (PORT_CARRY_TILT) then hangs the muzzle down-across. */
+export function portGrip(aim: number, r: number): [number, number] {
+  return aimOffset(0, 0, aim, r, PORT_GRIP_FWD, PORT_GRIP_SIDE); // from body center: a little forward + across the waist
 }
 
 /** How far the blade is rotated OFF the aim when raised to guard (rad) — ~77°, nearly HORIZONTAL across the
@@ -209,8 +318,13 @@ function swimHand(angle: number, side: number, r: number): [number, number] {
  * head that stays on the aim, two hands behind the body (one sweeps/lunges on attack), and — if armed —
  * the weapon held in the lead hand. All proportions come from ANATOMY (the shared anchor contract).
  * Hats/armor sprites are overlaid separately by AccessorySystem; nameplates by NameplateSystem.
+ *
+ * TWO body STYLES share this one implementation — `blocky` swaps ONLY the standing body block (rounded-rect
+ * torso, concentric head, BLOCKY idle fists, no sleeves) and keeps everything else: swing poses, stretch
+ * limbs, kicks, swim strokes, roll, weapons, bars. Hand ANIMATIONS are untouched by the style — they run on
+ * the shared machinery either way (the user-facing guarantee: swim/punch/etc keep working on any body).
  */
-export const drawActor: DrawFn = (g, e) => {
+const drawActorImpl = (g: Phaser.GameObjects.Graphics, e: Entity, blocky: boolean): void => {
   const t = e.transform!;
   const rd = e.render!;
   const r = t.r;
@@ -265,7 +379,21 @@ export const drawActor: DrawFn = (g, e) => {
   const m = e.melee;
   const shape = m ? Abilities.get(m.ability).shape : undefined; // the swing TYPE's params (data) drive the pose
   const pose = m && shape ? swingPose(m, shape, swingGeomOf(e)) : undefined;
-  const drawA = pose ? pose.drawAngle : a;
+  // FIRING a ranged weapon (the recoil 'shot' swing) ALWAYS uses the raised, braced firing pose — even a HIP
+  // shot (not pre-aiming) snaps the gun UP to level + blades the body for the shot, then drops back. So there's
+  // ONE firing animation (hip and aimed look identical; only the accuracy cone differs), never a ball coming
+  // out of a lowered port-carry barrel. `ranged` weapon idle-aiming (RMB held) also blades continuously.
+  const ranged = wDef?.weaponClass === 'ranged';
+  const firing = ranged && !!pose && m!.motion === 'shot'; // mid-recoil 'shot' swing = the firing anim
+  const rangedRaised = ranged && (e.combatant?.aiming === true || firing); // gun UP: aiming (RMB) or firing
+  // TWO SEPARATE ANGLES (the fix for the recurring detach regressions): `drawA` = where the HANDS + WEAPON
+  // point (the true aim / swing direction — weaponAnchor uses the same). `bodyA` = the body SILHOUETTE twist,
+  // which may BLADE off the aim for a braced ranged stance. Keeping them apart means blading the body can never
+  // move the hands/gun off the aim — the single-`drawA`-does-everything overload was the regression engine.
+  const drawA = pose ? pose.drawAngle : a; // hands + weapon: swing pose, else the raw aim
+  // the body blades off the aim whenever the ranged weapon is RAISED — idle-aiming OR firing — so the two look
+  // identical (ONE blade, ONE place). Any other pose (a bash) keeps the body on the swing angle.
+  const bodyA = rangedRaised && (!pose || m!.motion === 'shot') ? drawA + AIM_BLADE_TILT : drawA;
   // foot attacks never use the hands — both stay at rest. A plain kick emerges a foot; a STRETCH-foot (Gomu
   // Stamp) stretches a LEG from the hip to a far foot. Only HAND attacks consume a hand (the rubber arm).
   const footLimb = shape?.limb === 'foot';
@@ -323,6 +451,13 @@ export const drawActor: DrawFn = (g, e) => {
     const unarmedGuard = !wDef && isGuarding; // bare fists up to guard (a boxer's guard)
     const guarding = armedGuard || unarmedGuard;
     const guardingHand = side === 1 && armedGuard; // the LEAD hand grips the raised sword
+    // a RANGED weapon has two holds: AIMING → shouldered (rangedGrip), else a low PORT carry (portGrip). The
+    // LEAD hand sits at that grip so the barrel pins to the fist (weaponAnchor uses the SAME spot); the two-
+    // handed off-hand branch below follows leadX/leadY. Only when NOT acting/guarding (a swing/guard wins).
+    // SURFACE SWIM overrides the weapon holds: a swimming unit STROKES through the water (the gun/blade is stowed),
+    // so both hands breaststroke — checked BEFORE the ranged grip, or a musketeer would keep the firing pose while
+    // swimming (the "no swim anim with a ranged weapon" bug; a melee holder had no such early branch to shadow it).
+    const rangedIdle = side === 1 && !acting && !guarding && !surfaceSwim && wDef?.weaponClass === 'ranged';
     if (acting) {
       hx = pose!.hx;
       hy = pose!.hy;
@@ -330,27 +465,43 @@ export const drawActor: DrawFn = (g, e) => {
       // GUARDING with a weapon: the LEAD hand moves up to the guard grip so the fist actually HOLDS the raised
       // sword (weaponAnchor pins the handle to this SAME point) — otherwise the blade floats off the hand.
       [hx, hy] = guardGrip(drawA, r);
+    } else if (surfaceSwim) {
+      // SWIMMING (any weapon): both hands run the continuous BREASTSTROKE — the stroke wins over an idle gun/grip.
+      [hx, hy] = swimHand(drawA, side, r);
+    } else if (rangedIdle) {
+      // the grip uses the TRUE aim (`a`), not the bladed body `drawA` — the weapon points at the target
+      // (weaponAnchor also uses t.angle), so the fist must sit under the barrel, not the turned shoulder.
+      // rangedRaised = aiming OR mid-shot, so a HIP shot raises the gun too (one firing anim).
+      [hx, hy] = rangedRaised ? rangedGrip(a, r) : portGrip(a, r); // shouldered (aim/firing) vs low port carry
     } else if (unarmedGuard) {
       // UNARMED guard: BOTH fists come up in front (a boxer's guard) — the raised combat guard hand per side.
       [hx, hy] = guardHand(drawA, side, r);
-    } else if (side === -1 && leadSet && wDef?.grip?.hands === 2) {
-      // two-handed grip: the off-hand joins the HANDLE just above the lead hand instead of resting
+    } else if (side === -1 && leadSet && !surfaceSwim && wDef?.grip?.hands === 2) {
+      // two-handed grip: the off-hand joins the HANDLE, `spacing` along the BARREL from the lead hand. The
+      // barrel runs along the aim normally, but a PORT-carried musket is tilted (PORT_CARRY_TILT), so the
+      // off-hand must follow that tilt or it floats off the angled gun.
       const sp = wDef.grip.spacing ?? r * 0.5;
-      hx = leadX + Math.cos(drawA) * sp;
-      hy = leadY + Math.sin(drawA) * sp;
-    } else if (surfaceSwim) {
-      // SURFACE SWIM — the body stays NORMAL; only the hands run a continuous BREASTSTROKE (reach forward → sweep
-      // out → recover), even when idle (a tread). Time-driven (presentation wall-clock — draw/ is not the sim).
-      [hx, hy] = swimHand(drawA, side, r);
+      // the off-hand follows the BARREL from the lead hand. During a SWING (a bash) the weapon points along the
+      // thrust (drawA), so the off-hand tracks the swing — both hands stay on the musket through the bash.
+      // Otherwise: level along the TRUE aim (`a`) when raised (aim/firing), or the port down-tilt when carried.
+      const barrel = pose ? drawA : ranged ? (rangedRaised ? a : a - PORT_CARRY_TILT) : drawA;
+      hx = leadX + Math.cos(barrel) * sp;
+      hy = leadY + Math.sin(barrel) * sp;
     } else {
-      [hx, hy] = restHand(drawA, side, r);
+      // idle rest spot is the ONE hand position a body style may own (art-tunable per swing.ts) — every
+      // animated position above (swing/guard/swim/two-hand grip) is shared machinery, identical per style.
+      // idleRest (not a bare style ternary) so the weapon grip (weaponAnchor) reads the SAME spot.
+      [hx, hy] = idleRest(e, drawA, side, r);
     }
     // sleeve: a garb-colored upper-arm from the shoulder slab to the fist — RESTING hands only (the
     // sketch's hanging arms). A swinging hand flies as the bare fist, like the kick's detached foot; while
     // GUARDING, NEITHER hand draws a sleeve — both fists float bare (no arm stretching to the guard grip).
-    if (!acting && !guarding) {
-      const shx = Math.cos(drawA) * (A.shoulderFwd * r) - Math.sin(drawA) * (side * A.shoulderOut * r);
-      const shy = Math.sin(drawA) * (A.shoulderFwd * r) + Math.cos(drawA) * (side * A.shoulderOut * r);
+    // BLOCKY draws no sleeves (the template's bare fists beside the block — there's no shoulder slab to root them).
+    if (!acting && !guarding && !blocky) {
+      // the shoulder ROOTS on the body (bodyA — blades with a raised ranged stance); the hand end (hx,hy) is
+      // already on the aim, so the sleeve bridges the twisted shoulder to the on-aim fist.
+      const shx = Math.cos(bodyA) * (A.shoulderFwd * r) - Math.sin(bodyA) * (side * A.shoulderOut * r);
+      const shy = Math.sin(bodyA) * (A.shoulderFwd * r) + Math.cos(bodyA) * (side * A.shoulderOut * r);
       g.lineStyle(A.armW * r + 4, OUTLINE, 1);
       g.lineBetween(shx, shy, hx, hy);
       g.lineStyle(A.armW * r, garb, 1);
@@ -374,7 +525,7 @@ export const drawActor: DrawFn = (g, e) => {
   // plain kick (the SIDE KICK): a low, ground-level foot to the side, drawn UNDER the body. A LANDED axe foot
   // draws here too (planted → underneath); a still-RAISED axe foot is deferred to the on-top block below.
   if (footKick && (!axeFoot || !axeRaised)) {
-    drawFoot(g, pose!.hx, pose!.hy, drawA, handR * (pose!.scale ?? 1), flashing ? 0xffffff : rd.baseColor, m!.side ?? 1);
+    drawFoot(g, pose!.hx, pose!.hy, drawA, handR * (pose!.scale ?? 1), flashing ? 0xffffff : rd.baseColor, m!.side ?? 1, shape?.swingFx === 'electric');
   }
   // Gomu Stamp: a stretching LEG from the hip out to a far foot — the hands stay at rest (it's a leg, not an arm)
   if (footStretch) {
@@ -386,35 +537,68 @@ export const drawActor: DrawFn = (g, e) => {
     drawFoot(g, pose!.tx, pose!.ty, drawA, handR, c, m!.side ?? 1);
   }
 
-  // body anatomy — ON TOP of the hands/sleeves. Torso + shoulder slabs twist with the SWING (drawA) so an
-  // arc cut visibly turns the shoulder line; the head stays on the raw AIM (a) so hat/face sprites — which
-  // only know the aim — can never slide off it mid-swing. Each part carries its OWN outline so the anatomy
-  // reads as SEGMENTS (head / slabs / crescent, per the base-art sketch), not one fused garment.
+  // body anatomy — ON TOP of the hands/sleeves. Torso + shoulder slabs twist with `bodyA` (= the swing angle,
+  // OR bladed off the aim for a braced ranged stance) so an arc cut turns the shoulder line AND a raised musket
+  // stands side-on; the head stays on the raw AIM (a) so hat/face sprites — which only know the aim — can never
+  // slide off it. Each part carries its OWN outline so the anatomy reads as SEGMENTS, not one fused garment.
   g.save();
-  g.rotateCanvas(drawA);
-  g.fillStyle(garb, 1);
-  g.fillEllipse(A.torsoFwd * r, 0, A.torsoHalfL * r * 2, A.torsoHalfW * r * 2);
-  g.lineStyle(2, OUTLINE, 1);
-  g.strokeEllipse(A.torsoFwd * r, 0, A.torsoHalfL * r * 2, A.torsoHalfW * r * 2);
-  for (const s of [-1, 1] as const) {
+  g.rotateCanvas(bodyA);
+  if (blocky) {
+    // BLOCKY: one rounded-rect torso, dead-center (true top-down — no torsoFwd cheat). In the rotated frame
+    // +x = forward, so the rect's x-extent is the ALONG depth and y-extent the ACROSS width.
+    const hl = BLOCKY.torsoHalfL * r;
+    const hw = BLOCKY.torsoHalfW * r;
+    const rad = Math.min(hl, hw) * 2 * BLOCKY.corner;
     g.fillStyle(garb, 1);
-    g.fillEllipse(A.shoulderFwd * r, s * A.shoulderOut * r, A.shoulderHalfL * r * 2, A.shoulderHalfW * r * 2);
+    g.fillRoundedRect(-hl, -hw, hl * 2, hw * 2, rad);
+    // RANK ACCENT — short stripe(s) on each EXPOSED shoulder (marks rank at a glance). Drawn BETWEEN the fill
+    // and the outline so the torso outline frames it (part of the garment, not floating on the edge), and only
+    // when render.accentColor is set. Geometry: rotated frame x = ALONG depth (±hl), y = ACROSS width (±hw);
+    // the head (0.72·r) hides the center so a shoulder is the band at ~|y| ≥ 0.9·hw. Each stripe is a SHORT
+    // dash running ALONG the depth (a horizontal mark on the shoulder), and higher ranks STACK more dashes
+    // spread ACROSS the width — so N stripes = N parallel bars, room for a second rank later.
+    if (rd.accentColor !== undefined) {
+      const n = rd.rankStripes ?? 1; // how many parallel bars per shoulder (1 = officer; 2+ = higher rank)
+      const dep = hl * 0.6; // half-length of each dash, along the depth (x)
+      const gap = hw * 0.14; // spacing between stacked bars, across the width (y)
+      const y0 = hw * 0.9; // outermost bar sits out near the torso edge, past the head
+      g.lineStyle(Math.max(3, r * 0.18), rd.accentColor, 1); // chunky enough to read at ~24px
+      for (const s of [-1, 1] as const)
+        for (let i = 0; i < n; i++) {
+          const y = s * (y0 - i * gap); // stack inboard from the edge
+          g.lineBetween(-dep, y, dep, y);
+        }
+    }
     g.lineStyle(2, OUTLINE, 1);
-    g.strokeEllipse(A.shoulderFwd * r, s * A.shoulderOut * r, A.shoulderHalfL * r * 2, A.shoulderHalfW * r * 2);
+    g.strokeRoundedRect(-hl, -hw, hl * 2, hw * 2, rad);
+  } else {
+    g.fillStyle(garb, 1);
+    g.fillEllipse(A.torsoFwd * r, 0, A.torsoHalfL * r * 2, A.torsoHalfW * r * 2);
+    g.lineStyle(2, OUTLINE, 1);
+    g.strokeEllipse(A.torsoFwd * r, 0, A.torsoHalfL * r * 2, A.torsoHalfW * r * 2);
+    for (const s of [-1, 1] as const) {
+      g.fillStyle(garb, 1);
+      g.fillEllipse(A.shoulderFwd * r, s * A.shoulderOut * r, A.shoulderHalfL * r * 2, A.shoulderHalfW * r * 2);
+      g.lineStyle(2, OUTLINE, 1);
+      g.strokeEllipse(A.shoulderFwd * r, s * A.shoulderOut * r, A.shoulderHalfL * r * 2, A.shoulderHalfW * r * 2);
+    }
   }
   g.restore();
-  // head — skin, offset AWAY from the aim (the perspective model; same anchor AccessorySystem hangs hats from)
-  const headX = -Math.cos(a) * A.headBack * r;
-  const headY = -Math.sin(a) * A.headBack * r;
+  // head — skin. Oval: offset AWAY from the aim (the perspective model; same anchor AccessorySystem hangs
+  // hats from). BLOCKY: dead-center (concentric top-down) — hats keep the shared -0.12r anchor, a ~1px
+  // offset at r=11 (accepted; per-style slot anchors are not worth the seam yet).
+  const headBack = blocky ? 0 : A.headBack;
+  const headX = -Math.cos(a) * headBack * r;
+  const headY = -Math.sin(a) * headBack * r;
   g.fillStyle(flashing ? 0xffffff : rd.baseColor, 1);
   g.fillCircle(headX, headY, A.headR * r);
   g.lineStyle(2, OUTLINE, 1); // thin solid outline, identical to the hands
   g.strokeCircle(headX, headY, A.headR * r);
 
-  // Armament Haki coating ring while active — sized to wrap the full (shoulder-wide) silhouette
+  // Armament Haki coating ring while active — sized to wrap the full silhouette (style-aware widest point)
   if (e.tags?.has('haki.armament.active')) {
     g.lineStyle(3, 0x0a0a12, 0.92);
-    g.strokeCircle(0, 0, (A.shoulderOut + A.shoulderHalfW) * r + 2);
+    g.strokeCircle(0, 0, (blocky ? BLOCKY.torsoHalfW : A.shoulderOut + A.shoulderHalfW) * r + 2);
   }
 
   // (the GUARD arc crescent that was here moved to DebugOverlay (combat.guard flag) — normal play now shows the
@@ -429,6 +613,12 @@ export const drawActor: DrawFn = (g, e) => {
 
   drawOverheadBars(g, e); // hp / stamina / posture readout (shared with the roll pose above)
 };
+
+/** The two humanoid body styles — same implementation, one boolean apart. Which one a unit uses is DATA:
+ *  `BodyDef.draw` ('actor' | 'actorBlocky') in defs/bodies.ts — flip the field, every unit on that body
+ *  switches. This is the "decide template C" lever. */
+export const drawActor: DrawFn = (g, e) => drawActorImpl(g, e, false);
+const drawActorBlocky: DrawFn = (g, e) => drawActorImpl(g, e, true);
 
 /**
  * The ROLL pose — a top-down forward dive-roll faked as ONE revolution. A pure top-down camera can't SHOW
@@ -833,6 +1023,7 @@ const drawBull: DrawFn = (g, e) => drawQuadruped(g, e, { ear: 0x2a2018, snout: 0
  *  body look); wildlife races have their own quadruped draw. 'pickup' is a non-unit draw (ground items). */
 export const draws: Record<string, DrawFn> = {
   actor: drawActor,
+  actorBlocky: drawActorBlocky, // the true-top-down rounded-rect humanoid (BLOCKY knobs; art:blocky template)
   cow: drawCow,
   pig: drawPig,
   bull: drawBull,

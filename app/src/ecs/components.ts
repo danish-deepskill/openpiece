@@ -75,6 +75,15 @@ export interface Mover {
    *  MovementSystem). Gates only the rail DROP-OFF — landing on the gunwale holding seaward must not instantly
    *  dunk you. The door/leave handoffs read direction/layer instead of this (asymmetric pairs can't ping-pong). */
   frameCd?: number;
+  /** Suppress the JUMP_LAND_STUN on the NEXT landing — a CONTROLLED hop (the Shock Kick's leap-back) lands clean
+   *  so it doesn't self-freeze the retreat. Set by leapBack, honored + cleared by MovementSystem.land (one-shot). */
+  noLandStun?: boolean;
+  /** WALL-SLAM pending effects (s): set on a target flung by a wall-slam knockback (the marine Buttstroke proc).
+   *  While its knockback impulse is in flight, MovementSystem watches the slide: if BLOCKED by a wall it applies
+   *  `slamStun` (a FROZEN electric pin) + a cyan pop; if it ends FREE (no wall) it applies `slamSlow` (the lighter
+   *  SLOWED shock). Both cleared once resolved. See AbilityDef.wallSlam. */
+  slamStun?: number;
+  slamSlow?: number;
 }
 
 export interface Health {
@@ -146,6 +155,28 @@ export interface Blackboard {
   // per-tick roll snowballs to always-fires at sim rate). ONE ability-agnostic clock (like guardCd for guards),
   // so ANY number of roll-based ability picks scale without per-ability state. Ticks down each frame.
   decideCd?: number;
+  // STUCK DETECTION (anti "sprint into the wall forever"): `stuckT` accumulates while a unit TRIES to move but its
+  // position barely changes (pinned on a wall/corner) → the kite beat loop abandons the reposition and re-plants
+  // instead of running in place; `pinX/pinY` is last frame's position, the progress reference.
+  stuckT?: number;
+  pinX?: number;
+  pinY?: number;
+  // KITE BEAT LOOP (the discrete-tactic model that replaces per-frame position-mirroring): a ranged kiter cycles
+  // PLANT (stand, aim, shoot) → PAUSE → REPOSITION (move to a CHOSEN spot: back / juke L / juke R) → arrive →
+  // PLANT again. `kitePhase` is the current beat; `kiteBeatT` times it; `kiteDestX/Y` is the committed reposition
+  // destination (moved to via pathfinding, so it ignores the target's micro-movements → reads tactical, not bot).
+  kitePhase?: 'aim' | 'pause' | 'reposition';
+  kiteBeatT?: number;
+  kiteDestX?: number;
+  kiteDestY?: number;
+  /** How many committed ADVANCE steps a kiter has taken chasing a fleeing target. A marksman doesn't dog you:
+   *  after a couple it STOPS pursuing and just shoots from range (or gives up out of shot range) — no per-pixel
+   *  chase. Reset when the target comes back into the comfort band (it's no longer fleeing). */
+  kiteChaseSteps?: number;
+  /** The LATCHED close-game gamble (pointBlankSlotChance): rolled ONCE when the target enters the close band,
+   *  cleared on band exit / after the answer fires. undefined = not yet rolled this engagement. The latch is what
+   *  keeps the chance a real probability — a per-tick re-roll would fire within ~0.1s regardless of the value. */
+  closeRoll?: boolean;
 }
 
 export interface AI {
@@ -164,6 +195,12 @@ export interface Render {
   baseColor: number;
   /** Torso/shoulder (clothing) fill for the humanoid anatomy; absent ⇒ derived from baseColor. */
   garbColor?: number;
+  /** Officer/rank ACCENT — a short stripe on each shoulder (a marker that reads at a glance, e.g. an officer
+   *  vs a plain marine). Absent ⇒ no stripe. Drawn by the humanoid body; purely cosmetic identity. */
+  accentColor?: number;
+  /** How many parallel rank stripes per shoulder (only when accentColor is set). Absent ⇒ 1. Higher rank =
+   *  more bars (a captain's two vs a lieutenant's one). */
+  rankStripes?: number;
   hatColor?: number;
   bob: number;
   showHpBar?: boolean;
@@ -202,6 +239,8 @@ export interface MeleeSwing {
   hitByVolume: number[][];
   launched?: boolean; // grab-launch (Gomu Rocket): the body-impulse has fired (latches to fire once)
   landed?: boolean; // grab-launch: the landing AoE has fired (latches to fire once, when the leap stops)
+  leaptBack?: boolean; // on-hit recoil LEAP (Shock Kick) has fired for this swing (latches — one hop per kick)
+  shotFired?: boolean; // a 'shot' swing has spawned its projectile(s) at the active cue (latches — one volley per shot)
 }
 
 /** A ship hull instance (composite entity: hull stats from ShipHullDef + parts/cannons later). */
@@ -245,6 +284,14 @@ export interface Combatant {
   posture: number;
   maxPosture: number; // derived from the willpower attribute at spawn (combat/attributes)
   blocking?: boolean; // guard held (F / AI hold): frontal hits reroute HP → posture; move slowed; no regen
+  /** AIMING a ranged weapon (RMB hold / AI when a target's ahead): the braced, shouldered firing stance — the
+   *  musket is leveled at the target, not carried low. Presentation reads it for the pose; feeds `spread`
+   *  (aiming tightens the cone). Only meaningful with a `ranged` weapon equipped. */
+  aiming?: boolean;
+  /** LIVE AIM SPREAD (rad, cone HALF-angle) — a shot scatters within it; the reticle draws it (docs #19).
+   *  CombatantSystem eases it toward a target each tick: narrow when aiming + still, wide when hip-firing /
+   *  moving; blooms fast, tightens slow. Absent ⇒ seeded to the hip value on first ranged upkeep. */
+  spread?: number;
   parryT?: number; // parry window remaining (s): a frontal hit landing now is negated outright
   parryCd?: number; // parry re-arm remaining (s): only a WHIFFED window pays this (success resets it)
   kickSide?: number; // last kicking foot (±1); alternated each kick so left/right kicks mirror
@@ -252,7 +299,9 @@ export interface Combatant {
   mixStab?: boolean; // 'mixed'-motion weapons (the cutlass) ALTERNATE stab↔swing deterministically (a coin
   //                    flip read as inconsistent); this holds the last pick so the next flips to the other
   regenT?: number; // stamina-regen delay remaining (s): set on every spend, ticks down; regen only at 0
-  stunT?: number; // hitstun remaining (s): while > 0 the unit can't attack and moves slowed (a stagger)
+  // CROWD CONTROL lives on the EFFECT system, not here (backlog #16: statuses are GAS-lite effect rows, never a
+  // second timer mechanism): a stagger/freeze = an active effect granting 'state.slowed'/'state.stunned' (see
+  // combat/Effect TAG_SLOWED/TAG_STUNNED); every gate reads the TAG, EffectSystem ticks the clock.
   /** BREATH (0 → maxBreath) — the UNDERWATER clock (docs/design/MOVEMENT_AIR.md), distinct from stamina: surface
    *  swimming spends STAMINA, but going SUBMERGED holds your breath and drains THIS. Empty breath while under =
    *  drowning (health damage). Refills at the surface / on land. The load-bearing resource for future underwater
@@ -314,6 +363,11 @@ export interface Inventory {
 /** Granted abilities + per-ability cooldowns + the keybound routing (primary / dash / extra slots). */
 export interface Loadout {
   granted: Set<ContentId>;
+  /** The unit's INNATE (non-equipment) kit — base verbs the Spawner decided per unit (fist/kick/jump, roll by
+   *  tier, guard unless noGuard) PLUS trait grants (sprint…). `refreshLoadout` re-derives `granted` as
+   *  innate ∪ equipment-kit, so an equip/unequip rebuild can never strip an innate capability — this list IS
+   *  the record that made the old preserve-sprint special-case (and its per-ability successors) unnecessary. */
+  innate: ContentId[];
   cd: Map<ContentId, number>;
   /** The DURATION each active cooldown was set to (parallel to `cd`, which holds the REMAINING time). The HUD
    *  fill needs the original duration to compute progress — and it can't derive it from the ability's base
@@ -323,7 +377,7 @@ export interface Loadout {
   primary: ContentId; // J / left-click — light attack
   heavy: ContentId; // right-click — heavy attack (base kit: a kick)
   dash: ContentId; // Shift
-  slots: ContentId[]; // K, L
+  slots: ContentId[]; // number keys 1/2/3 (InputSystem) — extra granted moves (a fruit's specials, a weapon's signature)
   utility?: ContentId; // C — a buff/self ability (e.g. Armament, once the Haki layer grants it)
   /** Live combo-chain state: pressing `root`'s slot again while `until` > 0 fires `next` instead of
    *  restarting. Set/expired by AbilitySystem; plain ids + a timer, so it serializes like everything else. */
@@ -385,6 +439,15 @@ export interface Projectile {
   /** Bodies already struck (ids) — lets a future PIERCING round pass through more than one; a plain single
    *  shot dies on the first contact, so this holds at most one before the projectile is despawned. */
   hit: number[];
+  /** CLOSE-RANGE pass-through chance (0..1) baked at FIRE time (a point-blank shot is a bad shot). On contact
+   *  ProjectileSystem rolls this: on a hit it phases THROUGH (no damage) but is still spent. 0/absent ⇒ always
+   *  connects. See AbilityShape.closePassChance. */
+  passChance?: number;
+  /** CHARGED round — a per-pellet PROC rolled at FIRE time (AbilityShape.procEffect): on a landed contact the
+   *  ball hits ×damageMult and applies `effect` (an EffectDef id — shocked/burning/…) for `dur` seconds. The
+   *  renderer draws a charged ball themed by the effect's status color. Absent ⇒ a plain round. Element/delivery
+   *  TAGS for the #16 reaction matrix ride this same payload when that pass lands. */
+  proc?: { effect: ContentId; dur: number; damageMult: number };
 }
 
 /** Full component registry. Reserved (sim/One-Piece) components — inventory, needs, job,

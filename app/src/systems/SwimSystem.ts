@@ -1,4 +1,5 @@
 import { BREATH_DRAIN, BREATH_REFILL, DROWN_DAMAGE, DROWN_INTERVAL, MAX_BREATH, SWIM_STAM_DRAIN } from '../config/constants';
+import { SWIM_BREATH_STAT, SWIM_STAM_STAT } from '../defs/traits';
 import type { World } from '../ecs/World';
 import type { Damage } from './Damage';
 
@@ -23,7 +24,12 @@ export class SwimSystem {
     for (const e of this.world.with('mover', 'combatant')) {
       const m = e.mover!;
       const c = e.combatant!;
-      c.maxBreath ??= MAX_BREATH;
+      // GREAT SWIMMER trait: a bigger breath pool + slower breath drain + less stamina drain. breathMul scales
+      // the POOL up and the DRAIN down (1/mul) — the same knob makes long-breath dives. Spawned StatBlocks seed
+      // multiplier stats at base 1 (MULTIPLIER_STAT_SEEDS); ?? 1 covers only an attribute-less body.
+      const breathMul = e.attributes?.get(SWIM_BREATH_STAT) ?? 1;
+      const stamMul = e.attributes?.get(SWIM_STAM_STAT) ?? 1;
+      c.maxBreath ??= MAX_BREATH * breathMul;
       c.breath ??= c.maxBreath;
 
       // The resource drain keys on the SWIM mode, which is now TRUTHFUL — MovementSystem derives it from the tile
@@ -37,7 +43,7 @@ export class SwimSystem {
 
       if (!m.submerged) {
         // SURFACE SWIM — pay stamina to keep afloat; run dry → SINK (involuntary submerge). Breathing up top.
-        c.stam = Math.max(0, c.stam - SWIM_STAM_DRAIN * dt);
+        c.stam = Math.max(0, c.stam - SWIM_STAM_DRAIN * stamMul * dt); // a great swimmer barely tires (stamMul < 1)
         c.regenT = Math.max(c.regenT ?? 0, 0.2); // hold off stamina regen while actively swimming
         if (c.stam <= 0) m.submerged = true; // sank
         else c.breath = Math.min(c.maxBreath, c.breath + BREATH_REFILL * dt);
@@ -49,7 +55,7 @@ export class SwimSystem {
         // can't meet the gasp condition, and actually DROWNS. GASP: surface if breath is nearly gone AND you have
         // stamina to swim up (a deliberate dive with spare stamina); an exhausted sinker has none, so it drowns.
         c.regenT = Math.max(c.regenT ?? 0, 0.2); // hold stamina regen off while under (no resting while drowning)
-        c.breath = Math.max(0, c.breath - BREATH_DRAIN * dt);
+        c.breath = Math.max(0, c.breath - (BREATH_DRAIN / breathMul) * dt); // a great swimmer holds their breath far longer (drain ÷ breathMul)
         // DROWNING — a DISCRETE tick, not a per-frame slide: once breath is empty, count down DROWN_INTERVAL and
         // then deal ONE DROWN_DAMAGE hit through the normal Damage path (a clean "−12" popup + death handling),
         // instead of a fractional drain that made the integer HP counter step 1-by-1 rapidly. Reads as a clear

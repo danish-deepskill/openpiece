@@ -3,6 +3,7 @@ import { Abilities } from '../combat/Ability';
 import { Accessories } from '../defs/accessories';
 import { Weapons } from '../defs/layers';
 import { accessoryDraws } from '../draw/accessoryDraws';
+import { bakeProjectileTextures } from '../draw/projectileProc';
 
 /** Texture key for a projectile art file (the art path IS the key, so two abilities sharing one bullet art
  *  load it once and ProjectileRenderer can derive the key from the shape). */
@@ -54,6 +55,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
+    bakeProjectileTextures(this); // generate the proc bullet textures (needs the live renderer — create, not preload)
     this.scene.launch('World');
     this.scene.launch('Hud');
   }

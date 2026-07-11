@@ -35,6 +35,12 @@ export class InspectSystem {
     return this.keyV.isDown;
   }
 
+  /** The currently INSPECTED unit's id (or null) — the PossessButton overlay reads it to offer a "Control"
+   *  button on whoever you're inspecting (V+click). One selection, two uses: inspect readout + possess target. */
+  get selected(): number | null {
+    return this.selectedId;
+  }
+
   private pick(p: Phaser.Input.Pointer): void {
     if (!this.keyV.isDown || !p.leftButtonDown()) return;
     const wp = this.scene.cameras.main.getWorldPoint(p.x, p.y);

@@ -22,6 +22,23 @@ describe('combatStance (AI decision)', () => {
     expect(combatStance(kiter, 250, 40, 1, 0).move).toBe('approach'); // beyond preferred range
   });
 
+  it('marine officer (kiter): SHOOTS while retreating — backs off but still attacks when in shot range', () => {
+    const marine = AIProfiles.get('ai.marineOfficer'); // preferredRange 230, meleeRange 46
+    const s = combatStance(marine, 150, 400, 1, 0); // inside preferred (230) but WAY inside shot reach (400)
+    expect(s.move).toBe('away'); // retreating (closer than preferred)…
+    expect(s.attack).toBe(true); // …but STILL firing (the fix: chase him and he shoots as he backs off)
+  });
+
+  it('marine officer (kiter): POINT-BLANK the fallback stance still fights while opening distance', () => {
+    // (the beat-loop brain owns the REAL close game — Buttstroke/blast picked by ROLE TAGS; this pure stance is
+    // only the fallback for a kiter outside the loop, so it just says "back off + keep attacking")
+    const marine = AIProfiles.get('ai.marineOfficer');
+    const s = combatStance(marine, 30, 400, 1, 0); // inside meleeRange 46 = on top of it
+    expect(s.attack).toBe(true);
+    expect(s.move).toBe('away'); // still tries to open distance
+  });
+
+
   it('guard: returns home when the target leaves its post, engages within it', () => {
     expect(combatStance(guard, 30, 40, 1, 999).move).toBe('home'); // target far from post
     const inPost = combatStance(guard, 30, 40, 1, 50);

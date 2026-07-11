@@ -117,6 +117,37 @@ export class DebugOverlay {
       }
     }
 
+    // Combat: the ACCURACY CONE of every unit holding a ranged weapon — the same live spread wedge the player
+    // sees (combatant.spread), drawn per unit so you can watch every enemy's cone narrow as it settles / widen
+    // as it moves. BRIGHT green while AIMING (leveled), DIM white otherwise (hip spread). Same g.slice wedge as
+    // the vision cone + the player reticle — one cone look everywhere.
+    if (Debug.on('combat.aim')) {
+      const CONE_R = 90;
+      for (const e of this.world.with('transform', 'combatant')) {
+        if (e.ship) continue;
+        const spread = e.combatant!.spread;
+        if (spread === undefined || spread <= 0) continue; // only ranged holders carry a spread
+        const t = e.transform!;
+        const aiming = e.combatant!.aiming === true;
+        const color = aiming ? 0x5aff7a : 0xffffff;
+        g.fillStyle(color, aiming ? 0.12 : 0.06);
+        g.slice(t.x, t.y, CONE_R, t.angle - spread, t.angle + spread, false);
+        g.fillPath();
+        g.lineStyle(1, color, aiming ? 0.5 : 0.3);
+        g.slice(t.x, t.y, CONE_R, t.angle - spread, t.angle + spread, false);
+        g.strokePath();
+        // CLOSE-PASS RING — the point-blank fumble radius of this unit's ranged primary (AbilityShape.closePassRange):
+        // a shot fired with a hostile INSIDE this red ring has a chance to phase THROUGH (peak at contact, fading to
+        // 0 at the ring edge). Red so it reads as "danger zone for the SHOOTER" — get this close and his gun fumbles.
+        const primary = e.loadout ? Abilities.get(e.loadout.primary) : undefined;
+        const passR = primary?.shape?.closePassRange ?? 0;
+        if (passR > 0) {
+          g.lineStyle(1, 0xff5a5a, 0.55);
+          g.strokeCircle(t.x, t.y, passR);
+        }
+      }
+    }
+
     // Combat: GUARD arc — the directional block/parry COVER of every guarding unit (the real BLOCK_ARC/PARRY_ARC
     // the guard code tests, so the debug shows the exact arc a hit must fall inside to be stopped; the open rear
     // is the flank window). Parry (wider + brighter) vs block. Moved here from normal play — a debug aid now.

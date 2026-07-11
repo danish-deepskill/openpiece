@@ -5,8 +5,10 @@ import { visualProblem, type Visual } from './visual';
 /** Where an accessory sits on the body. Add a slot here to support a new wear location; each slot gets an
  *  anchor + depth in AccessorySystem (derived from draw/actorDraws.ANATOMY, the shared body contract).
  *  `chest` = the torso/shoulder armor canvas — author its sprites with a transparent head cutout at the
- *  head anchor (top-down: your head occludes your chest, and it renders ABOVE the chest layer). */
-export type AccessorySlot = 'head' | 'face' | 'back' | 'chest';
+ *  head anchor (top-down: your head occludes your chest, and it renders ABOVE the chest layer).
+ *  `hair` = on the head, ABOVE the bare head/face but BELOW the head(hat) slot — so a hat covers hair, and
+ *  a hair sprite + a hat can be worn together (they occupy distinct slots). Author on the head canvas. */
+export type AccessorySlot = 'head' | 'hair' | 'face' | 'back' | 'chest';
 
 /**
  * A wearable cosmetic. Content is data: the look is a `Visual` descriptor (auto placeholder / procedural
@@ -44,4 +46,11 @@ Accessories.registerAll([
   { id: 'accessory.bruteHelmet', name: 'Brute Helmet', slot: 'head', visual: { kind: 'sprite', art: 'hats/brute_helmet.png', scale: 1.6 } },
   // the Bandit's hat — pairs with the dagger (light-class kit)
   { id: 'accessory.banditHat', name: 'Bandit Hat', slot: 'head', visual: { kind: 'sprite', art: 'accessories/examples/bandit_hat.png', scale: 1.6 } },
+  // the Marine officer's cap — white dome + blue/yellow band (naval livery), gold side buttons
+  //   (replaced the old Ranger helmet when the unit became the Marine Officer)
+  { id: 'accessory.marineOfficerHat', name: 'Marine Officer Hat', slot: 'head', visual: { kind: 'sprite', art: 'hats/marine_officer_hat.png', scale: 1.6 } },
+  // FIRST chest/apparel sprite — a body-frame garment over the torso (AI-gen, processed via tools/asset-pipeline).
+  // Author on docs/art/apparel-template: draw the garment across the body shape; the head cutout is punched by
+  // the pipeline (--slot chest). scale 1 = the body frame's native ±1.5r canvas.
+  { id: 'accessory.kaidoArmor', name: 'Beast Armor', slot: 'chest', visual: { kind: 'sprite', art: 'apparel/kaido_armor.png', scale: 1, frame: 'body' } },
 ]);

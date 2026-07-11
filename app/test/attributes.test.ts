@@ -4,13 +4,13 @@ import {
   DEF_PER_DEFENSE,
   HP_PER_HEALTH,
   POSTURE_PER_WILLPOWER,
+  STAM_BASE,
   STAM_PER_ENDURANCE,
   deriveAttributeStats,
   tierAttributes,
 } from '../src/combat/attributes';
 import { tierIndex, tierStats } from '../src/combat/PowerTier';
 import { StatBlock } from '../src/combat/StatBlock';
-import { MAX_STAM } from '../src/config/constants';
 import { Rng } from '../src/core/Rng';
 import { Spawner } from '../src/ecs/Spawner';
 import { World } from '../src/ecs/World';
@@ -23,7 +23,7 @@ describe('attributes — tier seeding', () => {
       const ts = tierStats(t);
       expect(a.health).toBe(ts.hp);
       expect(a.defense).toBe(ts.def);
-      expect(a.endurance).toBe(MAX_STAM); // fitness, not rank — flat across tiers
+      expect(a.endurance).toBe(1); // seeds flat at the F- fitness grade (0–30 tier-index number); bumped per-def
       expect(a.willpower).toBe(20 + 2 * tierIndex(t)); // seeds the posture pool (combat/guard) — gentle rank climb
       expect(a.luck).toBe(0); // no consumer yet (crit/drops)
       expect(a.spiritual).toBe(0); // no consumer yet (haki pool)
@@ -35,10 +35,10 @@ describe('attributes — tier seeding', () => {
 
 describe('attributes — derivation', () => {
   it('derives maxHp/maxStam/def from health/endurance/defense', () => {
-    const sb = new StatBlock({ health: 50, endurance: 80, defense: 4 });
+    const sb = new StatBlock({ health: 50, endurance: 8, defense: 4 });
     deriveAttributeStats(sb);
     expect(sb.get('maxHp')).toBe(50 * HP_PER_HEALTH);
-    expect(sb.get('maxStam')).toBe(80 * STAM_PER_ENDURANCE);
+    expect(sb.get('maxStam')).toBe(STAM_BASE + 8 * STAM_PER_ENDURANCE); // affine: base + endurance×step
     expect(sb.get('def')).toBe(4 * DEF_PER_DEFENSE);
   });
 
@@ -76,7 +76,7 @@ describe('attributes — spawn integration', () => {
     const d = tierStats('D-'); // its rank tier IS its stat tier now
     expect(boss.health!.maxHp).toBe(Math.round(d.hp * 2.4)); // hpBloat rides the modifier pipeline
     expect(boss.attributes!.get('def')).toBe(d.def);
-    expect(boss.combatant!.maxStam).toBe(MAX_STAM); // endurance seed → derived maxStam → combatant pool
+    expect(boss.combatant!.maxStam).toBe(STAM_BASE + 1 * STAM_PER_ENDURANCE); // endurance seed 1 (F- floor) → 110 pool
     expect(boss.combatant!.maxPosture).toBe(Math.round((20 + 2 * tierIndex('D-')) * POSTURE_PER_WILLPOWER)); // willpower seed × conversion → maxPosture
     expect(boss.attributes!.get('atk')).toBe(d.atk); // non-attribute magnitudes untouched
   });
@@ -95,7 +95,7 @@ describe('attributes — spawn integration', () => {
     const sp = new Spawner(w, new Rng(1));
     const e = sp.spawnUnit('unit.testGlassCannon', 0, 0);
     expect(e.health!.maxHp).toBe(Math.round(12 * HP_PER_HEALTH)); // override, not the E- curve
-    expect(e.combatant!.maxStam).toBe(MAX_STAM); // untouched attributes keep their tier seed
+    expect(e.combatant!.maxStam).toBe(STAM_BASE + 1 * STAM_PER_ENDURANCE); // endurance untouched → F- floor 110
     expect(e.attributes!.get('def')).toBe(tierStats('E-').def);
   });
 

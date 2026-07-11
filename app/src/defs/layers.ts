@@ -29,6 +29,18 @@ export type WeaponClass = 'light' | 'medium' | 'heavy' | 'ranged';
 export interface WeaponDef extends LayerDef {
   weaponClass: WeaponClass;
   primary: ContentId; // basic-attack ability
+  /** The weapon's HEAVY attack (K / RMB-tap) — a musket's butt-stroke bash, a sword's heavy cut. Overrides the
+   *  base kick while this weapon is held. Unset ⇒ the base kick (most weapons don't grant their own heavy). */
+  heavy?: ContentId;
+  /** EXTRA slot abilities (K / L) the weapon grants — a signature move beyond primary/heavy (the marine musket's
+   *  Buckshot). Populated into loadout.slots while held, cleared on unequip. Unset ⇒ no slot moves. Mirrors
+   *  FruitDef.slots (the same routing) so a weapon can carry a special without a new keybind path. */
+  slots?: ContentId[];
+  /** RANGED ACCURACY tuning (the aim-cone feel), per-weapon so a crude musket sprays wider + settles slower than
+   *  a drilled one. Multiplies the global spread constants (CombatantSystem): `spreadMul` scales the cone width
+   *  (>1 = wider hip + aim + move penalty), `settleMul` scales the SETTLE time (>1 = slower to narrow when you
+   *  aim). Both default 1 (the drilled baseline). Only read for a ranged weapon. */
+  accuracy?: { spreadMul?: number; settleMul?: number };
   visual?: WeaponVisual; // drawn in-hand
   /** How the weapon is HELD — per-weapon, so every weapon's hold can differ. `hands: 2` puts the off-hand on
    *  the handle `spacing` px above the lead hand (a two-handed grip) instead of at its rest position. */
@@ -108,8 +120,26 @@ Weapons.register({
   name: 'Musket',
   weaponClass: 'ranged',
   primary: 'ability.musketShot',
+  heavy: 'ability.musketBash', // the butt-stroke shove (RMB-tap / K) — the close-range answer to a rusher
   visual: { kind: 'sprite', art: 'weapon/musket_1.png', length: 34, width: 7, tipAt: 'right', gripAt: 0.12 },
+  grip: { hands: 2, spacing: 15 }, // a musket is shouldered TWO-HANDED — the off-hand steadies the barrel a gap ahead of the trigger hand
+  accuracy: { spreadMul: 1.4, settleMul: 1.8 }, // a CRUDE musket: 40% wider cone + settles 1.8× slower than the drilled marine musket (which stays baseline 1×)
   modifiers: [{ stat: 'atk', op: 'flat', value: 2, source: 'weapon:weapon.musket' }],
+  tags: ['weapon.class.ranged'],
+});
+// the MARINE MUSKET — the naval-officer variant (Marine Officer unit). Same two-handed rig + Buttstroke, its own
+// art (musket_marine_2.png) and a FASTER ball (marineMusketShot, 12 tiles/s vs the base 8) — a better-drilled
+// weapon. A SECOND musket proves content-is-data: distinct silhouette + shot stats, zero engine branches.
+Weapons.register({
+  id: 'weapon.marineMusket',
+  name: 'Marine Musket',
+  weaponClass: 'ranged',
+  primary: 'ability.marineMusketShot', // the faster-ball variant (below)
+  heavy: 'ability.marineButtstroke', // the marine's own Buttstroke (faster reload; wall-slam electrify)
+  slots: ['ability.marineBuckshot', 'ability.marineShockKick'], // slot 1 (K): scatter blast; slot 2 (L): the electric retreat kick
+  visual: { kind: 'sprite', art: 'weapon/musket_marine_2.png', length: 34, width: 7, tipAt: 'right', gripAt: 0.12 },
+  grip: { hands: 2, spacing: 15 },
+  modifiers: [{ stat: 'atk', op: 'flat', value: 2, source: 'weapon:weapon.marineMusket' }],
   tags: ['weapon.class.ranged'],
 });
 

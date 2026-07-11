@@ -79,11 +79,14 @@ describe('resolvePhases — the kit rule (a sheathed sword cannot slow your kick
   it('every hostile unit\'s attack tell clears human reaction time (parry gameplay depends on it)', () => {
     // data-driven: SPAWN each enemy and resolve its real attack clock (so a weapon attack gets its class
     // rung via the kit, not the twitchy unarmed fallback). A new enemy with a sub-reaction windup fails here.
+    // RANGED SHOTS are EXEMPT: their counterplay is DODGING the travelling ball (slow + visible — see the
+    // projectile suite), NOT reading a cast windup — so a fast muzzle tell is fine, the flight time is the tell.
     const world = new World();
     const sp = new Spawner(world, new Rng(1));
     for (const u of Units.all().filter((u) => u.faction === 'bandits')) {
       const e = sp.spawnUnit(u.id, 0, 0);
       const a = Abilities.get(e.loadout!.primary); // the RESOLVED primary (weapon's attack wins over the unarmed fallback)
+      if (a.shape?.swing === 'shot') continue; // a projectile is dodged in flight, not parried on the cast
       const windupSec = resolvePhases(e, a).windup * (a.shape?.swingTime ?? 0.18);
       expect(windupSec, `${u.id} (${a.id}) tell is unreactable`).toBeGreaterThanOrEqual(0.2);
     }

@@ -7,8 +7,10 @@ import type { World } from '../ecs/World';
 import type { RenderSystem } from './RenderSystem';
 
 /** Per-slot depth ladder over the body (an 'under' item drops below it instead). Distinct rungs per slot —
- *  two same-depth sprites would z-fight by POOL order, which reshuffles as units enter/leave view. */
-const SLOT_DEPTH: Record<AccessorySlot, number> = { back: 0.35, chest: 0.45, face: 0.55, head: 0.6 };
+ *  two same-depth sprites would z-fight by POOL order, which reshuffles as units enter/leave view. Order
+ *  bottom→top: back → chest → face → hair → head(hat). `hair` sits ABOVE the bare head/face but BELOW the
+ *  hat, so a hat always covers hair while both are worn. */
+const SLOT_DEPTH: Record<AccessorySlot, number> = { back: 0.35, chest: 0.45, face: 0.5, hair: 0.55, head: 0.6 };
 
 /** Placeholder palette for `kind: 'auto'` visuals — hash-picked per def id, so two prototyped items read
  *  as distinct at a glance without any art decision having been made. */
@@ -52,7 +54,7 @@ export class AccessorySystem {
       for (const id of Object.values(e.accessories!.slots)) {
         if (!id) continue;
         const d = Accessories.get(id);
-        const rollingHat = head !== null && (d.slot === 'head' || d.slot === 'face');
+        const rollingHat = head !== null && (d.slot === 'head' || d.slot === 'face' || d.slot === 'hair'); // hair rides the tumbling head too
         if (head !== null && !rollingHat) continue; // mid-roll non-head accessory → hidden (falls into the pool sweep)
         const v = d.visual;
         // a 'body'-frame sprite is REGISTERED to the mannequin (canvas center = body center) — its content
@@ -88,7 +90,7 @@ export class AccessorySystem {
           // item-frame size basis is the slot's CANVAS: head/face sprites scale against the HEAD diameter
           // (scale 1.6 = 1.6 heads — a hat keeps fitting if the anatomy retunes), other slots against the
           // body diameter. body frame: the canvas spans the full ±BODY_FRAME_R·r regardless of slot.
-          const basis = d.slot === 'head' || d.slot === 'face' ? ANATOMY.headR * 2 * t.r : 2 * t.r;
+          const basis = d.slot === 'head' || d.slot === 'face' || d.slot === 'hair' ? ANATOMY.headR * 2 * t.r : 2 * t.r;
           const dia = (registered ? BODY_FRAME_R * 2 * t.r * v.scale : basis * v.scale) * (rollingHat ? head!.scale : animScale); // shrink w/ tumbling head, else ride the jump/sink arc
           // rolling hat orients to the TRAVEL direction (it tumbles the way you roll), not the unit's aim
           const rot = d.rotates === false ? 0 : (rollingHat ? head!.travel : a) + Math.PI / 2;

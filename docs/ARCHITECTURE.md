@@ -114,8 +114,10 @@ ballpiece/
         GameDirector.ts         # game state, objectives, death cleanup, possession
         RenderSystem.ts         # (presentation) OWNS the Graphics side-table; render components are data
         FxSystem.ts / NameplateSystem.ts / AccessorySystem.ts / WeaponSpriteSystem.ts / ProjectileRenderer.ts / InspectSystem.ts / DebugOverlay.ts   # (presentation)
+        AimReticle.ts / StunIndicator.ts / PossessButton.ts   # (presentation) aim cone + '+', status labels over CC'd units, the possess-confirm button
       draw/                     # (presentation) procedural draw fns + DrawFn type + world renderers
         actorDraws.ts / accessoryDraws.ts / shipDraws.ts / terrainBakes.ts / structureDraws.ts / TerrainRenderer.ts / StructureRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
+        projectileProc.ts       # generated projectile textures (the lead ball + per-proc-color charged variants)
       scripts/                  # dev tools run via vite-node (art:template — the artist mannequin SVG)
       scenes/
         BootScene.ts            # asset manifest (import.meta.glob) -> launch World + Hud

@@ -73,10 +73,14 @@ export function weaponKit(w: WeaponDef): ReadonlySet<ContentId> {
   let kit = kitCache.get(w);
   if (!kit) {
     const ids = new Set<ContentId>();
-    let cur: ContentId | undefined = w.primary;
-    while (cur && !ids.has(cur)) {
-      ids.add(cur);
-      cur = Abilities.get(cur).comboNext;
+    // walk the primary + heavy (musket bash) + signature SLOT (Buckshot/Shock Kick) chains — the ONE kit walk;
+    // equip grants FROM this set, so "granted" and "in kit" (posture/interrupt weights) can never disagree
+    for (const root of [w.primary, w.heavy, ...(w.slots ?? [])]) {
+      let cur: ContentId | undefined = root;
+      while (cur && !ids.has(cur)) {
+        ids.add(cur);
+        cur = Abilities.get(cur).comboNext;
+      }
     }
     kitCache.set(w, (kit = ids));
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BREATH_DRAIN, DROWN_DAMAGE, DROWN_INTERVAL, MAX_BREATH, SWIM_STAM_DRAIN } from '../src/config/constants';
 import { TERRAIN } from '../src/defs/terrains';
+import { MULTIPLIER_STAT_SEEDS } from '../src/defs/traits';
 import { StatBlock } from '../src/combat/StatBlock';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
@@ -30,6 +31,19 @@ function swimmer(world: World, mode: 'foot' | 'swim', submerged = false): Entity
   });
 }
 const sys = (world: World) => new SwimSystem(world, new Damage());
+
+/** A GREAT SWIMMER (trait.swimmer): the same body but with the trait's swim modifiers on its StatBlock, so the
+ *  swim systems read the reduced drain + bigger breath. Mirrors the Spawner contract: multiplier stats seed at
+ *  BASE 1 (MULTIPLIER_STAT_SEEDS) and the trait stacks mulPct on top (composable with future gear/haki). */
+function greatSwimmer(world: World, mode: 'foot' | 'swim', submerged = false): Entity {
+  const e = swimmer(world, mode, submerged);
+  e.attributes = new StatBlock({ ...MULTIPLIER_STAT_SEEDS });
+  e.attributes.addAll([
+    { stat: 'swimStamMul', op: 'mulPct', value: -0.6, source: 'trait:swimmer' }, // ×0.4
+    { stat: 'swimBreathMul', op: 'mulPct', value: 1.5, source: 'trait:swimmer' }, // ×2.5
+  ]);
+  return e;
+}
 
 describe('swim/breath/drown loop (SwimSystem)', () => {
   it('a FOOT actor (wading/on land) does not drain — only the swim mode does', () => {
@@ -111,5 +125,29 @@ describe('swim/breath/drown loop (SwimSystem)', () => {
     expect(e.combatant!.stam).toBe(0); // FROZEN — never regenerated underwater (the fix)
     expect(e.mover!.submerged).toBe(true); // never gasped up (stam 0) — stayed under
     expect(e.health!.hp).toBeLessThan(hp0); // …and actually drowned (took damage)
+  });
+});
+
+describe('great swimmer trait (trait.swimmer swim modifiers)', () => {
+  it('drains LESS stamina surface-swimming than a landlubber (swimStamMul < 1)', () => {
+    const world = new World();
+    const plain = swimmer(world, 'swim');
+    const expert = greatSwimmer(world, 'swim');
+    sys(world).update(1); // one second of surface swimming for both
+    const plainSpent = 100 - plain.combatant!.stam;
+    const expertSpent = 100 - expert.combatant!.stam;
+    expect(expertSpent).toBeLessThan(plainSpent); // the expert barely tires
+    expect(expertSpent).toBeCloseTo(SWIM_STAM_DRAIN * 0.4, 1); // 40% of the normal drain
+  });
+
+  it('has a BIGGER breath pool + drains breath SLOWER underwater (swimBreathMul)', () => {
+    const world = new World();
+    const expert = greatSwimmer(world, 'swim', true); // submerged
+    sys(world).update(0); // seed maxBreath/breath from the trait
+    expect(expert.combatant!.maxBreath).toBeCloseTo(MAX_BREATH * 2.5, 1); // 2.5× the pool
+    const full = expert.combatant!.breath!;
+    sys(world).update(1); // one second submerged
+    const drained = full - expert.combatant!.breath!;
+    expect(drained).toBeCloseTo(BREATH_DRAIN / 2.5, 1); // drain slowed by the same factor → long dives
   });
 });

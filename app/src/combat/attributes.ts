@@ -1,4 +1,3 @@
-import { MAX_STAM } from '../config/constants';
 import { tierIndex, tierStats, type PowerTier } from './PowerTier';
 import type { Modifier } from './Modifier';
 import type { StatBlock } from './StatBlock';
@@ -22,8 +21,12 @@ export const ATTRIBUTE_IDS: readonly AttributeId[] = ['health', 'endurance', 'de
 /** maxHp per point of `health`. 1 keeps the pre-attribute tier numbers byte-identical; raise it to make
  *  Health allocation swingier without retuning every tier curve. */
 export const HP_PER_HEALTH = 1;
-/** maxStam per point of `endurance` — same identity-factor reasoning as HP_PER_HEALTH. */
-export const STAM_PER_ENDURANCE = 1;
+/** Stamina pool = STAM_BASE + endurance × STAM_PER_ENDURANCE. `endurance` is authored as a 0–30 TIER-INDEX
+ *  number (1 = F-, 4 = E-, 30 = X+) — a small readable "how fit" grade, NOT the raw pool. The base + step turns
+ *  that small number into a usable pool against the 3–26 ability costs: F-(1)=110, E-(4)=140, X+(30)=400. Raise
+ *  the step to make each fitness rank swingier; the base is the "everyone has a body" floor. */
+export const STAM_BASE = 100;
+export const STAM_PER_ENDURANCE = 10;
 /** Flat damage reduction (`def`) per point of `defense` — same identity-factor reasoning. */
 export const DEF_PER_DEFENSE = 1;
 /** maxPosture (guard capacity, combat/guard) per point of `willpower`. 0.5 = a guard breaks in ~half the
@@ -35,15 +38,16 @@ const DERIVED_SOURCE = 'derived:attributes';
 
 /**
  * Tier → attribute seed for spawns: the tier curve (PowerTier.tierStats) restated in attribute language.
- * `health`/`defense` carry the hp/def curves; `endurance` is FLAT across tiers (stamina is fitness, not
- * rank — a brute doesn't sprint longer than a thug). `willpower` seeds the POSTURE pool (combat/guard):
- * a gentle linear climb, so higher ranks take a couple more blocked hits to break but never turtle forever.
+ * `health`/`defense` carry the hp/def curves; `endurance` seeds FLAT at 1 (the F- fitness grade — a 0–30
+ * tier-index number, NOT the pool; see STAM_BASE). Stamina is fitness, not rank, so every unit starts at the
+ * F- floor (110 pool) and a fitter unit is bumped per-def (the Marine → 4). `willpower` seeds the POSTURE pool
+ * (combat/guard): a gentle linear climb, so higher ranks take a couple more blocked hits to break.
  * luck/spiritual still seed 0: their consumers (crit/drop rolls, the haki pool) don't exist yet, and
  * curving an unread stat is fake balancing — they gain tier curves when their systems land.
  */
 export function tierAttributes(t: PowerTier): Record<AttributeId, number> {
   const ts = tierStats(t);
-  return { health: ts.hp, endurance: MAX_STAM, defense: ts.def, willpower: 20 + 2 * tierIndex(t), luck: 0, spiritual: 0 };
+  return { health: ts.hp, endurance: 1, defense: ts.def, willpower: 20 + 2 * tierIndex(t), luck: 0, spiritual: 0 };
 }
 
 /**
@@ -57,7 +61,7 @@ export function deriveAttributeStats(sb: StatBlock): void {
   sb.removeBySource(DERIVED_SOURCE);
   const derived: Modifier[] = [
     { stat: 'maxHp', op: 'flat', value: sb.get('health') * HP_PER_HEALTH, source: DERIVED_SOURCE },
-    { stat: 'maxStam', op: 'flat', value: sb.get('endurance') * STAM_PER_ENDURANCE, source: DERIVED_SOURCE },
+    { stat: 'maxStam', op: 'flat', value: STAM_BASE + sb.get('endurance') * STAM_PER_ENDURANCE, source: DERIVED_SOURCE },
     { stat: 'def', op: 'flat', value: sb.get('defense') * DEF_PER_DEFENSE, source: DERIVED_SOURCE },
     { stat: 'maxPosture', op: 'flat', value: sb.get('willpower') * POSTURE_PER_WILLPOWER, source: DERIVED_SOURCE },
   ];

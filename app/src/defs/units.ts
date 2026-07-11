@@ -28,6 +28,11 @@ export interface UnitDef extends Def {
   garb?: number;
   /** Dialogue-avatar ring / hat-band color. Omitted ⇒ a race/faction default in the draw. */
   hatColor?: number;
+  /** RANK ACCENT — a short stripe on each shoulder marking rank at a glance (e.g. an officer vs a plain
+   *  marine). Omitted ⇒ no stripe. Cosmetic identity only; drawn on the humanoid body. */
+  accent?: number;
+  /** How many parallel rank stripes per shoulder (only with `accent`). Omitted ⇒ 1. More bars = higher rank. */
+  rankStripes?: number;
   /** Rank tier — drives nameplate label/color, movement gates, and (future) bounty/region. */
   tier: PowerTier;
   /** Tier the combat stats (hp/atk/def/atkSpeed) are read from; defaults to `tier`. Lets a unit be ranked
@@ -98,7 +103,7 @@ export const Units = new Registry<UnitDef>('Units', (u) => {
 
 // outfit palette (torso/shoulder garb + dialogue-ring hat color) — the per-unit LOOK on top of the body's
 // rig+skin. Named so the roster reads by intent, not hex; same-body units differ only by which they wear.
-const GARB = { hero: 0xb5342a, bandit: 0x6b4a3a, boss: 0x3a2f4a, civilian: 0x4a6a8a, soldier: 0x2f4a6a } as const;
+const GARB = { hero: 0xb5342a, bandit: 0x6b4a3a, boss: 0x3a2f4a, civilian: 0x4a6a8a, soldier: 0x2f4a6a, marine: 0xffffff } as const; // marine = TEMP white naval shirt (Marine Officer)
 const HAT = { hero: 0xf0c040, dark: 0x2a0d0d, civilian: 0x2e5a35 } as const;
 
 Units.registerAll([
@@ -112,11 +117,20 @@ Units.registerAll([
   // from their WEAPON (dagger stab / cutlass cut) — no per-unit attack field; the primary resolves at spawn.
   { id: 'unit.thug', name: 'Thug', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E-', faction: 'bandits', aiProfile: 'ai.rusher', style: 'style.brawl', gold: 8 },
   { id: 'unit.bandit', name: 'Bandit', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E', faction: 'bandits', aiProfile: 'ai.rusher', gold: 12, weapon: 'weapon.dagger', accessories: ['accessory.banditHat'], traits: ['trait.sprinter'] },
-  { id: 'unit.brute', name: 'Brute', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E+', faction: 'bandits', aiProfile: 'ai.flanker', gold: 18, weapon: 'weapon.cutlass', accessories: ['accessory.bruteHelmet'], traits: ['trait.sprinter'] },
+  { id: 'unit.brute', name: 'Brute', garb: GARB.bandit, hatColor: HAT.dark, tier: 'E+', faction: 'bandits', aiProfile: 'ai.flanker', gold: 18, weapon: 'weapon.cutlass', accessories: ['accessory.bruteHelmet', 'accessory.kaidoArmor'], traits: ['trait.sprinter'] }, // TEST: brute wears the AI-gen chest armor so you can eyeball fit in-game
   // the SOLDIER — the GUARD-MASTER test unit (sword + helmet, its own STEEL-BLUE uniform so it reads apart
   // from the brown fodder). D- (a rank ABOVE the E+ Brute fodder — it's a trained fighter, not a mook).
   // ai.master blocks + parries relentlessly — the counter is the FEINT. Attack = the SWORD's (attackAbility omitted).
   { id: 'unit.soldier', name: 'Soldier', garb: GARB.soldier, hatColor: HAT.dark, tier: 'D-', faction: 'bandits', aiProfile: 'ai.master', gold: 30, weapon: 'weapon.sword', accessories: ['accessory.soldierHelmet'], dialogue: ['A blade for hire, if the crew is worth it.', "You've got the look of a captain going places."], recruitable: true, traits: ['trait.sprinter'] },
+  // the MARINE OFFICER — the RANGED test unit (docs #19): a C- musketeer that KITES (ai.marineOfficer keeps
+  // ~230px, leads the ball) and fires a TRAVELLING shot you can see + dodge. TEMP white naval shirt + officer's
+  // cap. Attack = the MARINE MUSKET's primary (attackAbility omitted → weapon.marineMusket's marineMusketShot,
+  // the faster 12-tiles/s ball). The home-island test foe (WorldScene) so the ranged AI is what you meet near spawn.
+  // endurance 4 = "E-" fitness grade (the 0–30 tier-index number, 1=F- … 30=X+; see attributes.STAM_BASE) → a
+  // 140 stamina pool vs every other unit's F- floor (endurance 1 → 110). The Marine is the first unit with raised
+  // endurance — a drilled soldier chains a few more moves before winding. Per-unit override (REPLACES the seed),
+  // decoupled from his C- COMBAT rank on purpose (stamina is fitness, not rank — a knob, see UnitDef.attributes).
+  { id: 'unit.marineOfficer', name: 'Marine Officer', garb: GARB.marine, hatColor: HAT.dark, accent: 0x2a6fc4, tier: 'C-', faction: 'marine', aiProfile: 'ai.marineOfficer', gold: 30, attributes: { endurance: 4 }, weapon: 'weapon.marineMusket', accessories: ['accessory.marineOfficerHat'], traits: ['trait.sprinter', 'trait.swimmer'] }, // marine faction: hostile to the player (still the home-isle test foe) AND to the bandits — a Marine belongs to the Marines, not the gang. accent = blue shoulder stripes marking the officer vs a plain marine
   // the BRAWLER — the island's D- boss: a BARE-FISTED, BARE-HEADED aggressor. humanoid body + GIANT race
   // (renders large purely from race.giant's size mult — no special 'boss body'), HP-bloated, dash, dark coat.
   { id: 'unit.brawler', name: 'Brawler', race: 'race.giant', garb: GARB.boss, hatColor: HAT.dark, tier: 'D-', faction: 'bandits', aiProfile: 'ai.rusher', style: 'style.haymaker', gold: 80, hpMult: 2.4, boss: true, traits: ['trait.sprinter'] },

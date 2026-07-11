@@ -3,6 +3,7 @@ import { CAMERA_ZOOM, RegKey, SIM_DT, WORLD_H, WORLD_W, type MinimapDot } from '
 import { angleDiff, smoothFactor } from '../core/math';
 import { setBarRotation } from '../draw/actorDraws';
 import { factions } from '../defs/factions';
+import { Units } from '../defs/units';
 import type { AIContext } from '../ai/Brain';
 import { Rng, streamSeed } from '../core/Rng';
 import { World } from '../ecs/World';
@@ -10,6 +11,7 @@ import { Spawner } from '../ecs/Spawner';
 import { AbilitySystem } from '../systems/AbilitySystem';
 import { AISystem } from '../systems/AISystem';
 import { CombatantSystem } from '../systems/CombatantSystem';
+import { Debug } from '../core/Debug';
 import { DebugOverlay } from '../systems/DebugOverlay';
 import { Damage } from '../systems/Damage';
 import { DoorSystem } from '../systems/DoorSystem';
@@ -20,6 +22,7 @@ import { GameDirector } from '../systems/GameDirector';
 import { InputSystem } from '../systems/InputSystem';
 import { InspectSystem } from '../systems/InspectSystem';
 import { AimReticle } from '../systems/AimReticle';
+import { PossessButton } from '../systems/PossessButton';
 import { AccessorySystem } from '../systems/AccessorySystem';
 import { MeleeSystem } from '../systems/MeleeSystem';
 import { MovementSystem } from '../systems/MovementSystem';
@@ -29,6 +32,7 @@ import { BodyCollisionSystem } from '../systems/BodyCollisionSystem';
 import { InteractionSystem } from '../systems/InteractionSystem';
 import { DialogueSystem } from '../systems/DialogueSystem';
 import { NameplateSystem } from '../systems/NameplateSystem';
+import { StunIndicator } from '../systems/StunIndicator';
 import { RenderSystem } from '../systems/RenderSystem';
 import { WeaponSpriteSystem } from '../systems/WeaponSpriteSystem';
 import { ProjectileRenderer } from '../systems/ProjectileRenderer';
@@ -65,6 +69,7 @@ export class WorldScene extends Phaser.Scene {
   private weaponSpriteSys!: WeaponSpriteSystem;
   private projectileRenderer!: ProjectileRenderer;
   private nameplateSys!: NameplateSystem;
+  private stunIndicator!: StunIndicator;
   private accessorySys!: AccessorySystem;
   private abilitySys!: AbilitySystem;
   private effectSys!: EffectSystem;
@@ -77,6 +82,7 @@ export class WorldScene extends Phaser.Scene {
   private debug!: DebugOverlay;
   private inspectSys!: InspectSystem;
   private aimReticle!: AimReticle;
+  private possessButton!: PossessButton;
   private fx!: FxSystem;
   private sea!: SeaRenderer;
   private readonly camTarget = { x: 0, y: 0 }; // camera follows the CONTROLLED entity (possession-safe)
@@ -140,9 +146,14 @@ export class WorldScene extends Phaser.Scene {
     spawner.spawnUnit('unit.bull', level.playerSpawn.x + 120, level.playerSpawn.y + 205);
 
     // enemy-isle gang (reachable by ship) — a squad; the captain fights solo. WHO spawns is level data
-    // (EnemySpawn.unit, rolled from the seeded worldgen stream) — the scene just instantiates it.
+    // (EnemySpawn.unit, rolled from the seeded worldgen stream) — the scene just instantiates it. The squad is
+    // the BANDIT gang ("Isle Raiders"): only bandit-faction units join it — a Marine among them is an enemy of
+    // the gang, not a member, so it spawns SOLO (faction-scoped squad, not a per-unit hardcode).
     const isle = { id: 2, name: 'Isle Raiders' };
-    for (const s of level.enemies) spawner.spawnUnit(s.unit, s.x, s.y, s.boss ? undefined : isle);
+    for (const s of level.enemies) {
+      const inGang = !s.boss && Units.get(s.unit).faction === 'bandits';
+      spawner.spawnUnit(s.unit, s.x, s.y, inGang ? isle : undefined);
+    }
     // an anchored Sloop off the home dock — walk aboard via the gangplank, E on the wheel to steer
     spawner.spawnShip('ship.sloop', level.boatSpawn.x, level.boatSpawn.y, 'straw_hat');
 
@@ -155,7 +166,7 @@ export class WorldScene extends Phaser.Scene {
     this.hullSys = hulls;
     this.squadSys = squads;
     this.meleeSys = new MeleeSystem(world, strikes);
-    this.projectileSys = new ProjectileSystem(world, strikes, collision);
+    this.projectileSys = new ProjectileSystem(world, strikes, collision, combatRng);
     this.combatantSys = new CombatantSystem(world);
     this.doorSys = new DoorSystem(world);
     this.doorRenderer = new DoorRenderer(this, world);
@@ -172,8 +183,10 @@ export class WorldScene extends Phaser.Scene {
     this.weaponSpriteSys = new WeaponSpriteSystem(this, world, this.renderSys);
     this.projectileRenderer = new ProjectileRenderer(this, world);
     this.nameplateSys = new NameplateSystem(this, world);
+    this.stunIndicator = new StunIndicator(this, world); // "seeing stars" tell over stunned units
     this.accessorySys = new AccessorySystem(this, world, this.renderSys);
     this.aimReticle = new AimReticle(this, world, this.inputSys); // the '+' aim marker ahead of the controlled unit
+    this.possessButton = new PossessButton(this, world, this.inspectSys, this.director); // debug: V+click a unit → "Control" button → possess
 
     // roundPixels = false: smooth sub-pixel follow. (true rounds the lerped scroll each frame, which makes
     // everything jitter ~1px as the rounding boundary flickers — worse at zoom.) The camera follows a plain
@@ -221,6 +234,9 @@ export class WorldScene extends Phaser.Scene {
     // wraps ±π). At blend 1 it's exactly aimRot → welded to the facing, 1:1 at any turn speed.
     this.camRot = angleDiff(aimRot, 0) * this.camBlend;
     this.cameras.main.setRotation(this.camRot);
+    // DEBUG zoom-out: halve the zoom (see 2× the area — off-screen shooters). Applied per-frame so the flag
+    // toggles live. Off → the normal close CAMERA_ZOOM.
+    this.cameras.main.setZoom(Debug.on('view.zoomOut') ? CAMERA_ZOOM / 2 : CAMERA_ZOOM);
     // counter-rotate the world-space READOUTS so they stay screen-upright while the view spins: the
     // nameplate + damage-number text, AND the overhead hp/stamina/posture bars (set before renderSys draws
     // the actors below). The actor bodies/sprites still rotate with the world — only the readouts stay level.
@@ -228,6 +244,7 @@ export class WorldScene extends Phaser.Scene {
     this.fx.setTextRotation(-this.camRot);
     setBarRotation(-this.camRot);
     this.aimReticle.setRotation(-this.camRot); // the '+' stays screen-upright while the shift-lock view spins
+    this.stunIndicator.setRotation(-this.camRot); // dizzy stars stay level under the spin
 
     this.structureRenderer.update(); // rebake the structure layer only if place/remove changed it (version check)
     this.doorRenderer.update(); // redraw closed-door panels from the sim's door state
@@ -238,8 +255,10 @@ export class WorldScene extends Phaser.Scene {
     this.projectileRenderer.update(); // pin bullet sprites to shots in flight
     this.accessorySys.update();
     this.nameplateSys.update();
+    this.stunIndicator.update(); // "Stunned" label over any stunned unit (after actors, drawn on top)
     this.inspectSys.update(); // publish the inspected unit's plate + selection ring (presentation-only)
     this.aimReticle.update(); // the '+' aim marker (after actors, so it draws on top)
+    this.possessButton.update(); // debug possess: the "Control" button over the inspected unit
     this.debug.update();
     this.publish();
   }

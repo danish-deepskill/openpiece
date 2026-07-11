@@ -57,6 +57,38 @@ export interface AIProfileDef extends Def {
    *  from 1.0 is the no-jitter band. Default 0.72. */
   holdBackoffFrac?: number;
   preferredRange?: number; // kite: keep this much distance
+  /** KITE melee-switch range (px): a ranged kiter this close is point-blank — the shot is useless, so it
+   *  switches to its MELEE HEAVY (a musket's Buttstroke) to SHOVE the attacker off, then resumes kiting. Also
+   *  the "cornered → turn and fight" trigger when it can't back off. Undefined ⇒ 0 (never melee-switches; a
+   *  pure kiter that only ever flees + shoots). Set to a body-length or two for a gun with a butt. */
+  meleeRange?: number;
+  /** POINT-BLANK slot roll (0..1): when crowded inside meleeRange, the chance a KITER fires its first SLOT
+   *  ability (the marine's Buckshot scatter) instead of the melee heavy (the Buttstroke shove). Rolled per
+   *  point-blank decision (seeded `ai` stream). 0/undefined ⇒ always the shove. Needs a slot[0] to fire; falls
+   *  back to the heavy if the slot is on cooldown. This is what makes rushing the marine a gamble (blast or shove). */
+  pointBlankSlotChance?: number;
+  /** KITE JUKE-ROLL chance (0..1): when a kiter starts a reposition beat, the chance it DASHES (rolls) to the
+   *  spot instead of walking — a trained, evasive relocate (a marine dive-rolling to new cover). Rolled per
+   *  reposition (seeded `ai` stream); needs the dash off cooldown, else it just walks. 0/undefined ⇒ always walks. */
+  jukeRollChance?: number;
+  // ── KITE BEAT personality (the discrete tactic loop, ai/brains) — per-profile because a sniper and a
+  //    skirmisher differ on EXACTLY these (how long they settle, how wide they hold, how far they chase).
+  /** How long (s) a planted kiter HOLDS the braced aim before firing — the spread cone settles over this window
+   *  (a deliberate marksman lines up longer; a skirmisher snaps sooner at the cost of accuracy). */
+  kiteAimTime: number;
+  /** The breath (s) after a shot before the next beat (reposition/re-aim) — the rhythm of the loop. */
+  kitePause: number;
+  /** Reposition step distance (px) — how far one juke/backpedal/advance beat travels. */
+  kiteStep: number;
+  /** COMFORT BAND width (px): stands-and-shoots anywhere in [preferredRange, preferredRange + this] — the
+   *  hysteresis zone that kills per-pixel following (crossing 1px can't flip a threshold; you cross the BAND). */
+  kiteComfortWidth: number;
+  /** Chance (0..1) a comfortably-in-band kiter JUKES after a shot (vs re-aiming in place) — lateral liveliness.
+   *  0 = a statue that only moves when pushed out of band; ~0.4 = lively. */
+  kiteJukeChance: number;
+  /** Max committed ADVANCE steps chasing a fleeing target before it STOPS and shoots from range — a marksman
+   *  holds a line, doesn't dog you per-pixel. Resets when the target returns to the comfort band. */
+  kiteMaxChase: number;
   guardRadius?: number; // guard: only engage within this of its post
   fleeBelowHp?: number; // 0..1 HP fraction; flee below it
   /** Chance (0..1) to raise a BLOCK when its foe winds up in reach — rolled once per swing (guardCd), the
@@ -132,6 +164,13 @@ const BASE: Omit<AIProfileDef, 'id' | 'name' | 'approach' | 'sight' | 'preferred
   betrayHpFrac: 0.8, // default: an ally that knocks off 20% of my HP has crossed the line
   blockChance: 0, // fodder doesn't guard — profiles that fight with intent override these
   parryChance: 0,
+  // kite beat defaults (only kiters read them) — the tuned musketeer feel; a sniper/skirmisher overrides per row
+  kiteAimTime: 0.6,
+  kitePause: 0.5,
+  kiteStep: 110,
+  kiteComfortWidth: 150,
+  kiteJukeChance: 0.4,
+  kiteMaxChase: 2,
 };
 
 // validated at boot: brains divide by `reaction` and scale by `strikeFrac`, so a 0 or NaN here is not a
@@ -159,6 +198,14 @@ AIProfiles.registerAll([
   { ...BASE, id: 'ai.rusher', name: 'Rusher', approach: 'rush', sight: 210, reaction: 0.16, spotDelay: 2.0, blockChance: 0.15 }, // fodder blocks occasionally, never parries; the SLOWEST double-take (~2s)
   { ...BASE, id: 'ai.flanker', name: 'Flanker', approach: 'flank', sight: 220, spotDelay: 1.6, blockChance: 0.2, parryChance: 0.03 },
   { ...BASE, id: 'ai.kiter', name: 'Kiter', approach: 'kite', sight: 250, preferredRange: 170, reaction: 0.14 },
+  // MUSKETEER (the Marine Officer): a ranged kiter tuned for the musket — keeps ~230px (well inside the shot's
+  // ~340 range, so it can hit while back-pedalling), sees far (spots a shooter's target from range), quicker
+  // reaction (aims sooner). leadAim so it leads a moving target with the SLOW ball (the shot travels — a
+  // straight shot at where you ARE would always trail you). It stops to fire, then keeps its distance.
+  // sight 460 > the musket's ~410 shot reach: a marksman SEES as far as it can SHOOT (else past sight the beat
+  // loop stops and the old continuous chase creeps after your last-seen spot). faceSway 0: a steady bead.
+  // (id was ai.ranger before the unit was renamed to Marine Officer; behavior UNCHANGED — just the id/name.)
+  { ...BASE, id: 'ai.marineOfficer', name: 'Musketeer', approach: 'kite', sight: 460, preferredRange: 230, meleeRange: 46, reaction: 0.16, leadAim: 0.5, faceSway: 0, spotDelay: 1.2, pointBlankSlotChance: 0.4, jukeRollChance: 0.35 },
   { ...BASE, id: 'ai.guard', name: 'Guard', approach: 'guard', sight: 190, leash: 260, loseSightSec: 2, guardRadius: 200, reaction: 0.24, spotDelay: 1.2, wanderTether: 70, blockChance: 0.35, parryChance: 0.05 }, // disciplined post-holders — alert, quicker to react
   // a boss-grade fencer: reads windups and answers with the guard — the unit that TEACHES the player feints
   { ...BASE, id: 'ai.duelist', name: 'Duelist', approach: 'rush', sight: 230, reaction: 0.14, spotDelay: 1.0, blockChance: 0.4, parryChance: 0.12 }, // sharp: the fastest double-take (~1s)
@@ -249,9 +296,15 @@ export function combatStance(
   }
 
   if (p.approach === 'kite') {
-    if (dist < (p.preferredRange ?? 160)) return { move: 'away', attack: false, regroup };
+    const pref = p.preferredRange ?? 160;
+    const melee = p.meleeRange ?? 0;
+    // POINT-BLANK: back off while still swinging. NOTE: for a RANGED kiter the discrete beat loop (ai/brains)
+    // OWNS movement + the close-game move choice (Buttstroke/blast via role tags) — this branch is only the
+    // FALLBACK stance for a kiter outside the beat loop (e.g. one without a ranged weapon).
+    if (melee > 0 && dist <= melee) return { move: 'away', attack: true, regroup };
+    if (dist < pref) return { move: 'away', attack: dist <= reach, regroup }; // too close → back off, still shooting
     const inReach = dist <= reach;
-    return { move: inReach ? 'hold' : 'approach', attack: inReach, regroup };
+    return { move: inReach ? 'hold' : 'approach', attack: inReach, regroup }; // good spacing → hold + shoot
   }
 
   // rush / flank / guard-while-engaging

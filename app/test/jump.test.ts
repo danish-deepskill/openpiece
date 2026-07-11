@@ -45,8 +45,10 @@ describe('jump enters + exits the air layer', () => {
     move.update(0.3); // past the end
     expect(e.mover!.layer).toBe('ground'); // LANDED (edge-triggered at airT<=0)
     expect(e.mover!.airT).toBe(0);
-    // PUNISHABLE: landing applies a recovery stun (an enemy who waited out the hop catches you coming down)
-    expect(e.combatant!.stunT).toBeCloseTo(JUMP_LAND_STUN, 5);
+    // PUNISHABLE: landing applies a recovery stun — effect.stunned (CC is an effect row; the tag roots + gates)
+    const stun = e.effects!.active.find((a) => a.id === 'effect.stunned');
+    expect(stun?.remaining).toBeCloseTo(JUMP_LAND_STUN, 5);
+    expect(e.tags!.has('state.stunned')).toBe(true);
   });
 
   it('jump is COSTLY — real stamina + cooldown so the dodge cannot be spammed (20 stam / 1s cd)', () => {

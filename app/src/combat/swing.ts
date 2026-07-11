@@ -260,8 +260,33 @@ const axe: Motion = (s, _shape, g, p) => {
   };
 };
 
+/** SHOT recoil: how far (×r) the shouldered weapon + hands KICK BACK along the aim on fire. A gun doesn't
+ *  swing — the whole "animation" is a raise-to-aim hold, a sharp rearward jolt as it fires, then a settle. */
+const SHOT_KICK = 0.5;
+
+/** SHOT: a firearm's recoil (musket). The hands hold at guard (weapon shouldered, barrel forward along the
+ *  aim — the aiming pose) through the windup, JOLT BACKWARD along the aim at the fire instant (active), then
+ *  ease forward back to the aim rest through recovery. Visual-only (the ability is noHit — the ball is the
+ *  hit). drawAngle stays on the TRUE aim — the body BLADE (a bladed firing stance) is applied ONCE in
+ *  actorDraws (bodyA), the SAME place the idle-aim blade lives, so firing and idle-aiming tilt identically. */
+const shot: Motion = (s, _shape, g, p) => {
+  const [bx, by] = guardHand(s.angle, s.side, g.r); // shouldered/aiming from the guard hand
+  const w = s.phases.windup;
+  const aEnd = s.phases.windup + s.phases.active;
+  const kick = g.r * SHOT_KICK;
+  const back =
+    p <= w
+      ? 0 // aiming — steady on target through the windup (no sway; a settle model is #19's follow-up)
+      : p <= aEnd
+        ? -kick * Math.sin(((p - w) / Math.max(0.0001, aEnd - w)) * Math.PI) // JOLT back then already returning (a sharp recoil pulse)
+        : 0; // settled back to the aim rest through recovery
+  const hx = bx + Math.cos(s.angle) * back;
+  const hy = by + Math.sin(s.angle) * back;
+  return { drawAngle: s.angle, hx, hy, tx: hx + Math.cos(s.angle) * g.weaponLen, ty: hy + Math.sin(s.angle) * g.weaponLen };
+};
+
 /** Strategy registry. A new MOTION is one entry here; the 1000 swing *types* are just data (AbilityDef.shape). */
-const MOTIONS: Record<string, Motion> = { stab, arc, stretch, gore, axe };
+const MOTIONS: Record<string, Motion> = { stab, arc, stretch, gore, axe, shot };
 
 /**
  * Acting-hand + weapon/fist tip + body orientation at the current point in a swing. The swing INSTANCE carries

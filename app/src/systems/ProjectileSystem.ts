@@ -1,8 +1,10 @@
 import { Abilities } from '../combat/Ability';
+import { applyEffect, Effects } from '../combat/Effect';
 import { harmableBy } from '../combat/targeting';
 import { FX_COLOR, TILE } from '../config/constants';
 import { events } from '../core/EventBus';
 import type { Entity } from '../ecs/components';
+import type { Rng } from '../core/Rng';
 import type { World } from '../ecs/World';
 import type { Collision } from '../world/Collision';
 import type { StrikeResolver } from './StrikeResolver';
@@ -29,6 +31,7 @@ export class ProjectileSystem {
     private readonly world: World,
     private readonly strikes: StrikeResolver,
     private readonly collision: Collision,
+    private readonly rng: Rng, // the seeded `combat` stream — the close-range pass-through roll (determinism)
   ) {}
 
   update(dt: number): void {
@@ -49,7 +52,16 @@ export class ProjectileSystem {
       const owner = this.world.byId(pr.owner);
       const bodyHit = owner ? this.bodySweep(e, owner, x0, y0, x1, y1, wallT) : null;
 
-      if (bodyHit) {
+      // CLOSE-RANGE PASS-THROUGH (chance baked at FIRE time, AbilitySystem.closePass): a shot fired point-blank
+      // can FUMBLE — phase THROUGH this body doing nothing (the reload's still spent, so it's punishable). Record
+      // the body as hit so it can't re-trigger, then FALL THROUGH to the wall check below — the fumbled ball keeps
+      // flying but still respects THIS segment's wall (jumping to the segment end skipped it: a point-blank-
+      // against-a-wall fumble advanced the ball INTO the wall face, and a fast round tunneled cover outright).
+      const fumbled = bodyHit && (pr.passChance ?? 0) > 0 && this.rng.chance(pr.passChance!);
+      if (fumbled) {
+        pr.hit.push(bodyHit.target.id);
+        events.emit('fx:burst', { x: bodyHit.x, y: bodyHit.y, color: FX_COLOR.spark, n: 3, speed: 70 }); // a near-miss puff
+      } else if (bodyHit) {
         t.x = bodyHit.x; // stop AT the body it struck
         t.y = bodyHit.y;
         this.resolveHit(e, owner!, bodyHit.target);
@@ -115,13 +127,21 @@ export class ProjectileSystem {
   private resolveHit(e: Entity, owner: Entity, target: Entity): void {
     const pr = e.projectile!;
     const d = Abilities.get(pr.ability);
-    const base = this.strikes.baseDamage(owner, d);
+    // CHARGED round (the proc rolled at fire time, AbilityShape.procEffect): hits ×damageMult and applies its
+    // EFFECT row (shocked/…) to the target on a LANDED hit — statuses are effects (backlog #16), so a future
+    // fire/ice round is one new effect row, no new fields here.
+    const base = this.strikes.baseDamage(owner, d) * (pr.proc?.damageMult ?? 1);
     const kb = d.knockback ?? 0;
     const len = Math.hypot(pr.vx, pr.vy) || 1;
     const kx = (pr.vx / len) * kb;
     const ky = (pr.vy / len) * kb;
     pr.hit.push(target.id); // record even if it phases (Logia), so a pierce round can't re-hit the same body
-    this.strikes.hit(owner, target, d, base, kx, ky, d.shake ?? 0, d.stun ?? 0);
+    const landed = this.strikes.hit(owner, target, d, base, kx, ky, d.shake ?? 0, d.stun ?? 0);
+    if (landed && pr.proc) {
+      applyEffect(target, pr.proc.effect, 'shot', pr.proc.dur);
+      const theme = Effects.get(pr.proc.effect).status?.color ?? FX_COLOR.spark; // the effect's ONE theme color
+      events.emit('fx:burst', { x: target.transform!.x, y: target.transform!.y, color: theme, n: 8, speed: 130 }); // the charged pop
+    }
   }
 
   private despawn(e: Entity, sparkColor: number | null): void {

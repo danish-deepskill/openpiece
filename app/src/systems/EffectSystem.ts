@@ -1,31 +1,17 @@
-import { Effects } from '../combat/Effect';
+import { applyEffect, Effects } from '../combat/Effect';
 import { syncDerivedResources } from '../combat/attributes';
 import type { ActiveEffect, Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 
-/** Applies and expires timed effects (their Modifiers + Tags), source-tracked for clean removal. */
+/** TICKS and EXPIRES timed effects (their Modifiers + Tags), source-tracked for clean removal. APPLICATION
+ *  lives in combat/Effect.applyEffect — a standalone fn, because services (StrikeResolver's hitstun, guard
+ *  breaks, the wall-slam) apply effects too and injecting this system everywhere was the wrong coupling. */
 export class EffectSystem {
   constructor(private readonly world: World) {}
 
-  apply(e: Entity, effectId: string, by: string): void {
-    if (!e.effects) return;
-    const d = Effects.get(effectId);
-    // merge rule ('refresh' default): reapplying resets the existing instance's clock — its modifiers/tags
-    // are already in place, so pushing a second copy would double them
-    if ((d.stackRule ?? 'refresh') === 'refresh') {
-      const existing = e.effects.active.find((a) => a.id === effectId);
-      if (existing) {
-        existing.remaining = d.durationSec;
-        return;
-      }
-    }
-    // '#seq' makes every instance's source UNIQUE — two stacked instances sharing a source meant the first
-    // expiry's removeBySource stripped the survivor's modifiers too (`by` stays purely for explain()/debug)
-    const source = `effect:${effectId}:${by}#${e.effects.seq++}`;
-    e.effects.active.push({ id: effectId, remaining: d.durationSec, source });
-    if (d.modifiers && e.attributes) e.attributes.addAll(d.modifiers.map((m) => ({ ...m, source })));
-    if (d.grantTags && e.tags) for (const t of d.grantTags) e.tags.add(t);
-    syncDerivedResources(e); // an effect may move maxHp/maxStam — the pools must see the new ceiling now
+  /** System-facing façade for existing callers — delegates to the ONE application path (combat/Effect). */
+  apply(e: Entity, effectId: string, by: string, dur?: number): void {
+    applyEffect(e, effectId, by, dur);
   }
 
   update(dt: number): void {

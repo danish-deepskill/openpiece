@@ -1,6 +1,8 @@
-import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN, LEDGE_MOVE_MULT, STUN_SLOW, TILE } from '../config/constants';
+import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN, LEDGE_MOVE_MULT, SLOW_MULT, TILE } from '../config/constants';
 import { spendStamina } from '../combat/stamina';
 import { events } from '../core/EventBus';
+import { applyEffect, Effects, TAG_SLOWED, TAG_STUNNED } from '../combat/Effect';
+import { SWIM_SPEED_STAT } from '../defs/traits';
 import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, tileAt, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
 import { deckCanOccupy, deckTryMove, hullBlocksOutside, hullBlocksWorldPoint } from '../world/deckCollision';
@@ -17,6 +19,22 @@ export function beginFall(m: Mover): void {
   m.fallT = GEPPO_FALL_DUR;
   m.fallDur = GEPPO_FALL_DUR;
   m.fallFrom = GEPPO_HOVER_HEIGHT; // the altitude the descent starts from (the held hover height)
+}
+
+/** LEAP BACKWARD (a jump-style hop, not a flat slide) — the Shock Kick's on-HIT retreat: go AIRBORNE for `dur`
+ *  seconds (the same air layer + arc a jump uses, so it reads as a real backward hop) while a mass-scaled
+ *  impulse carries the body OPPOSITE `facing`. Distinct from a dodge slide: `layer='air'` means the render draws
+ *  the rise/shadow arc AND it clears foot-blocked terrain mid-hop. Fired only on a CONNECTED kick (a whiff
+ *  leaves the kicker planted — no free escape). MovementSystem lands it (+ the usual landing rules) when airT→0. */
+export function leapBack(m: Mover, facing: number, push: number, dur: number): void {
+  const speed = push / Math.max(0.2, m.mass); // heavier body hops less far (same mass rule as recoil/knockback)
+  m.dvx = -Math.cos(facing) * speed; // the air-window velocity carries via the dodge channel (dvx/dvy)
+  m.dvy = -Math.sin(facing) * speed;
+  m.dodgeT = Math.max(m.dodgeT, dur); // impulse spans the hop
+  m.layer = 'air'; // the JUMP: MovementSystem eases the scale/shadow arc + lands at airT→0 (like ability.jump)
+  m.airT = dur;
+  m.airDur = dur;
+  m.noLandStun = true; // a controlled hop lands clean — don't self-stun the retreat (land() honors + clears this)
 }
 
 /** Splash-ring colors by water kind (waterEntryFx) — bluer over the DEEP, paler over the shallows. */
@@ -109,19 +127,38 @@ export class MovementSystem {
         m.dvx *= decay;
         m.dvy *= decay;
         m.dodgeT = Math.max(0, m.dodgeT - dt);
+        // shove ENDED without hitting a wall → the lighter SHOCKED graze (an effect row, not the freeze), then
+        // disarm both flags
+        if (m.dodgeT <= 0 && (m.slamStun ?? 0) > 0) {
+          if ((m.slamSlow ?? 0) > 0) {
+            applyEffect(e, 'effect.shocked', 'wallSlam', m.slamSlow);
+            const theme = Effects.get('effect.shocked').status?.color ?? 0xffffff; // the electric theme's ONE home
+            events.emit('fx:burst', { x: t.x, y: t.y, color: theme, n: 6, speed: 110 }); // a small shock pop
+          }
+          m.slamStun = undefined;
+          m.slamSlow = undefined;
+        }
       } else {
         vx = m.vx;
         vy = m.vy;
-        if ((e.combatant?.stunT ?? 0) > 0) {
-          vx *= STUN_SLOW; // staggered → sluggish (the knockback impulse above is unaffected)
-          vy *= STUN_SLOW;
+        if (e.tags?.has(TAG_STUNNED)) {
+          vx = 0; // FROZEN → FULLY ROOTED (can't move under its own power). A knockback impulse still carries
+          vy = 0; //   (that's the dodgeT branch above), so a wall-slam still flings you — this only kills WALKING.
+        } else if (e.tags?.has(TAG_SLOWED)) {
+          vx *= SLOW_MULT; // SLOWED → sluggish but still moving (a lighter debuff than the freeze)
+          vy *= SLOW_MULT;
         }
         // TERRAIN SPEED — slower over deep water (swim) / shallows (wade), from the ACTUAL terrain under you (not
         // the mode; the mode is derived below and could lag a tick). Deep water swims, else the ground modifier.
         // SKIP it while AIRBORNE (above the ground) AND while ON DECK: an on-deck actor stands on the wooden deck,
         // not the OCEAN under the hull — reading the sea there would slow deck-walking to a swim pace.
-        const overDeep = !airborne && !e.onDeck && this.collision.terrainAtPx(t.x, t.y).water === 'deep';
-        const terrain = airborne || e.onDeck ? 1 : overDeep ? this.collision.swimSpeed(t.x, t.y) : this.collision.terrainSpeed(t.x, t.y);
+        const water = airborne || e.onDeck ? undefined : this.collision.terrainAtPx(t.x, t.y).water; // 'deep' | 'shallow' | undefined
+        const overDeep = water === 'deep';
+        let terrain = airborne || e.onDeck ? 1 : overDeep ? this.collision.swimSpeed(t.x, t.y) : this.collision.terrainSpeed(t.x, t.y);
+        // GREAT SWIMMER trait speeds movement through ANY water — the deep-water swim crawl AND the shallow wade
+        // (so a strong swimmer isn't slowed off the beach either). Land terrain is untouched. Spawned StatBlocks
+        // seed multiplier stats at base 1 (MULTIPLIER_STAT_SEEDS); ?? 1 covers only an attribute-less body.
+        if (water !== undefined) terrain *= e.attributes?.get(SWIM_SPEED_STAT) ?? 1;
         vx *= terrain;
         vy *= terrain;
         if (m.onLedge) { // balancing atop a low wall — a slow perch (movement-frames / MOVEMENT_AIR)
@@ -148,7 +185,23 @@ export class MovementSystem {
         // INSIDE the movement gate — an idle crowd must not pay a per-tick hull sweep for a veto only moves read.
         if (vx !== 0 || vy !== 0) {
           const hullBlock = !airborne && this.ships.length > 0 && !this.hullBlocked(t.x, t.y, t.r) ? this.hullBlocked : undefined;
+          // WALL-SLAM watch (the marine Buttstroke proc): a target flung with slamStun armed, mid-knockback — if
+          // this fast shove is STOPPED by a wall, it slammed → electrified pin. We measure progress ALONG the shove
+          // DIRECTION (the projection), NOT total distance — a DIAGONAL hit slides along the wall (high total
+          // distance) but makes almost no headway toward where it was heading, so a total-distance test would miss
+          // it. Projecting onto the heading catches perpendicular AND glancing slams (the "diagonal doesn't stun" bug).
+          const wx0 = t.x, wy0 = t.y;
           this.collision.tryMove(t, vx * dt, vy * dt, t.r, m.mode, airborne, m.onLedge, hullBlock);
+          if ((m.slamStun ?? 0) > 0 && m.dodgeT > 0) {
+            const intended = Math.hypot(vx, vy) * dt;
+            if (intended > 4) {
+              const hx = vx / Math.hypot(vx, vy), hy = vy / Math.hypot(vx, vy); // shove heading (unit)
+              const progressed = (t.x - wx0) * hx + (t.y - wy0) * hy; // displacement PROJECTED onto the heading
+              // < 70% headway = a wall ate a chunk of the shove. Loose enough for a GLANCING/diagonal hit (only one
+              // axis blocked → it still slides the other way, keeping SOME headway) as well as a head-on slam (~0).
+              if (progressed < intended * 0.7) this.wallSlam(e, m, t);
+            }
+          }
         }
         // STEP OFF the ledge: clear the perch ONLY once your WHOLE BODY has cleared the low wall (you'd fit WITHOUT
         // the perch). Clearing on center-only dropped it while your radius still overlapped → unstick flung you (the
@@ -177,9 +230,28 @@ export class MovementSystem {
    *  world by a jump). The low wall becomes walkable (balance across it, slowly) instead of stranding you stuck.
    *  Checked in whichever FRAME the actor is in — and a WORLD walker landing on a ship rail gets adopted into the
    *  deck frame + perched (the rail is the ship's low wall; landing there is like landing on a world stone wall). */
+  /** A wall-slam landed (the marine Buttstroke proc): the fast knockback shove was stopped by a wall, so pin the
+   *  target — effect.electrified for the armed duration (a FROZEN pin + a themed pop) — kill the impulse
+   *  (pinned, not bouncing) and clear the flags. One-shot — consumed here so one shove can't re-slam per frame. */
+  private wallSlam(e: Entity, m: Mover, t: { x: number; y: number }): void {
+    const pin = m.slamStun ?? 0;
+    m.slamStun = undefined;
+    m.slamSlow = undefined; // the wall outcome won (the pin) — discard the no-wall graze
+    m.dvx = 0; // stop the impulse — pinned against the wall, no bounce/slide
+    m.dvy = 0;
+    m.dodgeT = 0;
+    applyEffect(e, 'effect.electrified', 'wallSlam', pin); // the frozen electric pin (status = an effect row)
+    const theme = Effects.get('effect.electrified').status?.color ?? 0xffffff; // the electric theme's ONE home
+    events.emit('fx:burst', { x: t.x, y: t.y, color: theme, n: 14, speed: 170 }); // a big zap on impact
+    events.emit('fx:shake', { amount: 4 });
+  }
+
   private land(e: Entity, m: Mover, t: { x: number; y: number }): void {
     m.layer = 'ground';
-    if (e.combatant) e.combatant.stunT = Math.max(e.combatant.stunT ?? 0, JUMP_LAND_STUN);
+    // a CONTROLLED hop (the Shock Kick's leap-back) lands cleanly — no landing stun would freeze the retreat it
+    // just made. A normal jump still eats the recovery stun (the commitment cost). Flag is one-shot: cleared here.
+    if (m.noLandStun) m.noLandStun = false;
+    else applyEffect(e, 'effect.stunned', 'landing', JUMP_LAND_STUN); // the landing recovery — punishable, like any hard CC
     if (e.onDeck) {
       const ship = this.world.byId(e.onDeck.shipId);
       if (ship?.ship) {

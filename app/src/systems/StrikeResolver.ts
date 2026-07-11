@@ -1,4 +1,5 @@
 import { Abilities, type AbilityDef } from '../combat/Ability';
+import { applyEffect } from '../combat/Effect';
 import type { Rng } from '../core/Rng';
 import { damagePosture, PARRY_POSTURE, PARRY_STUN, resolveGuard, WEIGHT_POSTURE } from '../combat/guard';
 import { interruptChance, kitWeapon, phaseAt } from '../combat/phases';
@@ -31,8 +32,9 @@ export class StrikeResolver {
   /**
    * Land one hit from `e` on `o` (via ability `d`) with a forward (kx,ky) knockback. Resolution order:
    * Logia intangibility → the target's GUARD (parry negates + punishes; block reroutes HP → posture) →
-   * damage + combo + hitstun + AI alert. Returns false when nothing landed (phased, parried, or blocked) —
-   * a blocked hit is the DEFENDER's small win, so it must not feed the attacker's combo or launch latches.
+   * damage + combo + hitstun + AI alert. Returns false when nothing landed (phased, parried, blocked, or
+   * refused by i-frames/god-mode inside Damage.apply) — a refused hit is the DEFENDER's small win, so it
+   * must not feed the attacker's combo or launch latches (leap-backs, procs, slam flags).
    */
   hit(e: Entity, o: Entity, d: AbilityDef, base: number, kx: number, ky: number, shake = 0, stun = 0): boolean {
     const ot = o.transform!;
@@ -62,7 +64,7 @@ export class StrikeResolver {
       // the deflection backfires onto the attacker: posture spike (parry pressure can BREAK an aggressor),
       // a stagger, and the swing itself is gone — the defender's punish opening
       damagePosture(e, PARRY_POSTURE);
-      if (e.combatant) e.combatant.stunT = Math.max(e.combatant.stunT ?? 0, PARRY_STUN); // already doubled in guard.ts
+      applyEffect(e, 'effect.staggered', 'parry', PARRY_STUN); // the parry punish is a stagger (already doubled in guard.ts)
       delete e.melee;
       this.guardKnockback(e, o, d, kx, ky, PARRY_KNOCKBACK_MULT); // a heavy blow jolts even a parry back a touch (< a block)
       events.emit('fx:burst', { x: ot.x, y: ot.y, color: FX_COLOR.parry, n: 12, speed: 240 });
@@ -79,10 +81,29 @@ export class StrikeResolver {
       this.alertAI(o, e, false);
       return false;
     }
+    // WALL-SLAM proc (the marine Buttstroke): roll `chance` to REPLACE the knockback with a LONG shove and arm the
+    // target's slamStun — MovementSystem fires the electrified pin IF that shove slams them into a wall (else they
+    // just fly far). Rescale the incoming kx/ky (already d.knockback-scaled) to the wallSlam magnitude, keeping dir.
+    const om = o.mover;
+    const slam = d.wallSlam && om && this.rng.chance(d.wallSlam.chance) ? d.wallSlam : undefined;
+    if (slam) {
+      const mag = Math.hypot(kx, ky) || 1;
+      const scale = slam.knockback / mag;
+      kx *= scale;
+      ky *= scale;
+    }
     const landed = this.damage.apply(o, base, kx, ky, !!o.control);
-    events.emit('fx:burst', { x: ot.x, y: ot.y, color: FX_COLOR.spark, n: 6, speed: 200 });
+    // Arm the slam watch ONLY on a LANDED hit: an i-framed target takes no shove, so flags armed anyway would
+    // ride the victim's OWN dodge impulse into the next wall — dodge-rolling through the Buttstroke must never
+    // award its CC (the haunted-flag class the wallSlam boot validator warns about).
+    if (slam && landed && om) {
+      om.slamStun = slam.stun; // MovementSystem: FREEZE if this shove hits a wall…
+      om.slamSlow = slam.slow; // …else the lighter SLOW when it ends free
+    }
+    // impact spark — tinted by the ability (hitFx) so an ELECTRIC kick pops cyan, a plain blow the default spark.
+    events.emit('fx:burst', { x: ot.x, y: ot.y, color: d.hitFx ?? FX_COLOR.spark, n: 6, speed: 200 });
     if (shake > 0) events.emit('fx:shake', { amount: shake }); // shake is opt-in per ability (powerful moves only)
-    if (e.combatant) {
+    if (landed && e.combatant) { // an i-framed hit landed NOTHING — no combo feed (same rule as parry/block)
       e.combatant.combo++;
       e.combatant.comboT = COMBO_WINDOW;
     }
@@ -95,14 +116,14 @@ export class StrikeResolver {
       const swing = o.melee; // are they mid-swing, and if so what phase?
       const phase = swing ? phaseAt(swing.phases, swing.dur > 0 ? swing.t / swing.dur : 1) : undefined;
       if (!swing) {
-        o.combatant.stunT = Math.max(o.combatant.stunT ?? 0, stun); // not swinging → a jab still staggers
+        applyEffect(o, 'effect.staggered', 'hit', stun); // not swinging → a jab still STAGGERS (slowed-class, not a freeze)
       } else if (phase === 'windup') {
         // WINDUP → interruptible, but PROBABILISTICALLY by weight (Model D): a lighter hit only sometimes clips
         // the swing-arm and cancels a heavier windup. Roll on the seeded `combat` stream (determinism).
         const atk = kitWeapon(e, d)?.weaponClass ?? 'light';
         const def = kitWeapon(o, Abilities.get(swing.ability))?.weaponClass ?? 'light';
         if (this.rng.chance(interruptChance(atk, def))) {
-          o.combatant.stunT = Math.max(o.combatant.stunT ?? 0, stun);
+          applyEffect(o, 'effect.staggered', 'interrupt', stun); // the interrupt STAGGERS + cancels the windup
           delete o.melee; // the windup is cancelled — the read/interrupt lands
         }
         // roll failed → the heavier swing shrugs off the clip and plays out (you traded)
@@ -110,7 +131,7 @@ export class StrikeResolver {
       // active/recover → COMMITTED: no cancel, no stun — the swing plays out and trades
     }
     this.alertAI(o, e, landed);
-    return true;
+    return landed; // the honest outcome — consumers (Shock Kick leap-back, charged-round procs) gate on a real connect
   }
 
   /**

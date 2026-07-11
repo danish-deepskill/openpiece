@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Abilities } from '../src/combat/Ability';
-import { giveWeapon } from '../src/combat/equip';
+import { equip } from '../src/combat/equip';
 import {
   GUARD_BREAK_STUN,
   PARRY_GRACE,
@@ -28,9 +28,9 @@ function duel() {
   const world = new World();
   const sp = new Spawner(world, new Rng(7));
   const attacker = sp.spawnHero(30, 0);
-  giveWeapon(attacker, 'weapon.sword');
+  equip(attacker, 'weapon', 'weapon.sword');
   const defender = sp.spawnUnit('unit.thug', 0, 0); // bandits — mutually hostile with the hero
-  giveWeapon(defender, 'weapon.sword'); // ARMED so it can PARRY (parry now requires a weapon; unarmed is block-only)
+  equip(defender, 'weapon', 'weapon.sword'); // ARMED so it can PARRY (parry now requires a weapon; unarmed is block-only)
   defender.transform!.angle = 0; // facing the attacker: the incoming blow is inside the guard arc
   const strikes = new StrikeResolver(new Damage(), new Rng(1));
   return { world, attacker, defender, strikes };
@@ -91,7 +91,8 @@ describe('parry — a timed deflection that punishes the attacker', () => {
     expect(strikes.hit(attacker, defender, SLASH, 10, 0, 0)).toBe(false); // deflected — nothing landed
     expect(defender.health!.hp).toBe(hp); // fully negated
     expect(attacker.melee).toBeUndefined(); // the swing died on the deflection
-    expect(attacker.combatant!.stunT).toBeGreaterThanOrEqual(PARRY_STUN); // the punish opening
+    const stagger = attacker.effects!.active.find((a) => a.id === 'effect.staggered'); // CC = an effect row now
+    expect(stagger?.remaining).toBeGreaterThanOrEqual(PARRY_STUN); // the parry punish STAGGERS — the punish opening
     expect(attacker.combatant!.posture).toBe(PARRY_POSTURE); // parry pressure banks on the aggressor
     expect(defender.combatant!.parryT).toBeCloseTo(PARRY_GRACE, 5); // auto-parry grace vs strings
     expect(defender.combatant!.parryCd).toBe(0); // success re-arms instantly — only a whiff pays
@@ -165,7 +166,8 @@ describe('block — HP rerouted to posture, by the attacker\'s WEIGHT', () => {
     strikes.hit(attacker, defender, SLASH, 10, 0, 0);
     expect(c.blocking).toBe(false); // arms blown open
     expect(c.posture).toBe(0);
-    expect(c.stunT).toBeGreaterThanOrEqual(GUARD_BREAK_STUN); // the price of turtling
+    const stagger = defender.effects!.active.find((a) => a.id === 'effect.staggered'); // CC = an effect row now
+    expect(stagger?.remaining).toBeGreaterThanOrEqual(GUARD_BREAK_STUN); // a guard break STAGGERS — the price of turtling
   });
 });
 
@@ -185,7 +187,7 @@ describe('feint — raising the guard during your OWN windup pulls the swing', (
   it('attacking DROPS the guard (the mirror rule) — no free deflection smuggled into a swing', () => {
     const world = new World();
     const hero = new Spawner(world, new Rng(3)).spawnHero(0, 0);
-    giveWeapon(hero, 'weapon.sword'); // armed → the parry window arms (parry now requires a weapon)
+    equip(hero, 'weapon', 'weapon.sword'); // armed → the parry window arms (parry now requires a weapon)
     const abilities = new AbilitySystem(world, new EffectSystem(world), {} as StrikeResolver, new Rng(3));
     tryGuard(hero);
     expect(hero.combatant!.parryT).toBeGreaterThan(0);
@@ -213,7 +215,7 @@ describe('posture upkeep (CombatantSystem)', () => {
   it('ticks the parry window shut and the whiff cooldown down', () => {
     const world = new World();
     const e = new Spawner(world, new Rng(1)).spawnHero(0, 0);
-    giveWeapon(e, 'weapon.sword'); // armed → parry window opens (parry requires a weapon)
+    equip(e, 'weapon', 'weapon.sword'); // armed → parry window opens (parry requires a weapon)
     tryGuard(e);
     const sys = new CombatantSystem(world);
     sys.update(0.3); // > PARRY_WINDOW

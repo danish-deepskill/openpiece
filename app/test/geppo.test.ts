@@ -62,7 +62,8 @@ describe('Geppo toggle-hover (AbilitySystem + MovementSystem)', () => {
     expect(e.mover!.layer).toBe('air');
     mv.update(GEPPO_FALL_DUR); // finish the descent
     expect(e.mover!.layer).toBe('ground'); // touched down at the bottom of the fall
-    expect(e.combatant!.stunT).toBeCloseTo(JUMP_LAND_STUN, 5); // punishable on landing, like a jump
+    const stun = e.effects!.active.find((a) => a.id === 'effect.stunned'); // landing recovery = the CC effect row
+    expect(stun?.remaining).toBeCloseTo(JUMP_LAND_STUN, 5); // punishable on landing, like a jump
   });
 
   it('stays AIRBORNE across many ticks while hovering (never lands on its own)', () => {

@@ -44,6 +44,7 @@ export const BOAT_SPEED = 225;
 export const SHALLOW_MOVE_MULT = 0.5; // wading coastal shallows
 export const SAND_MOVE_MULT = 0.75; // trudging across sand/desert — heavier going than grass
 export const LEDGE_MOVE_MULT = 0.5; // balancing atop a LOW WALL (stone wall / ship rail) you jumped onto — a slow perch
+export const AIM_MOVE_MULT = 0.5; // ADS-walking while AIMING a ranged weapon (RMB): you can advance while covering, but at half pace
 export const SWIM_MOVE_MULT = 0.5; // swimming deep water — SAME pace as a shallow wade (no speed change across the water)
 /** Surface swimming drains stamina at this rate (per sec) — swimming is exertion, like sprint/Geppo. */
 export const SWIM_STAM_DRAIN = 12;
@@ -60,9 +61,30 @@ export const DROWN_INTERVAL = 1; // seconds between drown ticks (1 hit/sec)
 export const STAM_REGEN_DELAY = 1.0;
 /** Stamina per second once regen kicks in (gated by STAM_REGEN_DELAY — the two halves of one mechanic). */
 export const STAM_REGEN = 24;
-/** Baseline stamina pool — seeds every tier's `endurance` attribute, which `maxStam` derives from
- *  (combat/attributes.ts); a unit's def can override its endurance to differ from this. */
+/** Legacy baseline stamina pool — superseded by the endurance-grade model (combat/attributes STAM_BASE +
+ *  endurance × STAM_PER_ENDURANCE; the F- floor is 110). Kept only for tests that build bare pools. */
 export const MAX_STAM = 100;
+
+// ── Ranged aim spread (docs DESIGN_BACKLOG #19) — one live cone half-angle (rad) the situation opens and the
+//    player closes. A shot scatters within it; the reticle draws it. CombatantSystem eases `combatant.spread`
+//    toward its target each tick. The CRAFT is the ASYMMETRY: it BLOOMS fast (move/fire) but TIGHTENS slow
+//    (earn accuracy by holding still + aiming) — so managing the cone is a skill, not a stat.
+/** Widest the cone gets — hip-firing while moving (a spray). ~26°. */
+export const SPREAD_HIP = 0.45;
+/** Tightest the cone gets — aimed (RMB) + standing still + settled. ~4°, still a hair of imprecision. */
+export const SPREAD_AIM_MIN = 0.07;
+/** Added to the aim-min target while UNSTEADY (moving/jumping/rolling) — a MIDDLE ground between aim-still and
+ *  hip: aiming while moving is wider than aiming planted, but still tighter than blind hip-fire. Clamped to
+ *  SPREAD_HIP (the ceiling), so aim-min + this never exceeds the idle/hip cone. Keep aim-min + this < hip. */
+export const SPREAD_MOVE_PENALTY = 0.22;
+/** Instantly ADDED to the live cone each time you FIRE — the shot kicks accuracy WIDER, then it re-settles as
+ *  you hold aim (the "pace your shots, don't spray" skill; #19). One-shot bump, not a target — the settle
+ *  eases it back. ~14°. */
+export const SPREAD_SHOT_KICK = 0.25;
+/** Settle time constant (s) — how fast the cone TIGHTENS toward its target (the slow half of the asymmetry). */
+export const SPREAD_SETTLE_TAU = 0.35;
+/** Bloom time constant (s) — how fast the cone WIDENS toward its target (the fast half; << settle). */
+export const SPREAD_BLOOM_TAU = 0.06;
 /** Combo: consecutive-hit damage bonus cap, and how long the chain survives between hits (s). */
 export const COMBO_CAP = 5;
 export const COMBO_WINDOW = 2;
@@ -77,8 +99,10 @@ export const GUARD_KNOCKBACK_CARRY = 0.28;
 /** A PARRY takes only this fraction of the block's knockback — a clean deflection redirects the force, so it
  *  barely moves you, whereas a BLOCK braces against the full mass and gets shoved more. Block > parry. */
 export const PARRY_KNOCKBACK_MULT = 0.35;
-/** Hitstun: while stunned, movement scales to this (a stagger, not a full freeze); attacks are blocked entirely. */
-export const STUN_SLOW = 0.45;
+/** SLOWED/staggered debuff: while the `state.slowed` tag is active (effect.staggered/shocked — combat/Effect),
+ *  movement scales to this. Attacking/guarding is blocked in BOTH CC states (the classic hitstun); the difference
+ *  from STUNNED (frozen) is only that a slowed unit still moves — sluggishly — while a frozen one is rooted. */
+export const SLOW_MULT = 0.45;
 
 /** Landing recovery (s) after a JUMP — a brief stun that makes the jump-dodge PUNISHABLE (an enemy who waited
  *  out your hop catches you landing). docs/design/MOVEMENT_AIR.md. */

@@ -1,5 +1,6 @@
 import { angleDiff } from '../core/math';
 import type { Entity } from '../ecs/components';
+import { applyEffect, TAG_SLOWED, TAG_STUNNED } from './Effect';
 import { phaseAt, type CombatWeight } from './phases';
 
 /**
@@ -76,7 +77,7 @@ export function tryGuard(e: Entity, parry = true): boolean {
   if (!c) return false;
   const granted = e.loadout?.granted;
   if (!granted?.has(ABILITY_BLOCK)) return false; // no guard capability — can't raise a guard at all (block is the floor)
-  if ((c.stunT ?? 0) > 0) return false; // staggered — your arms won't answer
+  if (e.tags?.has(TAG_STUNNED) || e.tags?.has(TAG_SLOWED)) return false; // staggered or frozen — your arms won't answer
   const m = e.melee;
   if (m) {
     const p = m.dur > 0 ? Math.min(1, m.t / m.dur) : 1;
@@ -110,7 +111,7 @@ export function damagePosture(e: Entity, amount: number): boolean {
   c.posture = 0;
   c.blocking = false;
   c.parryT = 0;
-  c.stunT = Math.max(c.stunT ?? 0, GUARD_BREAK_STUN);
+  applyEffect(e, 'effect.staggered', 'guardBreak', GUARD_BREAK_STUN); // a guard break STAGGERS — the punish opening
   return true;
 }
 

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { Abilities } from '../combat/Ability';
 import { Weapons } from '../defs/layers';
 import { weaponAnchor } from '../draw/actorDraws';
 import { rollProgress } from '../draw/rollAnim';
@@ -72,7 +73,14 @@ export class WeaponSpriteSystem {
       const s = this.renderSys.scaleById.get(e.id) ?? 1;
       const ax = t.x + (a.x - t.x) * s;
       const ay = t.y + (a.y - t.y) * s;
+      // REVERSE-GRIP swing (musket butt-stroke): MIRROR the sprite end-for-end so the STOCK leads, not the
+      // muzzle. setFlipX/Y mirrors the texture AROUND THE ORIGIN — and the origin IS the grip (the hand), so the
+      // flip pivots in place: the hand stays fixed, the tip/butt swap ends. NO origin change (that double-
+      // compensated and shoved it off the hand).
+      const reverse = e.melee ? Abilities.get(e.melee.ability).shape?.reverseGrip === true : false;
       img
+        .setFlipX(reverse && horizontal) // mirror along the barrel (horizontal art) — swaps muzzle/stock ends
+        .setFlipY(reverse && !horizontal) // vertical art mirrors on its long axis instead
         .setOrigin(horizontal ? gripOnLong : 0.5, horizontal ? 0.5 : gripOnLong) // origin = the grip point (rotation pivots at the hand)
         .setPosition(ax, ay)
         .setRotation(a.angle + rest) // aim + the art's rest offset — the tip leads the aim for any orientation

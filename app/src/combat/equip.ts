@@ -4,51 +4,17 @@ import { Accessories } from '../defs/accessories';
 import type { ItemRef } from '../defs/items';
 import { itemSlot } from '../defs/items';
 import { Fruits, Potentials, Styles, Weapons, type LayerDef } from '../defs/layers';
-import { BASE_KIT, GUARD_KIT } from '../defs/units';
+import { BASE_KIT } from '../defs/units';
 import { removeAccessory, wearAccessory } from './apparel';
 import { syncDerivedResources } from './attributes';
 import { weaponKit } from './phases';
-import { ABILITY_SPRINT } from './stamina';
 
 export type LayerKind = 'weapon' | 'fruit' | 'style' | 'potential';
 
-/**
- * Arm a non-player actor (enemy/crew) with a weapon: applies its modifiers + tags + visual and makes its
- * basic attack the weapon's. Simpler than equip() (no player base-kit / fruit composition / refreshLoadout).
- */
-export function giveWeapon(e: Entity, weaponId: ContentId): void {
-  const d = Weapons.get(weaponId);
-  if (!e.equipment) e.equipment = { potentials: [] };
-  e.equipment.weapon = weaponId;
-  e.attributes?.addAll(d.modifiers);
-  if (e.tags) for (const t of d.tags) e.tags.add(t);
-  if (e.loadout) {
-    for (const a of weaponKit(d)) e.loadout.granted.add(a); // the primary AND its combo steps (the Moat: AI combos too)
-    e.loadout.primary = d.primary;
-  }
-  syncDerivedResources(e); // every modifier write path re-syncs the maxHp/maxStam pools (combat/attributes)
-}
-
-/**
- * Give a non-player actor a FIGHTING STYLE: grants its dash + unarmed strikes and (bare-handed) makes them the
- * primary/heavy. The Spawner's AI-unit path mirror of the style branch in refreshLoadout — a martial art is
- * where a bare-fisted unit's strike comes from (banditStrike/brawlerStrike), not a per-unit field. Apply BEFORE
- * a weapon: giveWeapon then overrides the primary (a drawn weapon out-prioritises bare martial arts).
- */
-export function giveStyle(e: Entity, styleId: ContentId): void {
-  const d = Styles.get(styleId);
-  if (!e.equipment) e.equipment = { potentials: [] };
-  e.equipment.style = styleId;
-  e.attributes?.addAll(d.modifiers);
-  if (e.tags) for (const t of d.tags) e.tags.add(t);
-  const lo = e.loadout;
-  if (lo) {
-    lo.granted.add(d.dash);
-    if (d.primary) { lo.granted.add(d.primary); lo.primary = d.primary; }
-    if (d.heavy) { lo.granted.add(d.heavy); lo.heavy = d.heavy; }
-  }
-  syncDerivedResources(e);
-}
+// NOTE: the old giveWeapon/giveStyle "simpler AI paths" are GONE — they hand-patched the loadout beside
+// refreshLoadout and the two drifted repeatedly (missing heavy, missing slots, styles granting a dash ability
+// but never setting the dash slot). Every actor — player, AI, spawn-time or mid-game — equips through the ONE
+// path: equip() → refreshLoadout() (the Moat: the AI isn't special, and neither is the spawn).
 
 function registryFor(kind: LayerKind) {
   return kind === 'weapon' ? Weapons : kind === 'fruit' ? Fruits : kind === 'style' ? Styles : Potentials;
@@ -103,33 +69,33 @@ export function unequip(e: Entity, kind: LayerKind, id?: ContentId): void {
   refreshLoadout(e);
 }
 
-/** Re-derive granted abilities + primary/dash/slots from current equipment (base kit always present). */
+/** Re-derive granted abilities + primary/heavy/dash/slots from the unit's INNATE kit + current equipment.
+ *  `loadout.innate` (seeded by the Spawner: base verbs by tier/noGuard + trait grants) is the non-equipment
+ *  half, so a rebuild can never strip an innate capability — no per-ability preserve special-cases. */
 export function refreshLoadout(e: Entity): void {
   const eq = e.equipment;
   const lo = e.loadout;
-  if (!eq || !lo) return;
+  if (!lo) return; // equipment may be absent (a bare unit) — the innate kit alone still derives below
 
-  // Base kit everyone has: a fist (light), a kick (heavy), a roll (the base mobility move), the GUARD verbs
-  // (block/parry — a fundamental capability, COMBAT.md), and JUMP (the base air verb — MOVEMENT_AIR.md).
-  // (Haki/Armament is A-tier+ — granted later.)
-  const granted = new Set<ContentId>([BASE_KIT.primary, BASE_KIT.heavy, BASE_KIT.dash, 'ability.jump', ...GUARD_KIT]);
-  // PRESERVE the tier-gated sprint grant across a re-derive: the Spawner is the ONE authority that decides who
-  // can sprint (SPRINT_MIN_TIER), so a loadout rebuild (equip/unequip) must not silently strip a capability
-  // that isn't tied to equipment. Without this, equipping a weapon would revoke the hero's sprint.
-  if (lo.granted.has(ABILITY_SPRINT)) granted.add(ABILITY_SPRINT);
-  let primary: ContentId = BASE_KIT.primary;
-  let heavy: ContentId = BASE_KIT.heavy; // base heavy; a fruit (or later a weapon/style) may override this
-  let dash: ContentId = BASE_KIT.dash;
+  const granted = new Set<ContentId>(lo.innate);
+  let primary: ContentId = BASE_KIT.primary; // the fist — every innate kit includes it
+  // base heavy/dash only if this unit's innate kit actually has them (the Spawner gates roll by tier; a unit
+  // without the base kick keeps heavy '') — the old unconditional BASE_KIT fallbacks silently re-granted
+  // abilities the spawn had deliberately withheld the moment any equip() ran.
+  let heavy: ContentId = granted.has(BASE_KIT.heavy) ? BASE_KIT.heavy : '';
+  let dash: ContentId = granted.has(BASE_KIT.dash) ? BASE_KIT.dash : '';
   let slots: ContentId[] = [];
 
-  if (eq.weapon) {
+  if (eq?.weapon) {
     const d = Weapons.get(eq.weapon);
     // the ONE kit walker (combat/phases.weaponKit) — if granting used a second walk, "granted" and
     // "in kit" (phases/volumes resolution) could disagree mid-combo
     for (const a of weaponKit(d)) granted.add(a);
     primary = d.primary;
+    if (d.heavy) heavy = d.heavy; // a weapon can grant its own HEAVY (the musket's butt-stroke bash) over the base kick
+    if (d.slots) slots = [...d.slots]; // slot HOTKEY order only — the abilities came in via the kit walk above; a FRUIT (below) still overrides if also held
   }
-  if (eq.style) {
+  if (eq?.style) {
     const d = Styles.get(eq.style);
     granted.add(d.dash);
     dash = d.dash;
@@ -144,7 +110,7 @@ export function refreshLoadout(e: Entity): void {
       if (!eq.weapon) heavy = d.heavy;
     }
   }
-  if (eq.fruit) {
+  if (eq?.fruit) {
     const d = Fruits.get(eq.fruit);
     granted.add(d.primary);
     if (d.heavy) granted.add(d.heavy);
@@ -159,6 +125,12 @@ export function refreshLoadout(e: Entity): void {
   lo.heavy = heavy;
   lo.dash = dash;
   lo.slots = slots;
+}
+
+/** Does the entity hold a RANGED weapon (a musket)? The one place input, AI, and draw ask "can this actor
+ *  aim + fire a shot" — keyed on the weapon's class (data), never an id. */
+export function isRanged(e: Entity): boolean {
+  return e.equipment?.weapon !== undefined && Weapons.get(e.equipment.weapon).weaponClass === 'ranged';
 }
 
 /**

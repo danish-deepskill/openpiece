@@ -1,16 +1,18 @@
 /**
- * Per-unit power tier. Every letter rank F…SSS has three bands (`-`, base, `+`), weakest `F-` … strongest
- * `SSS+`. The tier is the single dial that scales a unit's combat magnitudes (hp/atk/def/attack-speed) so
+ * Per-unit power tier. Every letter rank F…X has three bands (`-`, base, `+`), weakest `F-` … strongest
+ * `X+`. The tier is the single dial that scales a unit's combat magnitudes (hp/atk/def/attack-speed) so
  * content authors place an enemy at a tier instead of hand-tuning numbers. Drives threat, bounty, gates.
+ * Rank lore: SS = Admiral class, SSS = Yonko class, `X` = the APEX band above them (index 27–29) — "beyond
+ * Imu", the secret endgame tier.
  */
-export type TierLetter = 'F' | 'E' | 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS';
+export type TierLetter = 'F' | 'E' | 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS' | 'X';
 export type TierBand = '-' | '' | '+';
 export type PowerTier = `${TierLetter}${TierBand}`;
 
-const LETTERS: readonly TierLetter[] = ['F', 'E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS'];
+const LETTERS: readonly TierLetter[] = ['F', 'E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'X'];
 const BANDS: readonly TierBand[] = ['-', '', '+'];
 
-/** All 27 bands in ascending power order: F-, F, F+, E-, … SSS, SSS+. */
+/** All 30 bands in ascending power order: F-, F, F+, E-, … SSS+, X-, X, X+. */
 export const TIER_ORDER: readonly PowerTier[] = LETTERS.flatMap((l) => BANDS.map((b) => `${l}${b}` as PowerTier));
 
 export function tierIndex(t: PowerTier): number {
@@ -58,6 +60,7 @@ const TIER_COLORS: Record<TierLetter, string> = {
   S: '#ff4d4d', // red
   SS: '#ff8c1a', // orange
   SSS: '#ffd24a', // gold
+  X: '#5ce1ff', // apex cyan — "beyond Imu", the secret endgame band above the Yonko-class SSS gold
 };
 
 /** CSS hex color for a tier band (accepts 'F-', 'SS+', …); falls back to white for anything unrecognized. */

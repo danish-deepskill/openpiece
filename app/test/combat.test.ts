@@ -61,13 +61,14 @@ describe('Registry', () => {
 });
 
 describe('PowerTier', () => {
-  it('orders and clamps tiers across the F-…SSS+ bands', () => {
+  it('orders and clamps tiers across the F-…X+ bands', () => {
     expect(tierIndex('F-')).toBe(0); // weakest band
     expect(tierIndex('F')).toBe(1);
     expect(tierIndex('F+')).toBe(2);
     expect(tierIndex('E-')).toBe(3); // captain / hero tier
+    expect(tierIndex('X+')).toBe(29); // the apex band (beyond-Imu endgame)
     expect(tierFromScore(0)).toBe('F-');
-    expect(tierFromScore(999)).toBe('SSS+');
+    expect(tierFromScore(999)).toBe('X+'); // clamps to the top of the extended ladder
     expect(tierIndex(tierFromScore(5))).toBe(5);
   });
 

@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { isRanged } from '../combat/equip';
 import type { World } from '../ecs/World';
 import type { InputSystem } from './InputSystem';
 
@@ -6,6 +7,9 @@ import type { InputSystem } from './InputSystem';
 const RETICLE_DIST = 80;
 const ARM = 6; // half-length of each crosshair stroke (px)
 const GAP = 3; // center gap (px) — a classic open '+' reads cleaner than a solid plus
+/** Radius (px) of the spread-cone wedge — short enough to read as an aim marker, not fill the screen. */
+const CONE_RADIUS = 90;
+const CONE_COLOR = 0xffffff;
 
 /**
  * The aim reticle — a small '+' drawn AHEAD of the controlled unit along its facing, so you can see exactly
@@ -33,28 +37,57 @@ export class AimReticle {
   }
 
   update(): void {
-    // ONLY in shift-lock (Alt) mode — free-cursor aiming already has the mouse pointer to aim by; the '+' is the
-    // aim readout for when the cursor is PINNED (mouselook). Hidden otherwise.
-    const e = this.input.shiftLocked ? this.world.first('control') : undefined;
-    const t = e?.transform;
+    const g = this.gfx;
+    const controlled = this.world.first('control');
+    const t = controlled?.transform;
+    g.clear();
     if (!t) {
       this.gfx.setVisible(false);
       return;
     }
-    // place the '+' out along the aim; the crosshair strokes themselves stay screen-upright (this.rot)
-    const cx = t.x + Math.cos(t.angle) * RETICLE_DIST;
-    const cy = t.y + Math.sin(t.angle) * RETICLE_DIST;
-
-    const g = this.gfx;
     g.setVisible(true);
-    g.setPosition(cx, cy);
-    g.setRotation(this.rot); // strokes are laid out in this frame, so screen-upright regardless of camera spin
-    g.clear();
-    g.lineStyle(1.5, 0xffffff, 0.95); // a plain white '+'
-    g.lineBetween(GAP, 0, ARM, 0); // right
-    g.lineBetween(-ARM, 0, -GAP, 0); // left
-    g.lineBetween(0, GAP, 0, ARM); // down
-    g.lineBetween(0, -ARM, 0, -GAP); // up
+
+    // SPREAD CONE — shown ONLY while AIMING (holding RMB): a translucent WEDGE from the muzzle spanning
+    // ±spread (combatant.spread), your live accuracy readout. It NARROWS as you settle (aim + stand still),
+    // WIDENS as you move — the #19 honesty contract. Hidden when not aiming (the cone IS the aim readout, so a
+    // lowered/port-carry musket shows none). Same wedge primitive the AI VISION cone uses (DebugOverlay
+    // g.slice) — one cone look. World space (rotates with aim).
+    // `controlled!` safe: the `if (!t) return` above already proved the entity exists (t = controlled?.transform)
+    const cone = isRanged(controlled!) && controlled!.combatant?.aiming ? (controlled!.combatant.spread ?? 0) : 0;
+    if (cone > 0) {
+      g.setPosition(0, 0).setRotation(0);
+      const a = t.angle;
+      g.fillStyle(CONE_COLOR, 0.08); // translucent fill (matches the vision wedge's weight)
+      g.slice(t.x, t.y, CONE_RADIUS, a - cone, a + cone, false);
+      g.fillPath();
+      g.lineStyle(1, CONE_COLOR, 0.35); // a faint stroked edge
+      g.slice(t.x, t.y, CONE_RADIUS, a - cone, a + cone, false);
+      g.strokePath();
+    }
+
+    // '+' RETICLE — ONLY in shift-lock (Alt) mode: free-cursor aiming has the mouse pointer already; the '+' is
+    // the aim readout for when the cursor is PINNED (mouselook). The cone above is drawn in WORLD space, so it
+    // must be laid down BEFORE we move/rotate the graphic here for the screen-upright '+'.
+    if (this.input.shiftLocked) {
+      const cx = t.x + Math.cos(t.angle) * RETICLE_DIST;
+      const cy = t.y + Math.sin(t.angle) * RETICLE_DIST;
+      // the '+' is drawn relative to the graphic's origin, so shift it out by the reticle offset in world space
+      g.lineStyle(1.5, 0xffffff, 0.95);
+      const ux = Math.cos(this.rot);
+      const uy = Math.sin(this.rot); // screen-right after the camera counter-rotation
+      const vx = -uy;
+      const vy = ux; // screen-down
+      const seg = (a1: number, a2: number): void => {
+        g.lineBetween(cx + ux * a1, cy + uy * a1, cx + ux * a2, cy + uy * a2);
+      };
+      const segV = (a1: number, a2: number): void => {
+        g.lineBetween(cx + vx * a1, cy + vy * a1, cx + vx * a2, cy + vy * a2);
+      };
+      seg(GAP, ARM); // right
+      seg(-ARM, -GAP); // left
+      segV(GAP, ARM); // down
+      segV(-ARM, -GAP); // up
+    }
   }
 
   destroy(): void {

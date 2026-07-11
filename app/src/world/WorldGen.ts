@@ -293,14 +293,15 @@ export function generateLevel(rng: Rng): LevelLayout {
   }
   // the Brawler — the island's boss (a bare-fisted aggressor), at the hub where the three wedges meet
   enemies.push({ x: px(ENEMY.cx), y: px(ENEMY.cy), boss: true, unit: 'unit.brawler' });
-  // the Soldier — the guard-master test unit — posted on the HOME island's SOUTH side (near where the player
-  // spawns), placed deterministically so it always appears; nudged inward if it lands on a house/stone tile.
-  // East of the tavern (HOME.cx, cy+4) so it doesn't spawn inside it.
+  // the MARINE OFFICER — the ranged musketeer test unit (docs #19), posted on the HOME island's SOUTH side (near
+  // where the player spawns), placed deterministically so it always appears; nudged inward if it lands on a house/
+  // stone tile. East of the tavern (HOME.cx, cy+4) so it doesn't spawn inside it. Replaces the guard-master
+  // Soldier here — the first foe you meet near spawn now KITES and shoots (a dodgeable ball).
   {
     const sx = px(HOME.cx + 4);
     let sy = px(HOME.cy + 8); // south, inside the r=13 isle
     for (let d = 8; d >= 4 && solidPx(sx, sy); d--) { sy = px(HOME.cy + d); }
-    enemies.push({ x: sx, y: sy, boss: false, unit: 'unit.soldier' });
+    enemies.push({ x: sx, y: sy, boss: false, unit: 'unit.marineOfficer' });
   }
   // LUFFY — a hostile D-tier rubber brawler (Gomu fruit + straw hat), posted at the TOP-RIGHT (NE) of the HOME
   // island (the old Brute's spot), clear of the NW house cluster and the east dock; a duel target to feel the

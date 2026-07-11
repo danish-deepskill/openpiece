@@ -40,8 +40,10 @@ export const Bodies = new Registry<BodyDef>('Bodies', (b) => {
 });
 
 Bodies.registerAll([
-  // the standard 2-arm humanoid rig — the baseline every human/giant/fishman UNIT uses (differing by race)
-  { id: 'body.humanoid', name: 'Humanoid', draw: 'actor', skin: SKIN, r: 11, reach: 34, speed: 76, mass: 1 },
+  // the standard 2-arm humanoid rig — the baseline every human/giant/fishman UNIT uses (differing by race).
+  // draw is THE body-style toggle: 'actor' (oval + perspective cheat) | 'actorBlocky' (true-top-down rect,
+  // tuned via BLOCKY in draw/actorDraws.ts + previewed by `npm run art:blocky`). Flip the word to compare.
+  { id: 'body.humanoid', name: 'Humanoid', draw: 'actorBlocky', skin: SKIN, r: 11, reach: 34, speed: 76, mass: 1 },
   // quadruped rigs — their own draw fns + hide colors + grazer physique
   { id: 'body.cow', name: 'Cattle', draw: 'cow', skin: 0xf2ece0, r: 14, reach: 18, speed: 70, mass: 2.2 },
   { id: 'body.pig', name: 'Swine', draw: 'pig', skin: 0xe79aa2, r: 12, reach: 16, speed: 60, mass: 1.8 },

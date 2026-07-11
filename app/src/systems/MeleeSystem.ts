@@ -4,7 +4,13 @@ import { swingGeomOf, swingPose } from '../combat/swing';
 import { harmableBy } from '../combat/targeting';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
+import { leapBack } from './MovementSystem';
 import type { StrikeResolver } from './StrikeResolver';
+
+/** Airborne window (s) for an on-hit recoil LEAP (the Shock Kick's jump-back). Matches the jump feel — long
+ *  enough to read as a hop-arc, short enough to snap back to firing quickly. The DISTANCE is the ability's
+ *  recoilPush (px/s over this window); tune reach there, arc duration here. */
+const RECOIL_LEAP_DUR = 0.45;
 
 /**
  * Resolves melee by CONTACT. While a `melee` swing is active, its resolved strike volumes
@@ -66,7 +72,13 @@ export class MeleeSystem {
         const ot = o.transform!;
         if (!volumeHits(v, frame, ot.x, ot.y, ot.r)) continue; // steel/slash hasn't reached them yet
         hits.push(o.id); // count the contact even if it phases (Logia), so it isn't re-tested every frame
-        this.strikes.hit(e, o, d, base, kx, ky, d.shake ?? 0, d.stun ?? 0);
+        const landed = this.strikes.hit(e, o, d, base, kx, ky, d.shake ?? 0, d.stun ?? 0);
+        // ON-HIT LEAP-BACK (the Shock Kick's shove-off): only when the kick CONNECTS does the kicker jump
+        // backward (a whiff = no free escape). A jump-style hop (air arc), not a flat slide — see leapBack.
+        if (landed && d.recoilPush && e.mover && !m.leaptBack) {
+          m.leaptBack = true; // once per swing (a multi-volume kick can't double-launch)
+          leapBack(e.mover, m.angle, d.recoilPush, RECOIL_LEAP_DUR);
+        }
         if (!e.melee) return; // a PARRY cancelled this swing mid-resolve — the deflected cut reaches nobody else
         if (shape.single) return; // one landed hit per frame — same behavior the single-volume model had
       }

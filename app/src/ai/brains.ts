@@ -1,6 +1,7 @@
-import { Abilities, abilityRange } from '../combat/Ability';
+import { Abilities, abilityRange, AI_ROLE_DISENGAGE, AI_ROLE_POINT_BLANK } from '../combat/Ability';
 import type { ContentId } from '../core/Registry';
 import { TILE } from '../config/constants';
+import { isRanged } from '../combat/equip';
 import { ABILITY_BLOCK, endGuard, PARRY_WINDOW, tryGuard } from '../combat/guard';
 import { phaseAt } from '../combat/phases';
 import { trySprint } from '../combat/stamina';
@@ -14,7 +15,7 @@ import { Races } from '../defs/races';
 import { Sizes } from '../defs/sizes';
 import { factions } from '../defs/factions';
 import { ShipHulls } from '../defs/ships';
-import type { Entity } from '../ecs/components';
+import type { Entity, Loadout } from '../ecs/components';
 import type { AIContext } from './Brain';
 import { FsmBrain, type FsmState } from './FsmBrain';
 import { perceives } from './perception';
@@ -25,6 +26,10 @@ const profileOf = (e: Entity): AIProfileDef => e.ai!.bb.profile;
 /** Daylight (px) beyond touching within which the separation push applies — ONE const shared by the
  *  prefilter and the per-pair test, so the two can never drift apart. */
 const SEPARATION_GAP = 6;
+
+/** Below this range (px) a ranged unit's predictive LEAD-AIM fades to 0 — up close the shot is near-instant and
+ *  a lead would aim BEHIND a target walking into you (it shoots backward). Full lead only at/beyond this. ~4 tiles. */
+const LEAD_FADE_RANGE = 130;
 
 /** A recruited FOLLOWER heels to its leader with HYSTERESIS (two thresholds, not one) so it doesn't buzz
  *  in/out at a single tether line: it starts closing once it drifts past FOLLOW_FAR, and only stops once it's
@@ -111,9 +116,84 @@ function leapSpecial(e: Entity): ContentId | undefined {
   return undefined;
 }
 
+/** The first GRANTED ability carrying an AI role tag (AbilityDef.tags) — the role lives on the ABILITY, never on
+ *  a slot POSITION (a weapon reordering its slots must not silently change AI behavior). Same scan-by-property
+ *  pattern as leapSpecial above. Undefined ⇒ the kit has no ability in that role. */
+function grantedWithRole(lo: Loadout, role: string): ContentId | undefined {
+  for (const id of lo.granted) if (Abilities.get(id).tags?.includes(role)) return id;
+  return undefined;
+}
+
 /** Re-arm gap (s) for a chance-gated attack DECISION — how long between rolls, so a `chance` is per-decision not
  *  per-tick. Matches the guardCd cadence (0.8s): about one decision per attack beat, never a re-roll-until-it-hits. */
 export const DECIDE_CADENCE = 0.8;
+
+/** KITE beat ENGINE limit: the longest a reposition runs before it gives up + re-aims (never marches forever).
+ *  The beat PERSONALITY knobs (aim time, pause, step, comfort width, juke chance, chase budget) are per-profile
+ *  DATA — AIProfileDef.kite* (a sniper and a skirmisher differ on exactly those), not engine consts. */
+const KITE_REPOSITION_MAX = 1.1;
+/** KITE stuck give-up (s): if a repositioning kiter has been PINNED (trying to move, going nowhere) this long, it
+ *  abandons the move and re-plants (stands to fight) — no more sprinting-in-place in a corner. */
+const KITE_STUCK_GIVEUP = 0.4;
+/** A kiter's BUCKSHOT (slot 0) trigger radius as a FRACTION of the blast's own range — so a scatter can fire
+ *  from meaningfully inside its cone, not just point-blank, and reaches FARTHER than the melee butt-jab. 0.7 =
+ *  commit once you're within ~70% of the pellets' reach (not at the lip where the spread has thinned). */
+const BUCKSHOT_TRIGGER_FRAC = 0.7;
+
+/** Pick a committed reposition DESTINATION for a kiter's beat, stored on the blackboard as a fixed point (NOT a
+ *  per-frame vector — so the move ignores the target's micro-movements, the anti-bot property). Three cases by
+ *  spacing to the foe (foeX/foeY, at distance d):
+ *   - TOO CLOSE (< preferredRange): back away (or back-diagonal) to MAKE SPACE.
+ *   - TOO FAR (> preferredRange, roughly): CLOSE THE GAP — a committed step to a spot ~preferredRange out along
+ *     the line to the foe (so it advances in DISCRETE beats, not a per-pixel follow).
+ *   - GOOD SPACING: a lateral JUKE (reposition without giving/closing ground).
+ *  Seeded off the ai stream for determinism, varied per unit by id. */
+function planKiteReposition(e: Entity, ctx: AIContext, foeX: number, foeY: number, d: number, pref: number): void {
+  const t = e.transform!;
+  const bb = e.ai!.bb;
+  const p = profileOf(e); // the beat personality (step distance, comfort width) is profile data
+  const faceFoe = Math.atan2(foeY - t.y, foeX - t.x);
+  const away = faceFoe + Math.PI;
+  const side = (e.id % 2 === 0 ? 1 : -1) * (Math.PI / 2);
+  const roll = ctx.rng.next();
+  if (d > pref + p.kiteComfortWidth) {
+    // TOO FAR → advance a FIXED kiteStep toward the foe (a reachable committed step, NOT a spot at the foe that
+    // a fleeing target outruns — that made it creep). It re-evaluates after each step, capped by kiteChaseSteps.
+    bb.kiteDestX = t.x + Math.cos(faceFoe) * p.kiteStep;
+    bb.kiteDestY = t.y + Math.sin(faceFoe) * p.kiteStep;
+  } else if (d < pref) {
+    // TOO CLOSE (inside the band's near edge) → back off toward the band middle (or a back-diagonal).
+    const dir = roll < 0.6 ? away : away + (roll < 0.8 ? side : -side);
+    bb.kiteDestX = t.x + Math.cos(dir) * p.kiteStep;
+    bb.kiteDestY = t.y + Math.sin(dir) * p.kiteStep;
+  } else {
+    // INSIDE the band → a lateral JUKE (reposition without giving/closing ground, to look alive + dodge).
+    const dir = roll < 0.5 ? faceFoe + side : faceFoe - side;
+    bb.kiteDestX = t.x + Math.cos(dir) * p.kiteStep;
+    bb.kiteDestY = t.y + Math.sin(dir) * p.kiteStep;
+  }
+}
+
+/** JUKE-ROLL a kiter's reposition (profile.jukeRollChance): a chance to DASH to the just-planned destination
+ *  instead of walking there — a trained, evasive relocate (a marine dive-rolling to cover). Seeds velocity
+ *  toward `kiteDestX/Y` (the velocity-following dash impulse tumbles that way), then fires the dash. Returns true
+ *  if it rolled (so the caller knows a burst is underway; the normal walk-to-dest still finishes any remainder).
+ *  No-ops (returns false) when: no dash, on cooldown, mid-dodge, no destination, or the roll misses. */
+function tryKiteRoll(e: Entity, ctx: AIContext): boolean {
+  const bb = e.ai!.bb;
+  const p = profileOf(e);
+  const m = e.mover!;
+  const t = e.transform!;
+  if (!((p.jukeRollChance ?? 0) > 0) || bb.kiteDestX === undefined) return false;
+  const dash = e.loadout?.dash;
+  if (!dash || !ctx.abilities.ready(e, dash) || m.dodgeT > 0) return false;
+  if (!ctx.rng.chance(p.jukeRollChance!)) return false; // ! : proven > 0 by the first guard of this fn
+  const [dx, dy] = norm(bb.kiteDestX - t.x, (bb.kiteDestY ?? t.y) - t.y);
+  m.vx = dx * m.speed; // seed the roll direction so the velocity-following impulse tumbles toward the dest
+  m.vy = dy * m.speed;
+  ctx.abilities.activate(e, dash);
+  return true;
+}
 
 export type RegroupAct = 'fire' | 'conserve' | 'jab';
 export function planRegroupSpecial(e: Entity, ctx: AIContext): RegroupAct {
@@ -475,14 +555,19 @@ const chase: FsmState = {
     let rx: number;
     let ry: number;
     const quarry = bb.quarryId !== undefined ? ctx.world.byId(bb.quarryId) : undefined;
+    // A KITER that's lost sight does NOT track your live position through cover — a marksman can't shoot what he
+    // can't see, so chasing your exact coords behind a wall reads as an omniscient per-pixel bot. He instead
+    // routes to the LAST-SEEN spot (the corner you vanished behind) to try to re-acquire a lane, then gives up
+    // (loseSightSec). A rusher still pursues the live quarry (line-of-sight-blind melee chase IS its job).
+    const kiterLostSight = !foe && isRanged(e) && p.approach === 'kite';
     if (foe) {
       rx = foe.transform!.x;
       ry = foe.transform!.y;
-    } else if (quarry?.transform && !quarry.health?.dead) {
+    } else if (!kiterLostSight && quarry?.transform && !quarry.health?.dead) {
       rx = quarry.transform.x;
       ry = quarry.transform.y;
     } else {
-      rx = bb.lastSeenX;
+      rx = bb.lastSeenX; // the stale spot — investigate it, don't mirror the live target
       ry = bb.lastSeenY;
     }
 
@@ -502,9 +587,14 @@ const chase: FsmState = {
     // (the Calamity-boss trick that beats circle-kiting: steady orbiting just feeds the boss your future spot, so
     // the counter becomes CHANGING speed/direction, not merely circling). Reads the visible target's mover; falls
     // back to no lead if the target isn't currently visible (we don't know its velocity, only a stale position).
+    // FADE THE LEAD BY RANGE: a slow ranged shot needs lead at DISTANCE (the ball travels), but point-blank the
+    // ball lands instantly AND the lead lands BEHIND the target (a target walking INTO you would be aimed at
+    // where it'd be past your back) — so shrink the lead to 0 within LEAD_FADE_RANGE. Aim right at a close foe.
     if (p.leadAim && p.leadAim > 0 && foe?.mover) {
-      px += foe.mover.vx * p.leadAim;
-      py += foe.mover.vy * p.leadAim;
+      const d0 = dist(t.x, t.y, rx, ry);
+      const leadScale = Math.min(1, d0 / LEAD_FADE_RANGE); // 0 point-blank → 1 at/after the fade range
+      px += foe.mover.vx * p.leadAim * leadScale;
+      py += foe.mover.vy * p.leadAim * leadScale;
     }
     // weave/sway phase (each unit offset by id so a group doesn't sync); also drives the serpentine approach below
     bb.weaveT = ((bb.weaveT) ?? e.id % 7) + dt * p.weaveFreq;
@@ -523,11 +613,164 @@ const chase: FsmState = {
     const broken = e.squad ? bb.broken === true : false;
     const stamFrac = e.combatant && e.combatant.maxStam > 0 ? e.combatant.stam / e.combatant.maxStam : 1;
     let stance = combatStance(p, d, strike, hpRatio, dist(rx, ry, bb.home.x, bb.home.y), stamFrac, bb.regrouping === true);
+    // KITER INVESTIGATING (lost sight → rx/ry is the last-seen corner): the kite stance would read that nearby
+    // point as "a target too close" and BACK AWAY from it — so he'd never peek the corner. Override: walk TO the
+    // spot to re-acquire (approach), then HOLD once on it (no phantom target to shoot). loseSightSec still bounds it.
+    if (kiterLostSight) stance = { move: d > TILE * 0.75 ? 'approach' : 'hold', attack: false, regroup: false };
     bb.regrouping = stance.regroup; // persist the stamina-hysteresis state (pure fn decides, brain remembers)
     if (!bb.regrouping) bb.plannedSpecial = undefined; // re-engaged (bar recovered) → abandon any saved-for Rocket plan
     bb.decideCd = Math.max(0, (bb.decideCd ?? 0) - dt); // tick the attack-decision clock (gates chance-rolls per DECISION, not per tick)
-    // routing (squad morale broke, or a low-HP coward): flee — but a CORNERED animal turns and fights
+
+    // STUCK DETECTION (anti "sprint into the wall forever"): if it TRIED to move last tick (had velocity) but its
+    // position barely changed, it's pinned (a wall/corner). Accumulate stuckT; the kite-commitment below reads it
+    // to STOP fleeing and stand+fight instead of running in place. Reset when it makes real progress.
+    const moved = bb.pinX !== undefined ? Math.hypot(t.x - bb.pinX, t.y - (bb.pinY ?? t.y)) : 1;
+    const tryingToMove = Math.hypot(m.vx, m.vy) > 8;
+    bb.stuckT = tryingToMove && moved < 1.2 ? (bb.stuckT ?? 0) + dt : 0; // < ~1.2px while pushing = pinned
+    bb.pinX = t.x;
+    bb.pinY = t.y;
+
+    // routing state (also gates the kite beat loop below — a low-HP kiter FLEES, it doesn't stand and plink)
     const fleeing = broken || (p.fleeBelowHp != null && hpRatio <= p.fleeBelowHp);
+
+    // ── DISCRETE KITE BEAT LOOP (the anti-"per-pixel bot" model) ────────────────────────────────────────────
+    // A ranged kiter does NOT continuously mirror your position (the bot tell). It cycles in DISCRETE BEATS:
+    //   PLANT  — stand still, aim, fire when ready.
+    //   PAUSE  — a short beat after firing (the deliberate breath).
+    //   REPOSITION — pick ONE destination (back / juke L / juke R) and COMMIT, moving there via pathfinding,
+    //                ignoring your micro-movements. Arrive (or time out) → back to PLANT.
+    // Because it moves to a CHOSEN SPOT, inching toward it doesn't make it twitch — it's mid-plan. That reads
+    // as tactical (predictable, punishable) instead of glued to your exact distance. Point-blank it Buttstrokes.
+    if (p.approach === 'kite' && foe && isRanged(e) && !fleeing) {
+      const ft = foe.transform!;
+      const face = Math.atan2(ft.y - t.y, ft.x - t.x);
+      t.angle = wantAim; // keep the (led/lagged) aim from above — it shoots where it looks
+      bb.kiteBeatT = Math.max(0, (bb.kiteBeatT ?? 0) - dt);
+      // default first phase = reposition with a spent timer → it flips to AIM next tick and ARMS the settle, so
+      // the very first shot also lines up (never a free instant snap on acquisition).
+      if (bb.kitePhase === undefined) { bb.kitePhase = 'reposition'; bb.kiteBeatT = 0; }
+      const phase = bb.kitePhase;
+      const cb = e.combatant;
+
+      // CLOSE-RANGE ANSWER — a TWO-TIER close game (the marine's identity):
+      //   • BUCKSHOT BAND (out to the scatter's own reach): the pellets FLY, so he can blast from farther than a
+      //     butt-jab. Inside this band but not yet point-blank, he MAY blast (pointBlankSlotChance roll); if it
+      //     misses / Buckshot's on cd, he falls through to normal kiting (keep shooting).
+      //   • POINT-BLANK (≤ meleeRange): someone's on top → he answers for sure — the shove-or-blast GAMBLE (same
+      //     roll picks Buckshot vs the Buttstroke; falls back to whichever is off cooldown so he never freezes).
+      // The blast's trigger radius is DATA (the slot ability's own range × a fraction — commit when meaningfully
+      // inside the cone, not at its lip), NOT a magic number. Then force a fresh reposition (one decision/moment).
+      // The kit's close-game moves come from ROLE TAGS on the abilities (AI_ROLE_*), never slot positions — a
+      // weapon reordering its slots must not silently swap which move is "the blast" (the leapSpecial pattern).
+      const blast = grantedWithRole(loadout, AI_ROLE_POINT_BLANK); // the ranged close answer (Buckshot)
+      const disengage = grantedWithRole(loadout, AI_ROLE_DISENGAGE); // the space-maker (Shock Kick)
+      const melee = p.meleeRange ?? 0;
+      const heavyReady = ctx.abilities.ready(e, loadout.heavy);
+      const blastReady = blast !== undefined && ctx.abilities.ready(e, blast);
+      const blastBand = blast !== undefined ? abilityRange(Abilities.get(blast), e.attributes?.get('reach') ?? 0) * BUCKSHOT_TRIGGER_FRAC : 0;
+      // ONE roll per close ENGAGEMENT, edge-triggered: latch the gamble when the target ENTERS the close band,
+      // clear it when they leave or after an answer fires. A per-tick Bernoulli here re-rolls 60×/s, turning a
+      // 40% "gamble" into a near-certainty within 0.1s (the re-roll-until-it-hits bug the decide-cadence rule
+      // exists to prevent) — the latch is what makes pointBlankSlotChance mean what it says.
+      const inCloseBand = (melee > 0 && d <= melee) || (blastBand > 0 && d <= blastBand);
+      if (inCloseBand && bb.closeRoll === undefined) bb.closeRoll = ctx.rng.chance(p.pointBlankSlotChance ?? 0);
+      else if (!inCloseBand) bb.closeRoll = undefined; // left the band — the next engagement re-rolls
+      const rollsBlast = bb.closeRoll === true;
+      // pick the close move: at point-blank either move (gamble → shove/blast, fall back to the ready one); in the
+      // wider blast band ONLY a blast, and only if the roll wants it (else undefined → normal kite takes over).
+      // LAST-DITCH: if crowded but BOTH the blast + the heavy are on cooldown, the DISENGAGE kick is the fallback
+      // — so a crowded marine with everything down still creates space, never just gets hit.
+      const disengageReady = disengage !== undefined && ctx.abilities.ready(e, disengage);
+      let closeMove: ContentId | undefined;
+      if (melee > 0 && d <= melee) closeMove = rollsBlast && blastReady ? blast : heavyReady ? loadout.heavy : blastReady ? blast : disengageReady ? disengage : undefined;
+      else if (blastReady && rollsBlast && d <= blastBand) closeMove = blast;
+      if (closeMove !== undefined) {
+        if (cb) cb.aiming = false; // dropping the aim to bash/blast
+        t.angle = face;
+        ctx.abilities.activate(e, closeMove);
+        bb.closeRoll = undefined; // the answer fired — this engagement's gamble is SPENT (the next one re-rolls)
+        bb.kitePhase = 'reposition';
+        bb.kiteBeatT = 0; // pick a new spot next tick
+      } else if (phase === 'reposition') {
+        if (cb) cb.aiming = false; // gun DOWN while relocating (the cone blooms — it's not aiming on the run)
+        // MOVE to the committed destination (pathfound). Arrive (close enough) or time out → AIM (arm the settle).
+        const dest = bb.kiteDestX !== undefined ? [bb.kiteDestX, bb.kiteDestY ?? t.y] : null;
+        const arrived = dest ? dist(t.x, t.y, dest[0], dest[1]) < TILE * 0.6 : true;
+        if (arrived || (bb.kiteBeatT ?? 0) <= 0 || (bb.stuckT ?? 0) > KITE_STUCK_GIVEUP) {
+          bb.kitePhase = 'aim';
+          bb.kiteBeatT = p.kiteAimTime; // arm the settle window ON ENTRY — it counts DOWN, then fires (never re-armed)
+        } else {
+          const [dx, dy] = routeTo(e, ctx, dt, dest![0], dest![1]); // ! : arrived is true when dest is null, so this branch proves it
+          const [nx, ny] = norm(dx, dy);
+          const sp = attackMoveSpeed(e, m.speed); // no sprint — a calmer, tactical relocate
+          m.vx = nx * sp;
+          m.vy = ny * sp;
+        }
+      } else {
+        // AIM → FIRE → PAUSE (planted): stand still, RAISE the aim (cb.aiming = true → the braced stance + the
+        // spread cone SETTLES over a beat), hold it for kiteAimTime so the shot is TIGHT, THEN fire. No more
+        // snap hip-shots. After firing, a PAUSE breath, then reposition.
+        m.vx = 0;
+        m.vy = 0;
+        // STEADY aim while planted: track the (lead-adjusted) target WITHOUT the idle facing sway — a marksman
+        // lining up holds still, not wobbling. Ease toward it so it's smooth, not a snap.
+        t.angle += angleDiff(Math.atan2(py - t.y, px - t.x), t.angle) * smoothFactor(10, dt);
+        const pref = p.preferredRange ?? 200;
+        const inRange = d <= reach && facesTarget(e, ft.x, ft.y, p);
+        if (cb) cb.aiming = inRange; // hold the braced aim while lining up (the cone tightens as it settles)
+        // WHY it would move (the hysteresis + no-dogged-chase decision):
+        //  - TOO CLOSE (< pref): back off to make space → reposition (resets the chase counter).
+        //  - INSIDE [pref, pref+width]: STAND AND SHOOT — the comfort band; reset the chase counter.
+        //  - TOO FAR but the shot still reaches: take up to kiteMaxChase committed advance steps, THEN STOP
+        //    chasing and just shoot from range (a marksman holds a line, doesn't dog you per-pixel).
+        //  - OUT OF SHOT RANGE entirely: advance a couple steps to try to re-acquire, else it stays put shooting-less.
+        const tooClose = d < pref;
+        const inBand = !tooClose && d <= pref + p.kiteComfortWidth;
+        // CHASE BUDGET (sticky, so no per-pixel creep): reset ONLY when the target crowds back inside `pref` (it
+        // stopped fleeing / came to you). Being merely in shot range does NOT reset it — else advancing into
+        // range would refill the budget and it'd creep forever. Once the 2 steps are spent, it HOLDS and shoots
+        // (or, if out of shot range, just holds) until you close the distance yourself.
+        if (tooClose) bb.kiteChaseSteps = 0;
+        const chasedOut = (bb.kiteChaseSteps ?? 0) >= p.kiteMaxChase;
+        // reposition when: crowded (back off), OR out of SHOT range and still has chase budget (a committed advance).
+        // If it can already shoot (in reach) or has spent its chase budget → HOLD and fire from here, never creep.
+        const wantReposition = tooClose || (d > reach && !chasedOut);
+        if (phase === 'aim') {
+          if ((bb.kiteBeatT ?? 0) <= 0) {
+            if (inRange && ctx.abilities.ready(e, loadout.primary)) {
+              ctx.abilities.activate(e, loadout.primary); // the SETTLED aimed shot
+              bb.kitePhase = 'pause';
+              bb.kiteBeatT = p.kitePause; // a deliberate breath after firing
+            } else if (wantReposition) {
+              if (!tooClose) bb.kiteChaseSteps = (bb.kiteChaseSteps ?? 0) + 1; // count the advance toward the cap
+              planKiteReposition(e, ctx, ft.x, ft.y, d, pref);
+              tryKiteRoll(e, ctx); // maybe DASH to the spot instead of walking (evasive relocate)
+              bb.kitePhase = 'reposition';
+              bb.kiteBeatT = KITE_REPOSITION_MAX;
+            } else {
+              bb.kiteBeatT = p.kiteAimTime; // HOLD + keep lining up (in band, or chased-out → shoot from range)
+            }
+          }
+        } else if ((bb.kiteBeatT ?? 0) <= 0) {
+          // PAUSE elapsed. Reposition if the spacing wants it (back off / a capped advance), OR — while comfortably
+          // in-band — an occasional juke to stay lively. Otherwise re-AIM in place (hold ground, keep shooting;
+          // never creep after a target that's in the band or that we've already chased our budget for).
+          if (wantReposition || (inBand && ctx.rng.chance(p.kiteJukeChance))) {
+            if (wantReposition && !tooClose) bb.kiteChaseSteps = (bb.kiteChaseSteps ?? 0) + 1;
+            planKiteReposition(e, ctx, ft.x, ft.y, d, pref);
+            tryKiteRoll(e, ctx); // maybe DASH to the spot instead of walking (evasive relocate)
+            bb.kitePhase = 'reposition';
+            bb.kiteBeatT = KITE_REPOSITION_MAX;
+          } else {
+            bb.kitePhase = 'aim'; // hold ground, line up the next shot in place
+            bb.kiteBeatT = p.kiteAimTime;
+          }
+        }
+      }
+      return; // the beat loop OWNS a kiter's movement + firing — skip the continuous chase steering below
+    }
+
+    // routing (squad morale broke, or a low-HP coward): flee — but a CORNERED animal turns and fights
     const cornered = fleeing && !!foe && d <= strike;
     if (fleeing) stance = cornered ? { move: 'hold', attack: true } : { move: 'away', attack: false };
 
@@ -541,6 +784,11 @@ const chase: FsmState = {
     // FACING GATE: a heavy body can only COMMIT a charge/strike when the target is in its front arc (ai/steering);
     // a light fighter can commit at any angle (instant pivot).
     const facingTarget = facesTarget(e, rx, ry, p);
+
+    // RANGED AIM: a gunner raises the braced firing stance while it has a live foe it's facing and within
+    // shot range (the same `combatant.aiming` the player's RMB-hold sets — presentation reads it for the
+    // shouldered pose). It lowers to the low port carry otherwise (no foe / turned away / out of range).
+    if (e.combatant && isRanged(e)) e.combatant.aiming = !!foe && facingTarget && d <= range;
 
     bb.chargeCd = Math.max(0, ((bb.chargeCd) ?? 0) - dt);
     let charging = ((bb.chargeT) ?? 0) > 0;

@@ -17,14 +17,41 @@ export interface AbilityShape {
   /** 'shot' only: how far AHEAD of the shooter's center (px) the ball is born, so it clears the body it's
    *  fired from (muzzle placement). Default = the shooter's own radius. */
   muzzle?: number;
+  /** 'shot' only: BUCKSHOT — number of balls fired per trigger pull. >1 fans a CONE of pellets (each its own
+   *  scatter + electric roll); the recoil pose + pushback fire ONCE. Default 1 (a single musket ball). */
+  pellets?: number;
+  /** 'shot' only: per-pellet fan HALF-angle (rad) for a `pellets`>1 spread — the buckshot cone's half-width.
+   *  Independent of the shooter's aim spread (a scatter blast is wide even when aimed). Default 0 (dead-on). */
+  shotSpreadArc?: number;
   /** 'shot' only: art file for the flying projectile (src/art-relative, e.g. 'weapon/bullet_1.png') — a
    *  musket ball vs a cannonball differ by this ROW (content-is-data). Loaded at boot; drawn by
    *  ProjectileRenderer. Unset ⇒ a small procedural dot (no art needed for a basic shot). */
   shotArt?: string;
+  /** 'shot' only: GENERATED (procedural) projectile look, drawn by ProjectileRenderer from code — NO PNG. 'ball'
+   *  = a round lead shot (with an electric crackle variant when the round procs). Mutually exclusive with
+   *  `shotArt` (art wins if both set). A proc ball keeps art out of the repo for simple shapes + lets a variant
+   *  (electric) recolor without a second file. */
+  shotProc?: 'ball';
   /** 'shot' only: on-screen size of the drawn projectile (px diameter). Default 6. Visual only — the hit
    *  radius is the ball's own tiny transform.r; a big cannonball art can still be a small point-hit, or set
    *  the projectile's r via a future field. */
   shotSize?: number;
+  /** 'shot' only: PASS-THROUGH at close range — a long musket jammed in someone's face often can't get a clean
+   *  shot off (the barrel can't bear, a rushing body spoils it), so a point-blank shot has a chance to phase
+   *  THROUGH with no hit (the reload's still spent — punishable). This is the peak pass-through probability
+   *  (0..1) at contact; it fades STEEPLY to 0 by `closePassRange` (only really point-blank risks it). Measured
+   *  at FIRE time (a shot fired up close is a bad shot, wherever it lands). NOT deflection — that's a future
+   *  parry-vs-projectile mechanic. Unset/0 ⇒ no close penalty. */
+  closePassChance?: number;
+  /** 'shot' only: the distance (px) at which `closePassChance` has faded to 0 — beyond this the shot is
+   *  reliable. ~1–2 tiles for a musket. Required if closePassChance is set (boot-validated). */
+  closePassRange?: number;
+  /** 'shot' only: CHARGED-ROUND proc — `chance` (0..1) per PELLET at fire time that the ball carries `effect`
+   *  (an EffectDef id — shocked/burning/… applied to whoever it hits, for `dur` seconds) and hits ×`damageMult`.
+   *  The generic elemental-round seam (backlog #16: rounds carry effects, the matrix routes them — never a
+   *  per-element field triple): an electric round is procEffect→effect.shocked; a future fire round is one new
+   *  effect row, zero new fields. The renderer themes the charged ball by the effect's status color. */
+  procEffect?: { chance: number; effect: ContentId; dur: number; damageMult?: number };
   /** Hit shape: 'arc' = swing (sweep); 'line' = stab (thrust); 'mixed' = random; 'stretch' = Gomu rubber arm;
    *  'gore' = headbutt capsule; 'axe' = overhead axe-kick (the limb rises/scales UP, then slams an AoE straight down). */
   pattern?: 'arc' | 'line' | 'mixed' | 'stretch' | 'gore' | 'axe';
@@ -42,8 +69,15 @@ export interface AbilityShape {
   limb?: 'hand' | 'foot';
   /** Multiplies the body's natural reach for this strike — a short jab (< 1), a long kick (> 1). Default 1. */
   reachMul?: number;
+  /** SWING FX theme — an extra visual played as the swing goes ACTIVE, to read the move as elemental. 'electric'
+   *  = a cyan crackle burst at the striking limb (the Shock Kick). Unset ⇒ a plain swing. Presentation-only. */
+  swingFx?: 'electric';
   /** Render BOTH limbs for a stretch (Gomu Rocket's two-armed grab) instead of one. */
   bothHands?: boolean;
+  /** FLIP the drawn weapon sprite end-for-end for this swing — the pommel/butt leads instead of the tip (a
+   *  musket's butt-stroke: you jab with the STOCK). A pure sprite mirror (same position + rotation), NOT a
+   *  reposition. Visual only; the hitbox is the swing motion. */
+  reverseGrip?: boolean;
   /** Mirror an ARMED swing to the off side (side −1) — combo steps alternate cut direction with it. */
   mirror?: boolean;
   /** Visual-only swing: MeleeSystem animates it but lands NO contact hit (damage comes from elsewhere). */
@@ -69,6 +103,11 @@ export interface AbilityShape {
  *  abilities are the default 'tap'; guard uses this to distinguish block (hold) from parry (tap). */
 export type AbilityTrigger = 'tap' | 'hold' | 'combo';
 
+/** AI ROLE tags (AbilityDef.tags) — the brain scans the loadout for these (one home for the strings):
+ *  pointBlank = the ranged close-range answer (a scatter blast); disengage = the space-maker (a shove-off kick). */
+export const AI_ROLE_POINT_BLANK = 'ai.role.pointBlank';
+export const AI_ROLE_DISENGAGE = 'ai.role.disengage';
+
 export interface AbilityDef extends Def {
   name: string;
   cooldown: number; // BASE recovery; effective = cooldown / atkSpeed (a tier stat)
@@ -82,9 +121,24 @@ export interface AbilityDef extends Def {
   /** Movement speed multiplier a sustained movement ability applies while active (sprint = 1.5×). */
   moveMult?: number;
   shape?: AbilityShape; // offensive abilities
+  /** RECOIL — a backward self-shove (px/s) on the ATTACKER, applied opposite facing, mass-scaled (a heavy body
+   *  barely moves). On a 'shot' it's the fire kick (a musket shoves the firer back a step); on a MELEE move it's
+   *  a shove-off (the electric kick that hops the kicker back to make space — the tactical-retreat verb). Does NOT
+   *  cancel the swing (unlike selfImpulse). Data so it's per-ability; unset/0 ⇒ none. Distinct from `knockback`
+   *  (what the attack does to a TARGET). */
+  recoilPush?: number;
+  /** IMPACT-SPARK color (hex) — tints the hit burst StrikeResolver emits on a landed blow (an ELECTRIC kick pops
+   *  cyan, a fire move orange). Unset ⇒ the default spark. Presentation-only (a hit still resolves identically). */
+  hitFx?: number;
   damageStat?: StatId; // base damage read from the user's attributes (e.g. 'atk')
   damageFlat?: number;
   knockback?: number;
+  /** WALL-SLAM proc (the marine Buttstroke): `chance` (0..1) that this hit's knockback is replaced by a LONG one
+   *  (`knockback` px/s). Two outcomes, both electric (statuses = EFFECT rows, backlog #16): SLAMMING a wall
+   *  applies effect.electrified for `stun` seconds (a FROZEN pin + a themed pop); flying FREE applies
+   *  effect.shocked for `slow` seconds (the lighter lingering current) — the shove always does something.
+   *  Rolled on the seeded `combat` stream. Unset ⇒ a normal hit, no slam. */
+  wallSlam?: { chance: number; knockback: number; stun: number; slow: number };
   stun?: number; // hitstun (s) inflicted on a target this attack lands on — heavier moves stagger longer
   /** Posture damage a BLOCKED hit of this ability deals — overrides the weight-table default (guard.WEIGHT_POSTURE
    *  keyed by weapon class). For a weapon-less ability (a fruit power like Gomu) the weight lookup falls to
@@ -119,6 +173,12 @@ export interface AbilityDef extends Def {
   grantEffect?: ContentId; // self-effect on use (e.g. i-frames)
   requireTags?: string[];
   blockTags?: string[];
+  /** Tags describing THIS ability — the classification seam backlog #16 plans for elements/delivery
+   *  (element.lightning, delivery.blunt…) and the AI reads for tactical ROLES today: 'ai.role.pointBlank'
+   *  (the ranged close-range answer — the marine's Buckshot) and 'ai.role.disengage' (the space-maker — the
+   *  Shock Kick). The brain scans the LOADOUT for these (like leapSpecial scans by property), so a weapon's
+   *  slot ORDER can never silently change AI behavior — the role is on the ability, not the array position. */
+  tags?: string[];
   /** COMBO CHAIN: pressing the same slot again within `comboWindow` fires THIS ability next instead of
    *  restarting (interruptible — distinct from a multi-window swing, which is one committed animation).
    *  Player-timed per press; note HOLDING the button also walks the chain at swing-end cadence (the attack
@@ -136,6 +196,32 @@ export const Abilities = new Registry<AbilityDef>('Abilities', (a) => {
   if ((a.costStam ?? 0) < 0) return 'costStam must be ≥ 0';
   if (a.shape && a.shape.range < 0) return 'shape.range must be ≥ 0';
   if (a.shape?.swing === 'shot' && !((a.shape.shotSpeed ?? 0) > 0)) return `a 'shot' ability needs shotSpeed > 0 (got ${a.shape.shotSpeed})`;
+  // an authored 0 makes the swing clock divide by zero (t/dur → NaN: the ball never fires, the swing never ends);
+  // OMITTING it is fine (engine default) — only the explicit-zero/negative typo crashes here
+  if (a.shape?.swingTime !== undefined && !(a.shape.swingTime > 0)) return `swingTime must be > 0 when authored (got ${a.shape.swingTime})`;
+  const cpc = a.shape?.closePassChance;
+  if (cpc !== undefined) {
+    if (cpc < 0 || cpc > 1) return `closePassChance must be in [0, 1] (got ${cpc})`;
+    if (!((a.shape?.closePassRange ?? 0) > 0)) return `closePassChance needs closePassRange > 0 (got ${a.shape?.closePassRange})`;
+  }
+  const proc = a.shape?.procEffect;
+  if (proc) {
+    if (proc.chance < 0 || proc.chance > 1) return `procEffect.chance must be in [0, 1] (got ${proc.chance})`;
+    if (!(proc.dur > 0)) return `procEffect.dur must be > 0 (got ${proc.dur})`;
+    if (proc.damageMult !== undefined && !(proc.damageMult > 0)) return `procEffect.damageMult must be > 0 (got ${proc.damageMult})`;
+  }
+  if (a.wallSlam) {
+    if (a.wallSlam.chance < 0 || a.wallSlam.chance > 1) return `wallSlam.chance must be in [0, 1] (got ${a.wallSlam.chance})`;
+    if (!(a.wallSlam.knockback > 0)) return `wallSlam.knockback must be > 0 (got ${a.wallSlam.knockback})`;
+    if (a.wallSlam.stun < 0) return `wallSlam.stun must be ≥ 0 (got ${a.wallSlam.stun})`;
+    if (a.wallSlam.slow < 0) return `wallSlam.slow must be ≥ 0 (got ${a.wallSlam.slow})`;
+    // the slam flags disarm INSIDE the knockback-impulse window (MovementSystem) — a wallSlam row with no base
+    // knockback never launches that impulse, leaving the flags armed forever (they'd fire on the victim's next
+    // unrelated dodge). Content error → crash at boot, never a haunted flag mid-game.
+    if (!((a.knockback ?? 0) > 0)) return `a wallSlam ability needs a base knockback > 0 (the proc rescales it; got ${a.knockback})`;
+  }
+  if (a.shape?.pellets !== undefined && (!Number.isInteger(a.shape.pellets) || a.shape.pellets < 1)) return `pellets must be an integer ≥ 1 (got ${a.shape.pellets})`;
+  if (a.shape?.shotSpreadArc !== undefined && a.shape.shotSpreadArc < 0) return `shotSpreadArc must be ≥ 0 (got ${a.shape.shotSpreadArc})`;
   if (a.airCatch !== undefined && (a.airCatch < 0 || a.airCatch > 1)) return `airCatch must be in [0, 1] (got ${a.airCatch})`;
   const ph = a.shape?.phases;
   if (ph) {
@@ -228,7 +314,39 @@ Abilities.registerAll([
   // one-shot-then-vulnerable window for v1 (a dedicated reload-lock animation is a #19 follow-up). shotSpeed
   // 620 px/s over range 520 → ~0.84s aloft: fast + flat, but you CAN sidestep a shot fired from across the
   // field. Heavy damage + knockback + a real stun — a hit hurts, but landing it is the skill (lead the mover).
-  { id: 'ability.musketShot', name: 'Musket Shot', cooldown: 2.2, shape: { range: 520, arc: 0, swing: 'shot', shotSpeed: 620, muzzle: 20, shotArt: 'weapon/bullet_1.png', shotSize: 8 }, damageStat: 'atk', damageFlat: 14, knockback: 240, costStam: 8, stun: 0.5, shake: 2 },
+  // closePass 0.6 @ 96px (3 tiles): a shot fired with someone in your face has up to a 60% chance to phase
+  // THROUGH (fumbled — the long barrel can't bear), fading STEEPLY (squared) to 0 by 3 tiles. The Buttstroke
+  // is the real point-blank answer; this makes "just keep shooting the guy hugging you" unreliable.
+  { id: 'ability.musketShot', name: 'Musket Shot', cooldown: 3, shape: { range: 400, arc: 0, swing: 'shot', shotSpeed: 256, muzzle: 20, shotArt: 'weapon/bullet_1.png', shotSize: 48, noHit: true, closePassChance: 0.6, closePassRange: 96, swingTime: 0.45, phases: { windup: 0.15, active: 0.35, recover: 0.5 } }, recoilPush: 110, damageStat: 'atk', damageFlat: 14, knockback: 240, costStam: 8, stun: 0.5, shake: 2 },
+  // MUSKET BASH — the butt-stroke (RMB-tap / K): a close-range SHOVE for when an enemy closes on your slow-
+  // reloading gun. LOW damage, HIGH knockback + stun — it's about creating SPACE (knock them back so you can
+  // reload or step away), not killing. A committed line-thrust (the rifle butt jabs forward). The melee answer
+  // a ranged weapon needs against a rusher — pairs with the shot's long reload (the distance-war counterplay).
+  { id: 'ability.musketBash', name: 'Buttstroke', cooldown: 5, shape: { range: 20, arc: 0.32, swing: 'melee', pattern: 'line', width: 14, swingTime: 0.5, reverseGrip: true, phases: { windup: 0.36, active: 0.3, recover: 0.34 } }, damageStat: 'atk', damageFlat: 2, knockback: 430, costStam: 9, stun: 0.9, shake: 3 }, // reverseGrip: mirror the musket so the STOCK leads the thrust
+  // MARINE BUTTSTROKE — the marine musket's butt-stroke, a PARENT row (registry inheritance: child fields win,
+  // the shape/damage/knockback all inherit — a flat copy would drift). Differs only in: a SHORTER cooldown (4s
+  // vs 5s — the drilled officer recovers faster) and the WALL-SLAM proc: 30% of shoves are a LONG launch (950),
+  // and slamming a WALL electrifies — a 3s FROZEN pin (no wall → a 1.5s SLOWED shock). An environmental
+  // finisher: line them up with a wall behind them.
+  { id: 'ability.marineButtstroke', parent: 'ability.musketBash', name: 'Buttstroke', cooldown: 4, wallSlam: { chance: 0.3, knockback: 950, stun: 3, slow: 1.5 } },
+  // MARINE MUSKET SHOT — the naval variant's primary, a PARENT row over musketShot (recoil/damage-stat/knockback/
+  // stamina/stun inherit): FASTER reload (2.5s vs 3s), MORE damage (18 vs 14), and its own SHAPE (objects REPLACE
+  // wholesale on inheritance, so the shape is restated): a FASTER ball (384 = 12 tiles/s vs 8 — harder to
+  // dodge-by-sight), a GENERATED ball (shotProc, no PNG), and a 20% CHARGED round (procEffect → effect.shocked:
+  // ×1.5 damage → 27, plus a 1.5s electric slow on whoever it hits).
+  { id: 'ability.marineMusketShot', parent: 'ability.musketShot', name: 'Marine Musket Shot', cooldown: 2.5, shape: { range: 400, arc: 0, swing: 'shot', shotSpeed: 384, muzzle: 20, shotProc: 'ball', shotSize: 14, noHit: true, closePassChance: 0.6, closePassRange: 96, procEffect: { chance: 0.2, effect: 'effect.shocked', dur: 1.5, damageMult: 1.5 }, swingTime: 0.45, phases: { windup: 0.15, active: 0.35, recover: 0.5 } }, damageFlat: 18 },
+  // MARINE BUCKSHOT (slot 1 / K) — the marine musket's SIGNATURE, and its close-range identity vs the base musket:
+  // a SCATTER blast of 5 pellets in a WIDE ~44° cone, SHORT range (150 ≈ 4.7 tiles), each pellet a light hit but
+  // the volley shreds someone in your face. The ranged answer to a rusher (alongside the Buttstroke shove).
+  // Balanced by a LONG cooldown (8s — a committed panic-button, not a rotation move) + high stamina + NO close-pass
+  // (it's MEANT for point-blank). A plain lead spray (no electric — that's the Shock Kick's thing). Big knockback = shove.
+  { id: 'ability.marineBuckshot', name: 'Buckshot', tags: [AI_ROLE_POINT_BLANK], cooldown: 8, shape: { range: 150, arc: 0, swing: 'shot', shotSpeed: 384, muzzle: 20, shotProc: 'ball', shotSize: 11, noHit: true, pellets: 5, shotSpreadArc: 0.38, swingTime: 0.6, phases: { windup: 0.4, active: 0.25, recover: 0.35 } }, recoilPush: 500, damageStat: 'atk', damageFlat: 6, knockback: 200, costStam: 14, stun: 0.35, shake: 3 }, // BIG windup (0.4×0.6 ≈ 0.24s) — a readable "winding up the scatter" tell you can dodge. recoilPush 500 (~4.5× a normal shot's 110) — the scatter blast kicks the marine back HARD (a shove-off, pairs with the retreat identity)
+  // MARINE SHOCK KICK (slot 2 / L) — the TACTICAL-RETREAT verb: an ELECTRIC front kick that damages + knocks the
+  // enemy back AND hops the marine BACKWARD (recoilPush 560 — a real escape hop), opening the gap so a kiter
+  // resets to firing range. A BIGGER hitbox than the base kick (arc 0.45 vs 0.3, reachMul 1.4 vs 1.1 — easier to
+  // land in a scramble) + a LONG stun (1.3, the zap-lock). Visually distinct: cyan swing crackle (swingFx) + cyan
+  // impact spark (hitFx). Long cooldown/high stamina = a committed escape, not spammable.
+  { id: 'ability.marineShockKick', name: 'Shock Kick', tags: [AI_ROLE_DISENGAGE], cooldown: 6, shape: { range: 0, arc: 0.45, swing: 'melee', pattern: 'line', swingTime: 0.5, limb: 'foot', reachMul: 1.4, swingFx: 'electric', phases: { windup: 0.36, active: 0.3, recover: 0.34 } }, recoilPush: 560, hitFx: 0x6cf0ff, damageStat: 'atk', damageFlat: 7, knockback: 360, costStam: 12, stun: 1.3, shake: 3 }, // windup 0.36×0.5 = 0.18s tell
   // fighting style (flash step)
   { id: 'ability.flashDash', name: 'Flash Dash', cooldown: 0.45, costStam: 10, selfImpulse: 420, grantEffect: 'effect.invuln' },
   // devil fruit (gomu) — rubber-arm STRETCH punches: the fist cocks back then shoots far out (the arm is the hitbox)
