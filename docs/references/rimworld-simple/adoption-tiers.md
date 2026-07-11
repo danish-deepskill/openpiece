@@ -81,6 +81,16 @@
     matrix dynamic. Trigger: faction war (REFERENCES #16). 🔨
 21. **Stat post-process curves + Stats registry** *(ch 04)* — stats as defs (default/clamp/round/curve);
     diminishing returns tuned in data. Trigger: with the next stat-heavy layer (Haki). 🔨
+21b. **Split-torso apparel layers + data drawOrder** *(pawn-rendering.md)* — RimWorld stacks OnSkin/Middle/Shell
+    where ballpiece has ONE `chest` slot; and its `drawOrder` is a data int, not our hardcoded `SLOT_DEPTH`
+    record (the data form fits content-is-data better than our current code). Genuine improvement, not
+    already-have-it. Trigger: the first character wearing two torso garments (shirt + coat, or armor over
+    clothes). Same shape as the `hair` slot addition. 🔨 *(inserted; kept out of the main numbering to avoid
+    renumbering tiers B–D)*
+
+> Rendering/paperdoll verdicts live in **`pawn-rendering.md`** (this folder) — the atlas doesn't cover
+> rendering. It also records the one place ballpiece is *genuinely* better: SKIP RimWorld's directional
+> textures (single top-down sprite = 4× less art per item — the right trade for a top-down game).
 
 ## B — adapt: right idea, reshape for ballpiece
 

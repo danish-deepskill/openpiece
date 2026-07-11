@@ -1,0 +1,2 @@
+- weekly news dropped from seagull, update bounty and some information
+- underworld

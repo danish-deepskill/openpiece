@@ -1,0 +1,25 @@
+{
+  "_comment": "The LOCKED palette every asset is snapped to. Edit freely — add character-specific colors (Luffy's red, straw-yellow) here so a whole batch of AI art collapses onto ONE consistent set of colors. The 'outline' key is special: it is the color used for the uniform re-stroked outline. Keep hex as #RRGGBB.",
+  "outline": "#4d4a45",
+  "colors": {
+    "outline_charcoal": "#4d4a45",
+    "skin": "#e0a070",
+    "wood_grip": "#6b4a2a",
+    "hide_dark": "#6b5a4a",
+    "cloth_gray": "#8a8781",
+    "cow_white": "#f2ece0",
+    "pig_pink": "#e79aa2",
+
+    "straw_tan": "#c9a25e",
+    "straw_shade": "#a8823f",
+    "luffy_red": "#c0392b",
+    "luffy_red_shade": "#8e2a20",
+    "gold_button": "#ffd24a",
+
+    "cloth_black": "#2b2b2f",
+    "cloth_white": "#e8e4da",
+    "cloth_blue": "#3a6ea5",
+    "steel": "#cdd3da",
+    "steel_shade": "#9aa2ab"
+  }
+}

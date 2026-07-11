@@ -1,8 +1,10 @@
 # Wearable sprite authoring (artist spec)
 
-**Template:** `unit-template.svg` in this folder — GENERATED from the game's live anatomy constants by
-`npm run art:template` (from `app/`). Never hand-edit it; if the body proportions change, regenerate and
-re-check fit. What the template shows IS what the game draws.
+**Templates** (both GENERATED from the game's live anatomy constants — never hand-edit; regenerate if body
+proportions change; what the template shows IS what the game draws):
+- `unit-template.svg` — `npm run art:template` — the full mannequin + every slot anchor. General authoring.
+- `apparel-template.svg` — `npm run art:apparel` — focused guide for a CHEST/apparel sprite: the garment
+  zone (draw here) + the bright HEAD CUTOUT (leave transparent). Use this when making shirts/vests/armor/coats.
 
 ## The two authoring frames
 
@@ -28,7 +30,9 @@ construction — no offsets, no math.
 - **The red dashed ring is the collision circle (the real hitbox).** Art may overhang it slightly
   (shoulders do, ~1.12r) but the silhouette must not lie badly about where hits land.
 - **Square canvas always** — the engine sizes sprites uniformly; a non-square canvas gets distorted.
-- Layer order in game (bottom→top): body → back → chest → face → head(hat) — a hat always covers armor.
+- Layer order in game (bottom→top): body → back → chest → face → **hair** → head(hat) — a hat always
+  covers hair, hair covers the bare head. `hair` is an `item`-frame slot pinned on the head (like a hat);
+  draw hair on the head circle, transparent elsewhere. Wear hair + a hat together (distinct slots).
 
 ## Adding the finished sprite
 

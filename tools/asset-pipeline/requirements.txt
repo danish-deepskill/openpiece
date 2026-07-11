@@ -1,0 +1,8 @@
+# Core (always needed) — image processing.
+Pillow>=10.0
+
+# Optional — only if you use the --rembg flag (ML background removal for fuzzy edges).
+# Heavy: pulls onnxruntime and downloads a ~170MB model on first run. Install only if you need it:
+#   pip install rembg onnxruntime
+# rembg>=2.0
+# onnxruntime>=1.17

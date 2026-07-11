@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ballpiece — Apparel Preview</title>
+<style>
+  :root { --bg:#2e3630; --panel:#20242a; --ink:#cfd4d8; --accent:#e8a33d; --line:#3a4038; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; background:#171a17; color:var(--ink); display:flex; min-height:100vh; }
+  .stage { flex:1; display:flex; align-items:center; justify-content:center; padding:24px; }
+  canvas#view { background:var(--bg); border-radius:8px; box-shadow:0 8px 40px #0008; image-rendering:auto; }
+  .panel { width:340px; background:var(--panel); padding:20px; overflow-y:auto; border-left:1px solid var(--line); }
+  h1 { font-size:15px; margin:0 0 4px; }
+  .sub { font-size:11px; opacity:.65; margin:0 0 18px; line-height:1.5; }
+  .drop { border:2px dashed var(--line); border-radius:8px; padding:22px 12px; text-align:center; font-size:12px; cursor:pointer; margin-bottom:16px; transition:.15s; }
+  .drop:hover, .drop.hot { border-color:var(--accent); background:#ffffff08; }
+  .drop input { display:none; }
+  label.row { display:block; font-size:11px; margin:14px 0 4px; opacity:.85; }
+  label.row b { float:right; color:var(--accent); font-weight:600; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .toggles { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+  .toggles button { flex:1; background:#ffffff10; border:1px solid var(--line); color:var(--ink); padding:7px 6px; border-radius:6px; font-size:11px; cursor:pointer; font-family:inherit; }
+  .toggles button.on { background:var(--accent); color:#161616; border-color:var(--accent); font-weight:600; }
+  .out { margin-top:18px; background:#000000030; border:1px solid var(--line); border-radius:6px; padding:12px; font-size:11px; line-height:1.6; white-space:pre-wrap; word-break:break-all; }
+  .out .k { color:var(--accent); }
+  button.copy { margin-top:8px; width:100%; background:#ffffff10; border:1px solid var(--line); color:var(--ink); padding:8px; border-radius:6px; cursor:pointer; font-family:inherit; font-size:11px; }
+  button.copy:hover { background:#ffffff18; }
+  .hint { font-size:10px; opacity:.5; margin-top:14px; line-height:1.6; }
+</style>
+</head>
+<body>
+  <div class="stage"><canvas id="view" width="520" height="520"></canvas></div>
+  <div class="panel">
+    <h1>Apparel Preview</h1>
+    <p class="sub">Composites your sprite on the real ballpiece body (same ANATOMY constants as <code>drawActor</code>). Dial in the fit, copy the def values. No game launch.</p>
+
+    <label class="drop" id="drop">Drop an apparel PNG here (or click)
+      <input type="file" id="file" accept="image/png,image/*" />
+    </label>
+
+    <div class="toggles">
+      <button id="tFrame" class="on" title="body = spans ±1.5r, item = scales to a slot basis">frame: body</button>
+      <button id="tRotate" class="on">rotates</button>
+    </div>
+    <div class="toggles">
+      <button id="tCutout">show head cutout</button>
+      <button id="tGrid">grid</button>
+    </div>
+
+    <label class="row">scale <b id="vScale">1.00</b></label>
+    <input type="range" id="scale" min="0.2" max="3" step="0.02" value="1" />
+    <label class="row">offset (fwd, ×r) <b id="vOffset">0.00</b></label>
+    <input type="range" id="offset" min="-1" max="1" step="0.02" value="0" />
+    <label class="row">aim angle <b id="vAim">south</b></label>
+    <input type="range" id="aim" min="0" max="360" step="5" value="90" />
+    <label class="row">body radius r (px, preview only) <b id="vR">70</b></label>
+    <input type="range" id="rad" min="30" max="120" step="1" value="70" />
+
+    <div class="out" id="out"></div>
+    <button class="copy" id="copy">copy def visual</button>
+
+    <p class="hint">The body frame maps the WHOLE square canvas to ±1.5r. If your sprite was trimmed tight by the pipeline, switch to a NON-trimmed export or use item-frame — trimming breaks body-frame positioning. Head/torso/shoulders drawn exactly as the game does.</p>
+  </div>
+
+<script>
+// ---- ANATOMY (source of truth: app/src/draw/actorDraws.ts — keep in sync) --------------------------
+const A = { headR:0.72, headBack:0.12, torsoFwd:0.3, torsoHalfL:0.62, torsoHalfW:0.72,
+            shoulderOut:0.86, shoulderFwd:0.08, shoulderHalfW:0.22, shoulderHalfL:0.42 };
+const BODY_FRAME_R = 1.5;
+const OUTLINE = '#4d4a45', SKIN = '#e0a070', GARB = '#6b4a3a';
+
+const cv = document.getElementById('view'), ctx = cv.getContext('2d');
+const CX = cv.width/2, CY = cv.height/2;
+
+let sprite = null;             // the loaded apparel image
+const S = { frameBody:true, rotates:true, cutout:false, grid:false,
+            scale:1, offset:0, aimDeg:90, r:70 };
+
+// ---- helpers ---------------------------------------------------------------------------------------
+function ellipse(cx, cy, rx, ry, fill) {
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+  ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = OUTLINE; ctx.stroke();
+}
+// forward = the aim direction; on screen +x right, +y down. facing南 (south) at aim=90°.
+function draw() {
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const r = S.r, a = S.aimDeg * Math.PI/180;
+  const fx = Math.cos(a), fy = Math.sin(a);          // forward unit
+  const sx = -Math.sin(a), sy = Math.cos(a);         // sideways unit
+
+  if (S.grid) { // faint ±1.5r body-frame box + r ring
+    ctx.strokeStyle = '#ffffff20'; ctx.lineWidth = 1;
+    ctx.strokeRect(CX - BODY_FRAME_R*r, CY - BODY_FRAME_R*r, BODY_FRAME_R*2*r, BODY_FRAME_R*2*r);
+    ctx.beginPath(); ctx.ellipse(CX, CY, r, r, 0, 0, Math.PI*2); ctx.strokeStyle='#e06c5a80'; ctx.stroke();
+  }
+
+  // shadow
+  ctx.beginPath(); ctx.ellipse(CX, CY, r*1.05, r*0.48, 0, 0, Math.PI*2);
+  ctx.fillStyle = '#00000038'; ctx.fill();
+
+  // torso + shoulders, rotated to the aim (same as drawActor's rotateCanvas(drawA))
+  const rot = (cx0, cy0) => [CX + cx0*fx*r + cy0*sx*r, CY + cx0*fy*r + cy0*sy*r]; // (along, across) → screen
+  { const [tx,ty] = rot(A.torsoFwd, 0); // torso: rx across = torsoHalfW, ry along = torsoHalfL (but rotated)
+    ctx.save(); ctx.translate(tx,ty); ctx.rotate(a);
+    ellipse(0,0, A.torsoHalfL*r, A.torsoHalfW*r, GARB); ctx.restore(); }
+  for (const s of [-1,1]) { const [px,py] = rot(A.shoulderFwd, s*A.shoulderOut);
+    ctx.save(); ctx.translate(px,py); ctx.rotate(a);
+    ellipse(0,0, A.shoulderHalfL*r, A.shoulderHalfW*r, GARB); ctx.restore(); }
+
+  // ---- the APPAREL sprite (over the body, under the head — the chest slot) -------------------------
+  if (sprite) {
+    // size: body frame → whole canvas spans ±1.5r; item frame → scales against body diameter (2r)
+    const dia = (S.frameBody ? BODY_FRAME_R*2*r : 2*r) * S.scale;
+    // offset along the aim (chest anchor is ~0 for body frame; slider lets you nudge)
+    const ox = CX + fx * (S.offset*r), oy = CY + fy * (S.offset*r);
+    ctx.save(); ctx.translate(ox, oy);
+    if (S.rotates) ctx.rotate(a + Math.PI/2); // sprite "forward" is up → +90°, like AccessorySystem
+    ctx.drawImage(sprite, -dia/2, -dia/2, dia, dia);
+    ctx.restore();
+  }
+
+  // head — skin, offset AWAY from aim by headBack (on TOP of the apparel)
+  const hx = CX - fx*A.headBack*r, hy = CY - fy*A.headBack*r;
+  ctx.beginPath(); ctx.ellipse(hx, hy, A.headR*r, A.headR*r, 0, 0, Math.PI*2);
+  ctx.fillStyle = SKIN; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = OUTLINE; ctx.stroke();
+
+  if (S.cutout) { // show where the head-cutout would be punched (should match the head)
+    ctx.beginPath(); ctx.ellipse(hx, hy, A.headR*r, A.headR*r, 0, 0, Math.PI*2);
+    ctx.strokeStyle = '#ff3b6b'; ctx.lineWidth = 2; ctx.setLineDash([5,4]); ctx.stroke(); ctx.setLineDash([]);
+  }
+  updateOut();
+}
+
+function updateOut() {
+  const frame = S.frameBody ? ", frame: 'body'" : '';
+  const off = S.offset !== 0 ? `, offset: ${(S.offset).toFixed(2)}` : '';
+  const rot = S.rotates ? '' : ', rotates: false';
+  document.getElementById('out').innerHTML =
+    `<span class="k">visual</span>: { kind: 'sprite', art: 'apparel/NAME.png', ` +
+    `<span class="k">scale</span>: ${S.scale.toFixed(2)}${frame} }` +
+    (off||rot ? `\n// on the def:${off}${rot}` : '');
+}
+
+// ---- wiring ----------------------------------------------------------------------------------------
+const bind = (id, key, fmt) => { const el = document.getElementById(id);
+  el.oninput = () => { S[key] = parseFloat(el.value); document.getElementById('v'+id[0].toUpperCase()+id.slice(1)).textContent = fmt(S[key]); draw(); }; };
+bind('scale','scale', v=>v.toFixed(2));
+bind('offset','offset', v=>v.toFixed(2));
+bind('aim','aimDeg', v=> v==90?'south':v==270?'north':v+'°');
+bind('rad','r', v=>v);
+document.getElementById('vAim').textContent = 'south';
+
+const toggle = (id, key, on='on') => { const b = document.getElementById(id);
+  b.onclick = () => { S[key] = !S[key]; b.classList.toggle(on, S[key]);
+    if (id==='tFrame') b.textContent = 'frame: ' + (S.frameBody?'body':'item'); draw(); }; };
+toggle('tFrame','frameBody'); toggle('tRotate','rotates'); toggle('tCutout','cutout'); toggle('tGrid','grid');
+
+const drop = document.getElementById('drop'), file = document.getElementById('file');
+drop.onclick = () => file.click();
+file.onchange = e => loadFile(e.target.files[0]);
+['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('hot'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('hot'); }));
+drop.addEventListener('drop', e => loadFile(e.dataTransfer.files[0]));
+function loadFile(f) { if (!f) return; const img = new Image();
+  img.onload = () => { sprite = img; drop.textContent = f.name + ' ✓ — drop another to replace'; draw(); };
+  img.src = URL.createObjectURL(f); }
+
+document.getElementById('copy').onclick = () => {
+  navigator.clipboard.writeText(document.getElementById('out').textContent);
+  const b = document.getElementById('copy'); b.textContent = 'copied ✓'; setTimeout(()=>b.textContent='copy def visual', 1200);
+};
+
+draw();
+</script>
+</body>
+</html>

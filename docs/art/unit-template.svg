@@ -16,6 +16,9 @@
 <line x1="246" y1="276.48" x2="266" y2="276.48" stroke="#ffd24a" stroke-width="1.5"/>
 <line x1="256" y1="266.48" x2="256" y2="286.48" stroke="#ffd24a" stroke-width="1.5"/>
 <text x="272" y="280.48" fill="#ffd24a" font-family="monospace" font-size="13">head (-0.12r)</text>
+<line x1="246" y1="276.48" x2="266" y2="276.48" stroke="#ffd24a" stroke-width="1.5"/>
+<line x1="256" y1="266.48" x2="256" y2="286.48" stroke="#ffd24a" stroke-width="1.5"/>
+<text x="272" y="280.48" fill="#ffd24a" font-family="monospace" font-size="13">hair (-0.12r)</text>
 <line x1="246" y1="208.89600000000002" x2="266" y2="208.89600000000002" stroke="#ffd24a" stroke-width="1.5"/>
 <line x1="256" y1="198.89600000000002" x2="256" y2="218.89600000000002" stroke="#ffd24a" stroke-width="1.5"/>
 <text x="272" y="212.89600000000002" fill="#ffd24a" font-family="monospace" font-size="13">face (+0.28r)</text>

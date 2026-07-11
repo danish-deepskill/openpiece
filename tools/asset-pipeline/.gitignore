@@ -1,0 +1,7 @@
+# Pipeline scratch — raw AI inputs and processed outputs never belong in the repo.
+# Final sprites get copied into app/src/art/ and pointed at by a def; everything here is transient.
+raw/
+out/
+out_*/
+_*/
+*.tmp.png
