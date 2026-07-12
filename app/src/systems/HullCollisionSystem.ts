@@ -67,6 +67,14 @@ export class HullCollisionSystem {
           e.mover!.onLedge = !deckCanOccupy(grid, local.lx, local.ly, t.r, false, false);
           continue;
         }
+        if (cell?.tile === 'rail') {
+          // a grounded world body whose center sits ON the rail BLOCK (a jump landing, incl. half-over-the-sea)
+          // PERCHES on it — the block is standable exactly like a world stone wall. Ejecting instead (the
+          // pushOut fallthrough) teleported rail-landers to the nearest sea under full-tile rails.
+          enterDeck(e, ship.id, local.lx, local.ly);
+          e.mover!.onLedge = true;
+          continue;
+        }
         if (!hullBlocksOutside(grid, local.lx, local.ly, t.r)) continue; // clear — nothing to do
         // JUST TRANSITIONED (the frame beat): a body wider than the rail's outer band legitimately exits the
         // drop-off still overlapping the gunwale wood — the beat lets it WALK itself clear (the embedded-veto

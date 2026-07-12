@@ -338,11 +338,11 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     expect(a.mover!.onLedge).toBe(false); // and the perch cleared itself once the body fit without it
   });
 
-  it('a CORNER-rail landing with the body hanging past the hull is NOT adopted (was: a frozen perch)', () => {
-    // The sometimes-stuck corner: center inside the corner rail cell but in its OUTER water corner → the body
-    // spans past the hull edge on TWO sides. Adopting that spot is illegal even by the perched rules (off-hull
-    // blocks everything), so every step was rejected. Feet over the sea = a water landing beside the hull.
-    const { world, move } = seaSystem();
+  it('a CORNER-rail landing (body hanging past the hull) PERCHES on the block — never a teleport, never frozen', () => {
+    // Under FULL-TILE rails a rail landing always PERCHES (the block is standable like a world stone wall,
+    // overhang included — the perched mask opens off-hull). The old fit veto left this body a WORLD walker
+    // inside the solid block, and pushOut teleported it to the nearest sea (the reported jump-on-rail snap).
+    const { world, ships, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
     // sloop SE corner cell (5,3) spans local x [64,96], y [32,64] — land at (92,60): body (r=8) hangs past both
     const w = deckToWorld(ship.transform!, 92, 60);
@@ -351,15 +351,17 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     a.mover!.airT = 0.01; // about to touch down right here
     a.mover!.airDur = 0.5;
     move.update(1 / 60); // lands
-    expect(a.onDeck).toBeUndefined(); // didn't make the gunwale — stayed a world walker in the water
-    const x0 = a.transform!.x;
-    const y0 = a.transform!.y;
-    for (let i = 0; i < 30; i++) {
-      a.mover!.vx = 100; // swim away seaward — must not be held
+    expect(a.onDeck).toBeDefined(); // adopted onto the block…
+    expect(a.mover!.onLedge).toBe(true); // …perched on the gunwale
+    a.mover!.frameCd = 0; // past the post-transition beat
+    for (let i = 0; i < 30 && a.onDeck; i++) {
+      a.mover!.vx = 100; // push seaward — the deliberate step-down takes over
       a.mover!.vy = 100;
       move.update(1 / 60);
+      ships.update(1 / 60);
     }
-    expect(Math.hypot(a.transform!.x - x0, a.transform!.y - y0)).toBeGreaterThan(10);
+    expect(a.onDeck).toBeUndefined(); // stepped down off the corner into the water — not held, not flung
+    expect(a.mover!.mode).toBe('swim');
   });
 
   it('LEAP-BOARDING with the body over the rail seam perches (a boarded straddle stays movable)', () => {

@@ -50,8 +50,13 @@ function buildColliders(grid: DeckGrid): DeckColliders {
   const { cols, rows, tilePx } = grid;
   // dense mask tables, indexed cy·cols+cx. Cells that don't exist (off-hull ' ') keep the fill value.
   const grounded = new Uint8Array(cols * rows).fill(Q_SOLID); // walk, on the ground: rail/hole/off-hull all block
-  const cleared = new Uint8Array(cols * rows).fill(Q_SOLID); // walk, airborne OR perched: only the rail opens up
-  const wood = new Uint8Array(cols * rows); // hull-from-outside: solid boat as drawn; off-hull = open water (0)
+  const cleared = new Uint8Array(cols * rows).fill(Q_SOLID); // walk, AIRBORNE: only the rail opens up (no floor past the hull)
+  // walk, PERCHED: like cleared, but OFF-HULL is open too — a body balancing on the full-tile rail block may
+  // OVERHANG the sea (landing half-over the gunwale must perch, not bounce: the old fit veto left it a world
+  // body inside the solid block, and pushOut teleported it to the nearest sea). Leaving seaward is owned by
+  // the deliberate step-down drop-off, so the open off-hull is never walked onto — only overhung.
+  const perched = new Uint8Array(cols * rows).fill(Q_CLEAR);
+  const wood = new Uint8Array(cols * rows); // hull-from-outside: FULL solid blocks; off-hull = open water (0)
   for (const c of grid.cells) {
     const i = c.cy * cols + c.cx;
     if (deckWalkable(c.tile)) {
@@ -59,6 +64,8 @@ function buildColliders(grid: DeckGrid): DeckColliders {
       cleared[i] = Q_CLEAR;
     } else if (c.tile === 'rail') {
       cleared[i] = Q_CLEAR; // the LOW WALL: airborne hops it, a perched walker balances along it
+    } else {
+      perched[i] = Q_SOLID; // a HOLE is a pit even to a percher (off-hull stays clear via the fill)
     }
     // ONE simple hull truth (the developer's overhaul call, replacing the half/quarter-wood era and its whole
     // rule stack — walker walls, center rules, penetration budgets): EVERY on-hull cell is a FULL solid block
@@ -72,12 +79,30 @@ function buildColliders(grid: DeckGrid): DeckColliders {
     // past the hull = open sea: blocks even AIRBORNE (no floor — leaving by air is a frame TRANSITION, not a step;
     // MovementSystem's airborne-leave handles it), so `bounds` is unnecessary — the oracle already seals the edge.
     walk: new GridCollider(spec, (cx, cy, ctx) => {
-      if (!inGrid(cx, cy)) return Q_SOLID;
-      return ctx.airborne || ctx.onLedge ? cleared[cy * cols + cx] : grounded[cy * cols + cx];
+      if (!inGrid(cx, cy)) return ctx.onLedge && !ctx.airborne ? Q_CLEAR : Q_SOLID; // a percher may overhang the sea
+      const i = cy * cols + cx;
+      if (ctx.onLedge && !ctx.airborne) return perched[i];
+      return ctx.airborne ? cleared[i] : grounded[i];
     }),
     hull: new GridCollider(spec, (cx, cy) => (inGrid(cx, cy) ? wood[cy * cols + cx] : Q_CLEAR)), // past the hull = open water, free
     wood,
   };
+}
+
+/** Total circle penetration (px, summed) into RAIL cells specifically. The ONE rail-special rule that
+ *  survived the full-tile overhaul: the escape rule's sum measure is blind to WHICH box holds the depth, so
+ *  a body legally overlapping the INTERIOR (a walk-off exits you 60/40 across the plank edge) could TRADE
+ *  that invisible overlap for GUNWALE overlap one-for-one ("parallel" by the sum) and push a third of itself
+ *  into the rail. The visible rail line is a hard budget that never grows (MovementSystem's escape rule). */
+export function hullRailPen(grid: DeckGrid, lx: number, ly: number, r: number): number {
+  const h = grid.tilePx / 2;
+  let pen = 0;
+  for (const c of grid.cells) {
+    if (c.tile !== 'rail') continue;
+    const d = distToBox(lx, ly, c.lx - h, c.ly - h, h * 2); // the full rail cell
+    if (d < r) pen += r - d;
+  }
+  return pen;
 }
 
 /** DEBUG read-only view of a hull's as-drawn wood mask table (cy·cols+cx) — the ground truth the collision

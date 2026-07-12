@@ -5,7 +5,7 @@ import { applyEffect, Effects, TAG_SLOWED, TAG_STUNNED } from '../combat/Effect'
 import { SWIM_SPEED_STAT } from '../defs/traits';
 import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, tileAt, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
-import { deckCanOccupy, deckTryMove, hullBlocksWorldPoint, hullWoodClearance } from '../world/deckCollision';
+import { deckCanOccupy, deckTryMove, hullBlocksWorldPoint, hullRailPen, hullWoodClearance } from '../world/deckCollision';
 import { enterDeck, exitDeck, inFrameCooldown } from '../world/frames';
 import type { Entity, Mover } from '../ecs/components';
 import type { World } from '../ecs/World';
@@ -81,8 +81,10 @@ export class MovementSystem {
   private embedPose: { x: number; y: number; angle: number } | undefined;
   private embedGrid: DeckGrid | undefined;
   private embedClear = 0;
+  private embedRailPen = 0; // the RAIL-cell penetration budget — visible gunwale overlap may never grow (see hullRailPen)
   private readonly hullClearer = (x: number, y: number, r: number): boolean => {
     const l = worldToDeck(this.embedPose!, x, y); // ! : only installed when the gate found the blocking ship
+    if (hullRailPen(this.embedGrid!, l.lx, l.ly, r) > this.embedRailPen + 0.01) return true; // never deeper into a RAIL, even trading
     const c = hullWoodClearance(this.embedGrid!, l.lx, l.ly, r);
     if (c > this.embedClear + 0.01) return false; // clearer — always allowed (the escape)
     // PARALLEL hull-hug (constant clearance) is allowed only while total penetration is at most ONE BODY
@@ -223,6 +225,7 @@ export class MovementSystem {
                 this.embedGrid = grid;
                 const l = worldToDeck(st, t.x, t.y);
                 this.embedClear = hullWoodClearance(grid, l.lx, l.ly, t.r);
+                this.embedRailPen = hullRailPen(grid, l.lx, l.ly, t.r);
                 break;
               }
             }
@@ -405,8 +408,8 @@ export class MovementSystem {
     const a = -ship.transform.angle;
     const cos = Math.cos(a);
     const sin = Math.sin(a);
-    const dlx = (vx * cos - vy * sin) * dt;
-    const dly = (vx * sin + vy * cos) * dt;
+    let dlx = (vx * cos - vy * sin) * dt;
+    let dly = (vx * sin + vy * cos) * dt;
     const cooldown = inFrameCooldown(e);
     const cell = deckCellAtLocal(grid, e.onDeck.lx, e.onDeck.ly);
     // GANGPLANK WALK-OFF: grounded on the door, pushing OUTWARD (dot test) → hand off to world space AT THE
@@ -459,6 +462,14 @@ export class MovementSystem {
       m.onLedge = false; // off the wall
       this.waterEntryFx(w.x, w.y, e.transform!.r); // splashes only if the drop enters water (not onto a dock/sand)
       return;
+    }
+    // A PERCHED CENTER stays ON the wall: the perched mask lets the BODY overhang open sea, but the center may
+    // never WALK off the hull — leaving is only the deliberate step-down above (or a jump). Without this clamp,
+    // a percher pushing seaward during the post-transition beat (drop-off muted) strolled off the hull footprint
+    // and kept walking the open sea deck-framed.
+    if (!airborne && m.onLedge) {
+      if (dlx !== 0 && deckCellAtLocal(grid, e.onDeck.lx + dlx, e.onDeck.ly) === undefined) dlx = 0;
+      if (dly !== 0 && deckCellAtLocal(grid, e.onDeck.lx, e.onDeck.ly + dly) === undefined) dly = 0;
     }
     deckTryMove(e.onDeck, dlx, dly, grid, e.transform!.r, airborne, m.onLedge);
     // STEP OFF the rail perch: clear ONLY when the whole body has cleared the rail (fits WITHOUT the perch). Center-
