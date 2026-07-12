@@ -136,13 +136,14 @@ export class DebugOverlay {
           if (blocked) g.fillRect(x * TILE, y * TILE, TILE, TILE);
         }
       }
-      // SHIP HULLS — quarter-true, rotated with the ship. Interior cells are skipped (solid from outside,
-      // but they're the deck floor — filling them is noise); rails + the door carry all the interesting truth.
+      // SHIP HULLS — drawn from the collider's own mask table (never re-derived, so it can't drift), rotated
+      // with the ship. Interior cells are skipped (solid from outside, but they're the deck floor — filling
+      // them is noise); rails (full-tile blocks) + the door carry all the interesting truth.
       for (const s of this.world.with('ship', 'transform')) {
         const st = s.transform!;
         const hull = ShipHulls.get(s.ship!.hull);
         const grid = deckOf(s.ship!.hull, hull.deck);
-        const { wood, wall } = hullDebugMasks(grid);
+        const { wood } = hullDebugMasks(grid);
         const h = grid.tilePx / 2;
         for (const c of grid.cells) {
           if (c.tile === 'gangplank') {
@@ -150,9 +151,7 @@ export class DebugOverlay {
             continue;
           }
           if (c.tile !== 'rail') continue;
-          const i = c.cy * grid.cols + c.cx;
-          if (wall[i] !== 0) this.quad(st, c.lx - h, c.ly - h, c.lx + h, c.ly + h, 0xff2b2b, undefined, 0.15); // the walker wall band
-          const m = wood[i];
+          const m = wood[c.cy * grid.cols + c.cx];
           if (m & Q_NW) this.quad(st, c.lx - h, c.ly - h, c.lx, c.ly, 0xffaa00, undefined, 0.45);
           if (m & Q_NE) this.quad(st, c.lx, c.ly - h, c.lx + h, c.ly, 0xffaa00, undefined, 0.45);
           if (m & Q_SW) this.quad(st, c.lx - h, c.ly, c.lx, c.ly + h, 0xffaa00, undefined, 0.45);

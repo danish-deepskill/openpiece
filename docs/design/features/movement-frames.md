@@ -50,11 +50,13 @@ The whole point: **no system branches on "am I on a deck." They branch on the FR
 
 Every rule below exists because its violation shipped a real bug. Break one and the same bug family returns.
 
-1. **A transition NEVER moves the body.** It is a pure address-book switch: convert the CURRENT point between
-   frames (`exitDeck`/`enterDeck` with the standing position), never a lookahead or a snap target. Lookaheads
-   are TRIGGERS only. Corollary: a body may exit OVERLAPPING solid (the humanoid r=11 is wider than the rail's
-   outer wood band) — that's NORMAL; the frame beat (`frameCd`, which gates only the rail drop-off and mutes the
-   hull eject) lets it walk itself clear.
+1. **A transition NEVER moves the body** — with ONE named exception. Transitions through OPEN ground (the
+   gangplank door, airborne leaves, boarding) are pure address-book switches: convert the CURRENT point
+   between frames, never a lookahead or a snap target. The exception is the RAIL DROP-OFF under full-tile
+   rails (the simple-collision overhaul): the perch spot has NO legal in-place world position (it's inside
+   the solid block), so stepping off is ONE deliberate bounded hop past the block's seaward face — an
+   intentional step-down, exactly like descending a world stone wall, replacing what otherwise surfaced as
+   an accidental deep-eject snap. Everything else keeps the zero-displacement rule.
 2. **Every deck ENTRY is gated on a LEGAL deck state** (the landing spot must satisfy deck collision, else
    perch). No entry may create an impossible position and hope later ticks fix it.
 3. **Direction-aware doors, not cooldowns.** The gangplank pair (walk-on/walk-off) is input-asymmetric

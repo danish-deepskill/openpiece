@@ -495,11 +495,11 @@ describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () =
     expect(Math.abs(a.transform!.x - (500 + rail.lx))).toBeLessThan(8); // dropped WHERE IT STOOD, not flung
   });
 
-  it('RAIL DROP-OFF with the standard humanoid (r=11, wider than the 16px outer band) NEVER jumps a tick', () => {
-    // The console-caught snap: a body wider than the rail's outer water band can never stand clear of the wood
-    // while on the hull, so it exits still OVERLAPPING the gunwale — and must be allowed to: the frame beat
-    // mutes the hull eject while the embedded-veto lift lets it WALK itself clear. The whole drop must move at
-    // WALK-STEP granularity, every tick — both prior attempts (radial eject, forward clearance slide) failed this.
+  it('RAIL DROP-OFF (r=11, full-tile rails): ONE deliberate step-down hop, then walk-granularity, ends clear', () => {
+    // Under FULL-TILE rails the perch spot has no legal in-place world position (it's inside the solid block),
+    // so the drop-off is one INTENTIONAL bounded step to just past the block's seaward face — a visible hop
+    // off the gunwale, like stepping down from a world stone wall. The contract: exactly ONE step larger than
+    // walk granularity, bounded by halfTile + r + 1, no accidental ejects before or after, ends clear + swim.
     const { world, ships, move, a } = perchSetup(11);
     const hulls = new HullCollisionSystem(world);
     const ship = world.first('ship')!;
@@ -507,6 +507,7 @@ describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () =
     a.mover!.frameCd = 0;
     let px = a.transform!.x;
     let py = a.transform!.y;
+    let hops = 0;
     let maxStep = 0;
     for (let i = 0; i < 90; i++) {
       a.mover!.vx = 0;
@@ -514,14 +515,17 @@ describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () =
       move.update(SIM);
       ships.update(SIM);
       hulls.update();
-      maxStep = Math.max(maxStep, Math.hypot(a.transform!.x - px, a.transform!.y - py));
+      const step = Math.hypot(a.transform!.x - px, a.transform!.y - py);
+      if (step > 3) hops++; // anything beyond walk granularity must be THE step-down, once
+      maxStep = Math.max(maxStep, step);
       px = a.transform!.x;
       py = a.transform!.y;
     }
     expect(a.onDeck).toBeUndefined(); // dropped off the gunwale
     expect(a.mover!.mode).toBe('swim');
-    expect(maxStep).toBeLessThan(3); // walk-step granularity ONLY — no eject, no slide, no yank, ever
-    expect(hullBlocksWorldPoint(ship.transform!, grid, px, py, 11)).toBe(false); // and it walked itself clear
+    expect(hops).toBe(1); // ONE deliberate hop — never a second snap (the old accidental deep-eject)
+    expect(maxStep).toBeLessThan(16 + 11 + 2); // bounded by the step-down geometry (halfTile + r + 1)
+    expect(hullBlocksWorldPoint(ship.transform!, grid, px, py, 11)).toBe(false); // and it landed clear
   });
 
   it('the drop-off waits out the post-landing beat (landing on the rail holding seaward must not dunk you)', () => {

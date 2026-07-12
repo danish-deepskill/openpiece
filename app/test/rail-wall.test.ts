@@ -146,15 +146,11 @@ describe('the rail walls a grounded walker (hullWall)', () => {
     }
   });
 
-  it('the two hull truths: the strip blocks a WALKER but stays open to a SWIMMER (hugging the drawn wood)', () => {
-    // measured MID-HULL (the south rail amidships): the open-hull side is where the swimmer affordance lives —
-    // the DOOR's flanking rails are solid JAMBS in both truths (see the jamb rule + the door test below).
+  it('ONE hull truth: a rail is a FULL-TILE block to every mode (the simple-collision overhaul)', () => {
     const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
-    const rail = grid.cells.find((c) => c.cx === 2 && c.cy === 3)!; // south rail, away from the door
-    const stripX = rail.lx;
-    const stripY = rail.ly + 12; // in the cell's open sea-half (south of its wood line)
-    expect(hullBlocksOutside(grid, stripX, stripY, 11, true)).toBe(true); // a wader is WALLED out of the strip
-    expect(hullBlocksOutside(grid, stripX, stripY, 11, false)).toBe(false); // a swimmer still floats in it, up to the wood
+    const rail = grid.cells.find((c) => c.cx === 2 && c.cy === 3)!; // south rail amidships
+    expect(hullBlocksOutside(grid, rail.lx, rail.ly + 12, 11)).toBe(true); // anywhere in the cell blocks anyone
+    expect(hullBlocksOutside(grid, rail.lx, rail.ly + 16 + 12, 11)).toBe(false); // a radius past the cell line — open sea
   });
 
   it('the CENTER rule holds at the door: the angled lane approach can never put a center inside the rail', () => {

@@ -67,10 +67,7 @@ export class HullCollisionSystem {
           e.mover!.onLedge = !deckCanOccupy(grid, local.lx, local.ly, t.r, false, false);
           continue;
         }
-        // a GROUNDED world walker whose CENTER sits inside a rail cell is always illegal (legal rail-standing
-        // is the PERCH, which lives in the deck frame) — heal it with the same eject as a wood overlap
-        const centerOnRail = deckCellAtLocal(grid, local.lx, local.ly)?.tile === 'rail';
-        if (!centerOnRail && !hullBlocksOutside(grid, local.lx, local.ly, t.r)) continue; // clear — nothing to do
+        if (!hullBlocksOutside(grid, local.lx, local.ly, t.r)) continue; // clear — nothing to do
         // JUST TRANSITIONED (the frame beat): a body wider than the rail's outer band legitimately exits the
         // drop-off still overlapping the gunwale wood — the beat lets it WALK itself clear (the embedded-veto
         // lift permits moving while overlapped) instead of being ejected: ejecting here was the walk-off snap.
@@ -127,8 +124,7 @@ export class HullCollisionSystem {
         const nlx = lx + Math.cos(a) * ring;
         const nly = ly + Math.sin(a) * ring;
         if (hullBlocksOutside(grid, nlx, nly, r)) continue;
-        if (deckCellAtLocal(grid, nlx, nly)?.tile === 'rail') continue; // an eject target on a rail heals nothing
-        const clear = hullWoodClearance(grid, nlx, nly, false, r);
+        const clear = hullWoodClearance(grid, nlx, nly, r);
         if (clear > bestClear) {
           bestClear = clear;
           bx = nlx;

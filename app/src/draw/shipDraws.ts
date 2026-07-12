@@ -4,25 +4,20 @@ import { ShipHulls } from '../defs/ships';
 import type { DrawFn } from './actorDraws';
 
 const DECK_PLANK = 0xcaa06a; // the walkable deck surface (plank)
-const RAIL_WOOD = 0x6b4522; // the gunwale wood — a rail tile's INNER half is wood, its sea-facing half is undrawn
+const RAIL_WOOD = 0x6b4522; // the gunwale wood — a rail tile is a FULL block of it (collision matches exactly)
 const RAIL_EDGE = 0x3a2410; // the gunwale's outline
 const HELM_TINT = 0x8a6a3a; // the helm station tile, a touch darker than plank so it reads
 const CANNON_TILE = 0x4a4a52; // an iron gun tile
 const GANGPLANK_WOOD = 0x9a7038; // the gangplank board — a distinct darker plank, the board/leave door in the rail
 
-/** How far (fraction of a tile) a rail tile's wood is pulled BACK from each sea-facing side — the "half rail":
- *  the outer half of a rail tile is left undrawn so the sea shows through; the inner half is the wood gunwale. */
-const RAIL_INSET = 0.5;
-
-/** Per-tile deck-surface fill for the WALKABLE tiles only (rail is drawn separately as a half-tile gunwale, so it
- *  is NOT in here — a rail tile gets no deck floor). Stations tint over the plank; the gangplank is its own board. */
+/** Per-tile deck-surface fill for the WALKABLE tiles only (rail is drawn separately as the full-tile gunwale, so
+ *  it is NOT in here — a rail tile gets no deck floor). Stations tint over the plank; the gangplank is its own board. */
 const SURFACE_FILL: Partial<Record<DeckTile, number>> = { deck: DECK_PLANK, helm: HELM_TINT, cannon: CANNON_TILE, hole: 0x241a10, gangplank: GANGPLANK_WOOD };
 
 /**
  * Oriented ship (bow at +x in LOCAL space; RenderSystem rotates the Graphics to the heading). The hull IS the
- * deck grid: walkable tiles are the plank floor; each RAIL tile is HALF wood, HALF open sea — the renderer reads
- * each rail cell's NEIGHBORS and pulls the wood back from every SEA-FACING side by half a tile, so straight edges
- * show sea on their outer half and corners (two sea sides trimmed) taper into a boat bevel. All auto from the grid.
+ * deck grid: walkable tiles are the plank floor; each RAIL tile is a FULL block of gunwale wood (its collision,
+ * exactly), with outer corners cosmetically beveled at 45° so the hull tapers like a boat. All auto from the grid.
  */
 export const drawShip: DrawFn = (g, e) => {
   const sh = e.ship!;
@@ -32,7 +27,6 @@ export const drawShip: DrawFn = (g, e) => {
   const grid = deckOf(sh.hull, d.deck);
   const s = grid.tilePx;
   const h = s / 2;
-  const inset = s * RAIL_INSET; // how far the rail wood retreats from a sea-facing side
   const ship = (cx: number, cy: number): boolean => tileAt(grid, cx, cy) !== undefined; // is there hull here?
 
   // water shadow — an ellipse under the whole hull (sized to the derived grid span)
@@ -48,10 +42,11 @@ export const drawShip: DrawFn = (g, e) => {
     g.fillRect(c.lx - h, c.ly - h, s, s);
   }
 
-  // PASS 2 — the HALF-TILE GUNWALE. Each rail tile draws its wood as the cell rectangle pulled BACK by `inset` on
-  // every SEA-FACING side (deck-facing sides stay flush) → a straight edge shows sea on its outer half. An OUTER
-  // CORNER (two ADJACENT sea sides) instead draws a TRIANGLE: the outer corner is cut on the 45° diagonal so the
-  // hull tapers (a beveled boat corner), not a stepped quarter-square. Neighbor-driven, so any hull shape works.
+  // PASS 2 — the FULL-TILE GUNWALE (the developer's overhaul: simple collision, shaped looks). Every rail is a
+  // FULL cell of wood — exactly its full-tile hitbox, no sub-tile seams. An OUTER CORNER rail (exactly two
+  // ADJACENT sea sides) keeps the full-tile HITBOX but draws its sea corner CUT at 45° between the two sea
+  // edges' midpoints — a purely COSMETIC bevel so the hull reads as a boat, not a brick. Neighbor-driven, so
+  // any authored hull shape works.
   g.fillStyle(RAIL_WOOD, 1);
   g.lineStyle(1, RAIL_EDGE, 0.6);
   for (const c of grid.cells) {
@@ -60,41 +55,28 @@ export const drawShip: DrawFn = (g, e) => {
     const seaS = !ship(c.cx, c.cy + 1);
     const seaW = !ship(c.cx - 1, c.cy);
     const seaE = !ship(c.cx + 1, c.cy);
-    const wx = c.lx;
-    const wy = c.ly;
-    // outer-corner tile: exactly two ADJACENT sea sides. Draw a triangle whose hypotenuse (the 45° cut) faces the
-    // sea corner and whose two legs run along the deck-facing edges — so the corner reads as a diagonal bevel.
-    const cornerNW = seaN && seaW && !seaS && !seaE; // sea to the N and W → cut the NW corner
+    const x0 = c.lx - h;
+    const x1 = c.lx + h;
+    const y0 = c.ly - h;
+    const y1 = c.ly + h;
+    const cornerNW = seaN && seaW && !seaS && !seaE; // sea to the N and W → bevel the NW corner
     const cornerNE = seaN && seaE && !seaS && !seaW;
     const cornerSW = seaS && seaW && !seaN && !seaE;
     const cornerSE = seaS && seaE && !seaN && !seaW;
     if (cornerNW || cornerNE || cornerSW || cornerSE) {
-      // Same thin gunwale as a straight edge (the inner square, sea-facing sides pulled in by `inset`), but the
-      // OUTER corner of that square is cut on a 45° diagonal → a TRIANGLE, so the corner tapers into a boat bevel
-      // instead of reading as a stepped quarter-square. The two deck-facing corners stay square (they meet the
-      // neighbouring straight rails); only the single sea-facing corner is chamfered to a point.
-      const ix0 = wx - h + (seaW ? inset : 0); // the inner square (matches the straight-rail thickness)
-      const ix1 = wx + h - (seaE ? inset : 0);
-      const iy0 = wy - h + (seaN ? inset : 0);
-      const iy1 = wy + h - (seaS ? inset : 0);
-      // vertices: the deck-facing corner (apex, full) + the two edge ends, with the sea corner dropped to a point.
+      // a RIGHT TRIANGLE: the two deck-facing edges are the legs, the hypotenuse cuts the full cell diagonal
+      // across the sea corner — the classic boat taper (cosmetic; the hitbox stays the full tile)
       let poly;
-      if (cornerNW) poly = [{ x: ix1, y: iy0 }, { x: ix1, y: iy1 }, { x: ix0, y: iy1 }]; // apex SE; cut toward NW
-      else if (cornerNE) poly = [{ x: ix0, y: iy0 }, { x: ix1, y: iy1 }, { x: ix0, y: iy1 }]; // apex SW
-      else if (cornerSW) poly = [{ x: ix1, y: iy0 }, { x: ix1, y: iy1 }, { x: ix0, y: iy0 }]; // apex NE
-      else poly = [{ x: ix0, y: iy0 }, { x: ix1, y: iy0 }, { x: ix0, y: iy1 }]; // cornerSE, apex NW
+      if (cornerNW) poly = [{ x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]; // SE half kept
+      else if (cornerNE) poly = [{ x: x0, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]; // SW half kept
+      else if (cornerSW) poly = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }]; // NE half kept
+      else poly = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x0, y: y1 }]; // NW half kept
       g.fillPoints(poly, true);
       g.strokePoints(poly, true);
       continue;
     }
-    // straight edge / interior: the inset rectangle (sea shows on any sea-facing half).
-    const x0 = wx - h + (seaW ? inset : 0);
-    const x1 = wx + h - (seaE ? inset : 0);
-    const y0 = wy - h + (seaN ? inset : 0);
-    const y1 = wy + h - (seaS ? inset : 0);
-    if (x1 <= x0 || y1 <= y0) continue;
-    g.fillRect(x0, y0, x1 - x0, y1 - y0);
-    g.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    g.fillRect(x0, y0, s, s);
+    g.strokeRect(x0, y0, s, s);
   }
 
   // PASS 3 — station markers (wheel + cannon barrels) on top of everything.

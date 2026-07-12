@@ -151,19 +151,20 @@ describe('GridCollider geometry (toy oracle)', () => {
   });
 });
 
-describe('deck masks: the hull collides AS DRAWN (world/deckCollision.ts)', () => {
-  // 4×3 ring @ 32px, ship-centered → grid spans x [−64,64], y [−48,48]. Row 0's straight rail wood is its
-  // deck-facing HALF (y [−32,−16]); the NW corner's wood is its deck-facing QUARTER (x [−48,−32] × y [−32,−16]).
+describe('deck masks: FULL-TILE hull blocks (world/deckCollision.ts — the simple-collision overhaul)', () => {
+  // 4×3 ring @ 32px, ship-centered → grid spans x [−64,64], y [−48,48]. Every rail is a FULL solid block —
+  // one truth for every mode; corners are beveled COSMETICALLY only (shipDraws), never in collision.
   const grid = parseDeck(['####', '#..#', '####']);
 
-  it('a straight rail blocks from outside ONLY as its half-slab of wood — the drawn-sea half is open water', () => {
-    expect(hullBlocksOutside(grid, -16, -40, 2)).toBe(false); // the rail cell's OUTER half — sea, swimmable now
-    expect(hullBlocksOutside(grid, -16, -24, 2)).toBe(true); // the INNER half — the gunwale wood
+  it('a rail blocks from outside as its FULL tile — walker and swimmer alike, no sub-tile seams', () => {
+    expect(hullBlocksOutside(grid, -16, -40, 2)).toBe(true); // anywhere in the rail cell blocks…
+    expect(hullBlocksOutside(grid, -16, -24, 2)).toBe(true);
+    expect(hullBlocksOutside(grid, -16, -51, 2)).toBe(false); // …and open sea starts exactly at the cell line
   });
 
-  it('a beveled corner blocks as its quarter — a swimmer rounds the drawn bevel, not a full-tile box', () => {
-    expect(hullBlocksOutside(grid, -56, -40, 2)).toBe(false); // the corner cell's outer quarter — open sea
-    expect(hullBlocksOutside(grid, -40, -24, 2)).toBe(true); // the deck-facing quarter — the drawn wood
+  it('a CORNER rail is the same full block (the 45° bevel is cosmetic, not collision)', () => {
+    expect(hullBlocksOutside(grid, -56, -40, 2)).toBe(true); // the drawn-cut corner region still blocks
+    expect(hullBlocksOutside(grid, -40, -24, 2)).toBe(true);
   });
 
   it('interior deck cells are SOLID boat from outside (no standing on deck without boarding)', () => {
@@ -175,13 +176,8 @@ describe('deck masks: the hull collides AS DRAWN (world/deckCollision.ts)', () =
     expect(hullBlocksOutside(g, -48, 0, 2)).toBe(false); // standing in the doorway — not pushed
   });
 
-  it('a rail with sea on OPPOSITE sides draws no wood → collides as nothing (truthful to the picture)', () => {
-    const strip = parseDeck(['#']); // a lone rail cell: sea on all four sides
-    expect(hullBlocksOutside(strip, 0, 0, 2)).toBe(false);
-  });
-
-  it('ON DECK the rail cell blocks a grounded walker FULL-cell (wood + the water gap both unstandable)', () => {
-    expect(deckCanOccupy(grid, -16, -40, 2, false)).toBe(false); // even the outer (water) half — no standing there
+  it('ON DECK the rail cell blocks a grounded walker FULL-cell (matches the outside truth exactly)', () => {
+    expect(deckCanOccupy(grid, -16, -40, 2, false)).toBe(false); // no standing on the rail from the deck side
     expect(deckCanOccupy(grid, -16, -40, 2, true)).toBe(true); // airborne clears the low wall entirely
     expect(deckCanOccupy(grid, -16, 0, 6, false)).toBe(true); // the interior is floor
   });
