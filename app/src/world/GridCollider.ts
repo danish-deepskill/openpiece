@@ -83,7 +83,9 @@ export class GridCollider {
   /** Axis-separated move so sliding along walls feels right. Mutates {x,y}. `blocked` = an OPTIONAL extra obstacle
    *  predicate for a MOVING obstacle the static grid can't know (a ship hull): a step is taken only if the grid AND
    *  `blocked` both allow the target. Takes (x, y, r) so callers can share ONE persistent closure across every body
-   *  size (no per-entity allocation). Keeps the collider pure geometry — the caller supplies the ship check. */
+   *  size (no per-entity allocation). Keeps the collider pure geometry — the caller supplies the ship check.
+   *  A blocked PURE single-axis push gets CORNER ASSIST (below) — rolls around a shallow corner clip instead of
+   *  pinning dead on it; diagonal input already slides via the axis split, so it needs none. */
   tryMove(
     pos: { x: number; y: number },
     dx: number,
@@ -92,8 +94,79 @@ export class GridCollider {
     ctx: MoveCtx,
     blocked?: (x: number, y: number, r: number) => boolean,
   ): void {
-    if (dx !== 0 && this.canOccupy(pos.x + dx, pos.y, r, ctx) && !blocked?.(pos.x + dx, pos.y, r)) pos.x += dx;
-    if (dy !== 0 && this.canOccupy(pos.x, pos.y + dy, r, ctx) && !blocked?.(pos.x, pos.y + dy, r)) pos.y += dy;
+    let moved = false;
+    if (dx !== 0 && this.canOccupy(pos.x + dx, pos.y, r, ctx) && !blocked?.(pos.x + dx, pos.y, r)) {
+      pos.x += dx;
+      moved = true;
+    }
+    if (dy !== 0 && this.canOccupy(pos.x, pos.y + dy, r, ctx) && !blocked?.(pos.x, pos.y + dy, r)) {
+      pos.y += dy;
+      moved = true;
+    }
+    // CORNER ASSIST fires only when the tick made NO progress at all: a pure push pinned on a corner, or a
+    // DIAGONAL whose BOTH axes clip the same corner point (the residual stick — the axis split slides along
+    // faces fine, but a convex corner tip rejects both). The other input axis, if any, picks the preferred
+    // curl side (pushing S+E with south blocked tries the EAST curl first — the way you're already pressing).
+    if (moved) return;
+    if (dx !== 0 && this.cornerAssist(pos, dx, 0, r, ctx, blocked, Math.sign(dy))) return;
+    if (dy !== 0) this.cornerAssist(pos, 0, dy, r, ctx, blocked, Math.sign(dx));
+  }
+
+  /** CORNER ASSIST — the anti-pin: a pure single-axis push blocked ONLY by a shallow corner clip (a lateral
+   *  shift of at most ONE BODY RADIUS would clear the way forward) redirects this tick's motion SIDEWAYS toward
+   *  the clear side, so walking south past a wall corner rolls around it instead of demanding a manual sidestep.
+   *  Never faster than the intent (the sidestep spends the same per-tick budget), never a teleport (the shift
+   *  itself must be legal ground), and a real wall FACE (both ±r probes blocked) gets no help — walls still
+   *  stop you dead. Runs only on already-blocked steps (cold), shared by every frame + every mover (the Moat:
+   *  the player's corner and the AI chaser's corner are the same corner). */
+  private cornerAssist(
+    pos: { x: number; y: number },
+    dx: number,
+    dy: number,
+    r: number,
+    ctx: MoveCtx,
+    blocked?: (x: number, y: number, r: number) => boolean,
+    prefer = 0, // the other input axis's sign, if any — probe that curl side first
+  ): boolean {
+    const step = Math.abs(dx + dy); // the tick's motion budget for this axis (exactly one of dx/dy is nonzero)
+    const first = prefer !== 0 ? prefer : 1;
+    for (const side of [first, -first]) {
+      // would the forward step clear if we stood a bit toward this side? A LADDER of offsets, nearest first:
+      // one full radius overshoots the sweet spot of a passage barely wider than the body (a doorway's
+      // thread-through window is a few px — probing only ±r landed on the far jamb and reported "wall"),
+      // which is why near-body-width gaps still stuck on a 45° push.
+      let ok = false;
+      for (const frac of [0.35, 0.7, 1]) {
+        const probeX = dy !== 0 ? pos.x + side * r * frac : pos.x + dx;
+        const probeY = dx !== 0 ? pos.y + side * r * frac : pos.y + dy;
+        if (this.canOccupy(probeX, probeY, r, ctx) && !blocked?.(probeX, probeY, r)) {
+          ok = true;
+          break;
+        }
+      }
+      if (!ok) continue;
+      // it clears → CURL at 45° first (sidestep + forward split of the same budget): one steady arc around
+      // the corner. The old full-budget sidestep alternated with full-forward ticks on stepped walls — the
+      // reported left/right walk-shake while curling. Diagonal magnitude = step/√2 per axis ⇒ never faster
+      // than the intent.
+      const diag = step * Math.SQRT1_2;
+      const cx = dy !== 0 ? pos.x + side * diag : pos.x + Math.sign(dx) * diag;
+      const cy = dy !== 0 ? pos.y + Math.sign(dy) * diag : pos.y + side * diag;
+      if (this.canOccupy(cx, cy, r, ctx) && !blocked?.(cx, cy, r)) {
+        pos.x = cx;
+        pos.y = cy;
+        return true;
+      }
+      // clip still too deep for the 45° arc → plain full-budget sidestep this tick (the arc takes over next)
+      const sx = dy !== 0 ? pos.x + side * step : pos.x;
+      const sy = dx !== 0 ? pos.y + side * step : pos.y;
+      if (this.canOccupy(sx, sy, r, ctx) && !blocked?.(sx, sy, r)) {
+        pos.x = sx;
+        pos.y = sy;
+        return true;
+      }
+    }
+    return false;
   }
 
   /** DEPENETRATION — if a body is STUCK inside solid (spawned in a wall, landed on a tree, shoved into stone),

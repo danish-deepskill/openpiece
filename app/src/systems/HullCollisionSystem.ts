@@ -1,6 +1,6 @@
 import { deckCellAtLocal, deckOf, deckToWorld, deckWalkable, gangplankCell, gangplankOutward, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
-import { deckCanOccupy, hullBlocksOutside } from '../world/deckCollision';
+import { deckCanOccupy, hullBlocksOutside, hullWoodClearance } from '../world/deckCollision';
 import { enterDeck, inFrameCooldown } from '../world/frames';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
@@ -67,7 +67,10 @@ export class HullCollisionSystem {
           e.mover!.onLedge = !deckCanOccupy(grid, local.lx, local.ly, t.r, false, false);
           continue;
         }
-        if (!hullBlocksOutside(grid, local.lx, local.ly, t.r)) continue; // clear — nothing to do
+        // a GROUNDED world walker whose CENTER sits inside a rail cell is always illegal (legal rail-standing
+        // is the PERCH, which lives in the deck frame) — heal it with the same eject as a wood overlap
+        const centerOnRail = deckCellAtLocal(grid, local.lx, local.ly)?.tile === 'rail';
+        if (!centerOnRail && !hullBlocksOutside(grid, local.lx, local.ly, t.r)) continue; // clear — nothing to do
         // JUST TRANSITIONED (the frame beat): a body wider than the rail's outer band legitimately exits the
         // drop-off still overlapping the gunwale wood — the beat lets it WALK itself clear (the embedded-veto
         // lift permits moving while overlapped) instead of being ejected: ejecting here was the walk-off snap.
@@ -107,22 +110,36 @@ export class HullCollisionSystem {
   /** MINIMAL ejection — the hull is a WALL you BUMP, not a magnet that flings you. Search the NEAREST clear spot
    *  in fine rings (1.5px × 8 directions, nearest ring first): a shallow overlap ejects roughly PERPENDICULAR by
    *  just the penetration depth. (The old radial-from-hull-center walk moved a 6px overlap 13px DIAGONALLY —
-   *  radial is longer than the surface normal, and its direction ignores which way the body entered.) A DEEP
-   *  embed (a ship sweeping over a stationary body) falls back to the coarse radial walk so nobody stays inside. */
+   *  radial is longer than the surface normal, and its direction ignores which way the body entered.) Within a
+   *  ring, take the MOST-CLEARING candidate (≈ the outward normal), never first-clear-in-fixed-order: the fixed
+   *  scan started at +x, so every eject nudged EAST — a steering walker skirting a rotated corner had each
+   *  tick's westward progress exactly cancelled (the pinned-at-the-jamb-corner limit cycle). A DEEP embed (a
+   *  ship sweeping over a stationary body) falls back to the coarse radial walk so nobody stays inside. */
   private pushOut(e: Entity, ship: Entity, lx: number, ly: number, r: number): void {
     const grid = deckOf(ship.ship!.hull, ShipHulls.get(ship.ship!.hull).deck);
     const st = ship.transform!;
     for (let ring = 1.5; ring <= grid.tilePx * 2; ring += 1.5) {
+      let bx = 0;
+      let by = 0;
+      let bestClear = -Infinity;
       for (let k = 0; k < 8; k++) {
         const a = (k / 8) * Math.PI * 2;
         const nlx = lx + Math.cos(a) * ring;
         const nly = ly + Math.sin(a) * ring;
-        if (!hullBlocksOutside(grid, nlx, nly, r)) {
-          const w = deckToWorld(st, nlx, nly); // the closest clear spot → the minimum nudge, not a shove
-          e.transform!.x = w.x;
-          e.transform!.y = w.y;
-          return;
+        if (hullBlocksOutside(grid, nlx, nly, r)) continue;
+        if (deckCellAtLocal(grid, nlx, nly)?.tile === 'rail') continue; // an eject target on a rail heals nothing
+        const clear = hullWoodClearance(grid, nlx, nly, false, r);
+        if (clear > bestClear) {
+          bestClear = clear;
+          bx = nlx;
+          by = nly;
         }
+      }
+      if (bestClear > -Infinity) {
+        const w = deckToWorld(st, bx, by); // the closest ring's outward-most clear spot — the minimum honest nudge
+        e.transform!.x = w.x;
+        e.transform!.y = w.y;
+        return;
       }
     }
     // DEEP embed (beyond 2 tiles of overlap): the old radial-outward walk — coarse, but guaranteed to exit

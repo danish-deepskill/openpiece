@@ -1,4 +1,4 @@
-import { deckOf, tileAt, type DeckTile } from '../defs/decks';
+import { deckOf, isJamb, tileAt, type DeckTile } from '../defs/decks';
 import { clamp } from '../core/math';
 import { ShipHulls } from '../defs/ships';
 import type { DrawFn } from './actorDraws';
@@ -62,6 +62,15 @@ export const drawShip: DrawFn = (g, e) => {
     const seaE = !ship(c.cx + 1, c.cy);
     const wx = c.lx;
     const wy = c.ly;
+    // DOOR JAMB: a rail flanking the gangplank draws as a FULL wooden post — flush to the whole cell — because
+    // its collision IS the whole cell (deckCollision's jamb rule: solid to swimmers too, after bodies kept
+    // slipping past the door's open halves). isJamb is the ONE shared predicate, so art and collision can
+    // never disagree here — and the doorframe telegraphs the boarding spot.
+    if (isJamb(grid, c)) {
+      g.fillRect(wx - h, wy - h, s, s);
+      g.strokeRect(wx - h, wy - h, s, s);
+      continue;
+    }
     // outer-corner tile: exactly two ADJACENT sea sides. Draw a triangle whose hypotenuse (the 45° cut) faces the
     // sea corner and whose two legs run along the deck-facing edges — so the corner reads as a diagonal bevel.
     const cornerNW = seaN && seaW && !seaS && !seaE; // sea to the N and W → cut the NW corner

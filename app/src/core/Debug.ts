@@ -18,7 +18,7 @@ const DEFS: DebugFlagDef[] = [
   { key: 'combat.hitbox', label: 'Attack hitboxes (live volumes)', group: 'Combat', default: false },
   { key: 'combat.guard', label: 'Guard arc (block/parry cover)', group: 'Combat', default: false },
   { key: 'combat.god', label: 'God mode (invincible + free abilities)', group: 'Combat', default: false },
-  { key: 'world.collision', label: 'Wall collision', group: 'World', default: false },
+  { key: 'world.collision', label: 'Collision truth: solids + unit bodies (green=foot, blue=swim) + hull wood/walker-wall', group: 'World', default: false },
   { key: 'world.frames', label: 'Movement frame (world/deck) readout', group: 'World', default: false },
   { key: 'perf.hud', label: 'FPS + entity count', group: 'Perf', default: false },
   { key: 'view.zoomOut', label: 'Zoom out 2× (see off-screen shooters)', group: 'View', default: false },

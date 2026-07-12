@@ -111,6 +111,8 @@ export interface Blackboard {
   //                    it stays near them (and its chase-on-sight still breaks off to fight, then returns)
   heeling?: boolean; // follow hysteresis: currently closing on the leader (set past FOLLOW_FAR, cleared inside
   //                    FOLLOW_NEAR) — the two-threshold band that stops the follower buzzing at one tether line
+  homeShipId?: number; // the movement FRAME `home` lives in (the leader's ship while aboard, undefined = world):
+  //                      cross-frame heeling routes via the gangplank door instead of stalling at the hull (frameLeg)
   // pursuit & perception — cross-entity refs are IDS at rest (ecs-hot-loop canon: serializable, and a dead
   // ref resolves to undefined via world.byId instead of dangling); brains re-resolve them each tick
   quarryId?: number; // who we're chasing (persists past line-of-sight)
@@ -122,8 +124,13 @@ export interface Blackboard {
   spotT?: number; // "!" double-take countdown: set on entering `alert`, ticks down, then commits to the chase
   betrayHpFrac?: number; // friendly-fire tolerance (HP frac): an ALLY that drops me to ≤ this earns a
   //                        permanent grudge (seeded at spawn from unit/profile; undefined ⇒ never turns)
-  perceivedX?: number; // perceived (reaction-lagged) target position — where it THINKS the target is
-  perceivedY?: number;
+  perceivedX?: number; // perceived (reaction-lagged) target position — where it THINKS the target is.
+  perceivedY?: number; //   COORDS ARE FRAME-DEPENDENT: deck-LOCAL px while perceivedFrame is set, else world px
+  perceivedFrame?: number; // the FRAME the perceived memory lives in (a shared ship id, undefined = world):
+  //                          perception lags RELATIVE motion — two bodies riding one sailing deck are mutually
+  //                          still, so same-deck memory eases in deck-local space (never trails the ship)
+  legDodgeSign?: 1 | -1; // which way around a hull the boarding approach is walking (frameLeg's tangent
+  //                        stopgap) — held with hysteresis so a head-on read can't flip-flop mid-circuit
   // wander / roam
   wanderT: number; // countdown to the next roam point
   roamX?: number;

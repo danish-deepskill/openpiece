@@ -135,7 +135,7 @@ export class Pathfinder {
   /**
    * Can a circle of radius `r` travel the straight line a→b without its BODY clipping a wall? Radius-aware,
    * for movement decisions — so an agent routes around a corner its body can't clear, even when the thin
-   * center-line is open. (Vision uses plain lineOfSight; a gap you can see through may be too tight to walk.)
+   * center-line is open. (Vision uses sightLine; a gap you can see through may be too tight to walk.)
    */
   clearLine(ax: number, ay: number, bx: number, by: number, mode: MoveMode, r: number): boolean {
     const dx = bx - ax;
@@ -159,13 +159,22 @@ export class Pathfinder {
     return true;
   }
 
-  /** True if a straight line between two pixel points crosses no blocking tile. */
-  lineOfSight(ax: number, ay: number, bx: number, by: number, mode: MoveMode): boolean {
+  /** VISION line: true if a straight line between two pixel points crosses nothing that blocks SIGHT.
+   *  Sight is NOT walkability — eyes have no move mode. Terrain blocks sight only when TALL (the same
+   *  airWalkable rule a musket ball uses — Collision.shotBlockedAt), so DEEP WATER never blinds anyone:
+   *  the old mode-based check made a foot chaser lose a target standing on a ship's deck (over water
+   *  tiles) — the "he stopped seeing me at the plank" bug. Structures keep their current occlusion
+   *  (walls/trees hide, doorways see through). Deliberate residual mismatch, owned by the perception
+   *  pass (AI_FOUNDATION §12.2): a LOW wall still blocks sight here while a ball flies over it. */
+  sightLine(ax: number, ay: number, bx: number, by: number): boolean {
     const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / (TILE * 0.5)));
     for (let i = 0; i <= steps; i++) {
       const x = ax + ((bx - ax) * i) / steps;
       const y = ay + ((by - ay) * i) / steps;
-      if (!this.walkableAtPx(x, y, mode)) return false; // can see through doorways
+      const tx = Math.floor(x / TILE);
+      const ty = Math.floor(y / TILE);
+      if (!TileGrid.airWalkable(this.grid.tileAt(tx, ty))) return false; // tall terrain (none today, but the rule holds)
+      if (!this.grid.structures.pathable(tx, ty, 'foot')) return false; // walls/trees hide; doorways see through
     }
     return true;
   }

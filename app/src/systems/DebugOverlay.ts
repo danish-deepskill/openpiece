@@ -8,8 +8,11 @@ import { BLOCK_ARC, PARRY_ARC } from '../combat/guard';
 import { strikeFrameOf, strikeVolumes } from '../combat/hitVolume';
 import { phaseAt } from '../combat/phases';
 import { swingGeomOf, swingPose } from '../combat/swing';
+import { deckOf, deckToWorld, type ShipPose } from '../defs/decks';
+import { ShipHulls } from '../defs/ships';
 import type { World } from '../ecs/World';
-import type { MoveCtx } from '../world/GridCollider';
+import { hullDebugMasks } from '../world/deckCollision';
+import { Q_NE, Q_NW, Q_SE, Q_SW, type MoveCtx } from '../world/GridCollider';
 import { TileGrid } from '../world/TileGrid';
 
 /** Phase → debug tint: the tell reads warning-yellow, the live strike red, the punishable tail gray. */
@@ -57,6 +60,30 @@ export class DebugOverlay {
       .setVisible(false);
   }
 
+  /** Draw a DECK-LOCAL axis-aligned rect as the rotated world quad it really is (the collision overlay's
+   *  hull-quarter primitive) — corners through deckToWorld, so the debug rides the ship's live pose. */
+  private quad(pose: ShipPose, lx0: number, ly0: number, lx1: number, ly1: number, fill?: number, line?: number, alpha = 0.5): void {
+    const g = this.gfx;
+    const p0 = deckToWorld(pose, lx0, ly0);
+    const p1 = deckToWorld(pose, lx1, ly0);
+    const p2 = deckToWorld(pose, lx1, ly1);
+    const p3 = deckToWorld(pose, lx0, ly1);
+    g.beginPath();
+    g.moveTo(p0.x, p0.y);
+    g.lineTo(p1.x, p1.y);
+    g.lineTo(p2.x, p2.y);
+    g.lineTo(p3.x, p3.y);
+    g.closePath();
+    if (fill !== undefined) {
+      g.fillStyle(fill, alpha);
+      g.fillPath();
+    }
+    if (line !== undefined) {
+      g.lineStyle(1.5, line, 0.9);
+      g.strokePath();
+    }
+  }
+
   private label(x: number, y: number, text: string, color: string): void {
     let t = this.labels[this.used];
     if (!t) {
@@ -91,7 +118,11 @@ export class DebugOverlay {
     g.clear();
     this.used = 0;
 
-    // World: highlight foot-blocking cells in view (pathfinding obstacles) — BOTH layers, terrain + structures
+    // World: the COLLISION TRUTH view — everything a mover actually collides with, drawn from the same tables
+    // the colliders read (never re-derived, so it can't drift): world foot-solids, ship hulls at quarter
+    // accuracy under BOTH truths (orange = the drawn wood everyone bumps and a swimmer floats up to;
+    // translucent red = the WALKER wall band — full rail cells, grounded movers only; green outline = the
+    // gangplank door), and every unit's true body circle (green = foot, blue = swim, faded = airborne).
     if (Debug.on('world.collision')) {
       const v = this.scene.cameras.main.worldView;
       const x0 = Math.max(0, Math.floor(v.x / TILE));
@@ -104,6 +135,39 @@ export class DebugOverlay {
           const blocked = !TileGrid.walkable(this.grid.tileAt(x, y), 'foot') || this.grid.structures.blocks(x, y, FOOT_CTX);
           if (blocked) g.fillRect(x * TILE, y * TILE, TILE, TILE);
         }
+      }
+      // SHIP HULLS — quarter-true, rotated with the ship. Interior cells are skipped (solid from outside,
+      // but they're the deck floor — filling them is noise); rails + the door carry all the interesting truth.
+      for (const s of this.world.with('ship', 'transform')) {
+        const st = s.transform!;
+        const hull = ShipHulls.get(s.ship!.hull);
+        const grid = deckOf(s.ship!.hull, hull.deck);
+        const { wood, wall } = hullDebugMasks(grid);
+        const h = grid.tilePx / 2;
+        for (const c of grid.cells) {
+          if (c.tile === 'gangplank') {
+            this.quad(st, c.lx - h, c.ly - h, c.lx + h, c.ly + h, undefined, 0x5aff7a); // the door
+            continue;
+          }
+          if (c.tile !== 'rail') continue;
+          const i = c.cy * grid.cols + c.cx;
+          if (wall[i] !== 0) this.quad(st, c.lx - h, c.ly - h, c.lx + h, c.ly + h, 0xff2b2b, undefined, 0.15); // the walker wall band
+          const m = wood[i];
+          if (m & Q_NW) this.quad(st, c.lx - h, c.ly - h, c.lx, c.ly, 0xffaa00, undefined, 0.45);
+          if (m & Q_NE) this.quad(st, c.lx, c.ly - h, c.lx + h, c.ly, 0xffaa00, undefined, 0.45);
+          if (m & Q_SW) this.quad(st, c.lx - h, c.ly, c.lx, c.ly + h, 0xffaa00, undefined, 0.45);
+          if (m & Q_SE) this.quad(st, c.lx, c.ly, c.lx + h, c.ly + h, 0xffaa00, undefined, 0.45);
+        }
+      }
+      // UNIT BODIES — the true collision circle every mover sweeps (r, not the sprite): mode-tinted so the
+      // two hull truths read visually (a BLUE swimmer may hug the wood; a GREEN walker is walled at the band).
+      for (const e of this.world.with('transform', 'mover')) {
+        if (e.ship) continue; // boats draw their hull truth above
+        const t = e.transform!;
+        const m = e.mover!;
+        const color = m.mode === 'swim' ? 0x5ab8ff : 0x5aff7a;
+        g.lineStyle(1.5, color, m.layer === 'air' ? 0.3 : 0.9); // faded while airborne (passes over ground solids)
+        g.strokeCircle(t.x, t.y, t.r);
       }
     }
 

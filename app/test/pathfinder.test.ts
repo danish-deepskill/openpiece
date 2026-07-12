@@ -34,12 +34,22 @@ describe('Pathfinder', () => {
     expect(path!.every((p) => Math.floor(p.x / TILE) !== 5 || Math.floor(p.y / TILE) >= 8)).toBe(true);
   });
 
-  it('line-of-sight is blocked through a wall, clear otherwise', () => {
+  it('sight is blocked through a wall, clear otherwise', () => {
     const g = grass(10, 10);
     wallColumn(g, 5, 0, 8);
     const pf = new Pathfinder(g);
-    expect(pf.lineOfSight(center(2), center(2), center(8), center(2), 'foot')).toBe(false); // crosses x=5
-    expect(pf.lineOfSight(center(2), center(2), center(2), center(7), 'foot')).toBe(true); // clear column
+    expect(pf.sightLine(center(2), center(2), center(8), center(2))).toBe(false); // crosses x=5
+    expect(pf.sightLine(center(2), center(2), center(2), center(7))).toBe(true); // clear column
+  });
+
+  it('DEEP WATER never blinds: sight crosses the sea even though foot PLANNING avoids it (the plank-chase bug)', () => {
+    // the regression: vision once reused the foot-walkability rule, so a chaser lost a target standing on a
+    // ship's deck (over water tiles) and walked home — sight is not walkability; eyes have no move mode.
+    const g = grass(10, 10);
+    for (let x = 3; x <= 6; x++) for (let y = 0; y < 10; y++) g.tiles[y][x] = TERRAIN.water; // a channel
+    const pf = new Pathfinder(g);
+    expect(pf.sightLine(center(1), center(5), center(8), center(5))).toBe(true); // sees clean across the water…
+    expect(pf.findPath(center(1), center(5), center(8), center(5), 'foot')).toBeNull(); // …which foot planning still avoids
   });
 
   it('plans THROUGH a closed door (DoorSystem opens it on arrival) that collision still blocks', () => {

@@ -1,7 +1,9 @@
 # Pathfinding & Movement Planning — the overhaul architecture
 
-**Status: DESIGNED (2026-07). Layer 2 slice 1 (gangplank portal) is the first build; other layers fire on
-their recorded triggers.** Companion: `features/movement-frames.md` (frames, the transition rulebook),
+**Status: DESIGNED (2026-07). Layer 2 slice 1 (gangplank portal) SHIPPED 2026-07 — `frameLeg` in
+`ai/brains.ts` redirects a cross-frame steering goal leg-by-leg through the door (live anchors off the
+ship's pose; transitions stay physics), behind the one `routeTo` chokepoint. Other layers fire on their
+recorded triggers.** Companion: `features/movement-frames.md` (frames, the transition rulebook),
 `ai/AI_INTELLIGENCE.md` (the INT ladder this plugs into), the RimWorld atlas (`references/rimworld-simple/` —
 adoption-tiers #32 tiered regions C/"defer until pain"; the pains are now enumerated here as triggers).
 
@@ -144,8 +146,14 @@ whole planning stack free to change shape between versions without save migratio
   only fixes the queries they'll stand on (nearest-reachable, region orders).
 
 ## Build order + triggers
-1. **NOW — Layer 2 slice 1**: frame-aware steerToward + the gangplank `door` edge. User-visible gap (crew
-   can't follow aboard; enemies stop at the plank). Needs no other layer first.
+1. **SHIPPED (2026-07) — Layer 2 slice 1**: frame-aware steering (`frameLeg` behind `routeTo`) + the
+   gangplank `door` edge. Crew heel through the plank; enemies chase aboard. A far-side/diagonal approach
+   walks a TANGENT around the hull (frameLeg's stopgap — the world planner still can't SEE hulls; the real
+   fix is Layer 0's cost providers). Deck legs steer DIRECT (no per-frame grids yet — decks are small open
+   rooms; the goal-stack generalizes when holds/interiors land). **Layer 0's trigger is now PROVEN pain:**
+   a far-side approach to a ROTATED hull rounds it but cannot reliably thread the final lane past the solid
+   door jambs on local steering alone (frame-route.test records the relaxed contract) — planner-visible
+   hulls own that last yard.
 2. **Layer 0** solver rewrite: before chunked sea, or the first profile showing pathfinding hot. Zero-risk
    (API preserved behind steerToward/findPath).
 3. **Layer 1** regions: trigger = job system starts, OR locked doors/compounds, OR unreachable-target

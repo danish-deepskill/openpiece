@@ -10,12 +10,15 @@ import { facesTarget, heavyHeading, isHeavy, steerFacing } from './steering';
 import { angleDiff, dist, norm, smoothFactor } from '../core/math';
 import { events } from '../core/EventBus';
 import { combatStance, type AIProfileDef } from '../defs/aiProfiles';
+import { deckCellAtLocal, deckOf, deckToWorld, gangplankCell, gangplankOutward, type DeckGrid, type ShipPose } from '../defs/decks';
+import { hullBlocksWorldPoint } from '../world/deckCollision';
 import { Bodies } from '../defs/bodies';
 import { Races } from '../defs/races';
 import { Sizes } from '../defs/sizes';
 import { factions } from '../defs/factions';
 import { ShipHulls } from '../defs/ships';
 import type { Entity, Loadout } from '../ecs/components';
+import type { World } from '../ecs/World';
 import type { AIContext } from './Brain';
 import { FsmBrain, type FsmState } from './FsmBrain';
 import { perceives } from './perception';
@@ -248,7 +251,7 @@ function spot(e: Entity, ctx: AIContext): Entity | undefined {
   const p = profileOf(e);
   const foe = ctx.query.nearestHostile(e, p.sight);
   if (!foe || !perceives(e, foe, p)) return undefined;
-  return ctx.pathfinder.lineOfSight(t.x, t.y, foe.transform!.x, foe.transform!.y, e.mover!.mode) ? foe : undefined;
+  return ctx.pathfinder.sightLine(t.x, t.y, foe.transform!.x, foe.transform!.y) ? foe : undefined;
 }
 
 /** Can this entity see a specific target right now (in cone/near radius + line-of-sight)? */
@@ -258,34 +261,134 @@ function canSee(e: Entity, target: Entity, ctx: AIContext): boolean {
   const t = e.transform!;
   const p = profileOf(e);
   if (dist(t.x, t.y, tr.x, tr.y) > p.sight || !perceives(e, target, p)) return false;
-  return ctx.pathfinder.lineOfSight(t.x, t.y, tr.x, tr.y, e.mover!.mode);
+  return ctx.pathfinder.sightLine(t.x, t.y, tr.x, tr.y);
+}
+
+/** PATHFINDING Layer 2 slice 1 — the cross-frame LEG resolver behind routeTo. If the steering goal lives in a
+ *  DIFFERENT movement frame (a foe on a ship's deck; the shore while we stand aboard), the goal FOR THIS TICK
+ *  becomes the connecting DOOR — the gangplank. The anchor is a LIVE QUERY off the ship's current pose (ships
+ *  move — never baked; every call re-resolves, so a sailed-away ship just moves the goal: portal invalidation
+ *  for free). Steering only DELIVERS the body to the door — the transition itself stays physics (inward intent
+ *  in the lane boards via HullCollisionSystem; outward on the plank exits via moveOnDeck — movement-frames.md).
+ *  `plan` is false on every deck leg: the WORLD grid only knows the sea under a hull, and a deck is a small
+ *  open room — direct steering + deck-collision slides suffice (per-frame grids are a later slice). */
+export function frameLeg(e: Entity, world: World, ax: number, ay: number, goalShipId?: number): { x: number; y: number; plan: boolean } {
+  const myShipId = e.onDeck?.shipId;
+  if (myShipId === goalShipId) return { x: ax, y: ay, plan: myShipId === undefined }; // same frame (both world, or both THIS deck)
+  // the frame being LEFT (we're aboard) or ENTERED (the goal is aboard) — leaving always resolves first, so
+  // deck→other-deck composes as leave-then-board across ticks. A sunk/despawned ship falls back to raw steering.
+  const ship = world.byId(myShipId ?? goalShipId!); // ! : the equality test above proves one side is a ship
+  if (!ship?.ship || !ship.transform) return { x: ax, y: ay, plan: e.onDeck === undefined };
+  const grid = deckOf(ship.ship.hull, ShipHulls.get(ship.ship.hull).deck);
+  const gp = gangplankCell(grid);
+  if (!gp) return { x: ax, y: ay, plan: e.onDeck === undefined }; // a doorless hull — no route exists; steer honestly at the goal
+  const [ox, oy] = gangplankOutward(grid, gp);
+  const outer = deckToWorld(ship.transform, gp.lx + ox * grid.tilePx, gp.ly + oy * grid.tilePx); // the lane MOUTH: one tile out from the door
+  if (myShipId === undefined) {
+    // WORLD → DECK: plan to the lane mouth, then push straight THROUGH the door (the boarding trigger is
+    // inward intent inside the lane — steering at the plank cell from the mouth IS that intent).
+    const t = e.transform!;
+    // the STAGING point — 2.5 tiles out along the lane axis, OUTSIDE the solid jamb corners' shadow by
+    // construction: an approach that can't draw a clean ray to the mouth (the corner blocks it) stages here
+    // first, then runs the axis in. Without it, the mouth/tangent legs CHATTERED at the door-adjacent corner
+    // (each tick flipped the hull-across read) and the approach pinned 60px from the door.
+    const staging = deckToWorld(ship.transform, gp.lx + ox * grid.tilePx * 2.5, gp.ly + oy * grid.tilePx * 2.5);
+    if (dist(t.x, t.y, outer.x, outer.y) > grid.tilePx * 0.9) {
+      // HULL IN THE WAY (slice-1 stopgap until the planner sees hulls — PATHFINDING Layer 0): the world grid
+      // doesn't know ships, so a leg from the ship's FAR side beelines INTO the hull, and a ROTATED hull can
+      // pin the slide at a corner (both axes blocked at once — the diagonal-docking report). If even the
+      // STAGING point can't be reached straight, walk a TANGENT around the hull — side picked by which way
+      // advances on the mouth, held with hysteresis (a head-on read must not flip-flop) — plus a slight
+      // OUTWARD bias so the walk peels off the corner instead of grinding it.
+      if (hullAcross(ship.transform, grid, t.x, t.y, staging.x, staging.y)) {
+        const radX = t.x - ship.transform.x; // ship → walker (the radial; NOT ax/ay — those are the goal params)
+        const radY = t.y - ship.transform.y;
+        const radL = Math.hypot(radX, radY) || 1;
+        const dot = (-radY / radL) * (outer.x - t.x) + (radX / radL) * (outer.y - t.y); // ccw tangent · toward-mouth
+        const bb = e.ai?.bb;
+        const sign: 1 | -1 = Math.abs(dot) > TILE * 0.5 ? (dot >= 0 ? 1 : -1) : (bb?.legDodgeSign ?? 1);
+        if (bb) bb.legDodgeSign = sign;
+        const dx = (-radY / radL) * sign + (radX / radL) * 0.35; // tangent + outward bias
+        const dy = (radX / radL) * sign + (radY / radL) * 0.35;
+        const dl = Math.hypot(dx, dy) || 1;
+        // a ROLLING waypoint two tiles along the circuit — re-resolved every call, so it bends with the hull
+        return { x: t.x + (dx / dl) * TILE * 2, y: t.y + (dy / dl) * TILE * 2, plan: false };
+      }
+      if (e.ai?.bb) e.ai.bb.legDodgeSign = undefined; // lane clear — the next pin picks its side fresh
+      // staging is reachable straight — but if the MOUTH still sits in a jamb corner's shadow, go stand on
+      // the axis first (the run in from staging is clean by construction). FAT ray (4): only commit to the
+      // mouth when it's clear with margin — the thin-ray flip-flop was the target-chatter pin.
+      if (hullAcross(ship.transform, grid, t.x, t.y, outer.x, outer.y, 4)) return { x: staging.x, y: staging.y, plan: true };
+      return { x: outer.x, y: outer.y, plan: true };
+    }
+    // NEAR the mouth: LINE UP on the lane centerline before pushing the door. The jambs are solid posts and
+    // the threading window is a few px — arriving at an angle (or at a ROTATED ship, where axis-aligned wall
+    // sliding can't walk an angled lane) must converge on the mouth point first, then push straight through.
+    const door = deckToWorld(ship.transform, gp.lx, gp.ly);
+    const cosA = Math.cos(ship.transform.angle);
+    const sinA = Math.sin(ship.transform.angle);
+    const owx = ox * cosA - oy * sinA; // the lane's outward axis in WORLD space (rides the ship's pose)
+    const owy = ox * sinA + oy * cosA;
+    const lateral = Math.abs(owx * (t.y - door.y) - owy * (t.x - door.x)); // distance off the lane centerline
+    if (lateral > 4) return { x: outer.x, y: outer.y, plan: false }; // converge on the mouth (it IS the centerline)
+    return { x: door.x, y: door.y, plan: false };
+  }
+  // DECK → WORLD: walk to our own door cell; ON it, push OUTWARD (the direction-aware walk-off exits in place).
+  const cell = e.onDeck ? deckCellAtLocal(grid, e.onDeck.lx, e.onDeck.ly) : undefined;
+  if (cell?.tile === 'gangplank') return { x: outer.x, y: outer.y, plan: false };
+  const door = deckToWorld(ship.transform, gp.lx, gp.ly);
+  return { x: door.x, y: door.y, plan: false };
+}
+
+/** Does the straight segment a→b cross this ship's SOLID hull-as-drawn? A ray of radius `rr` sampled every
+ *  half tile — the gangplank lane reads OPEN (the door's wood mask is 0), so a leg straight down the lane
+ *  never trips this; only a leg through actual hull wood does. Feeds frameLeg's approach legs. Callers pick
+ *  the radius as HYSTERESIS: gate INTO a detour with a THIN ray (2), gate back onto the direct leg only when
+ *  a FAT ray (4) clears — a ray teetering on a corner must not flip the leg choice every tick (the pinned
+ *  target-chatter at the jamb corner: +x tick, −x tick, net zero, forever). */
+function hullAcross(pose: ShipPose, grid: DeckGrid, ax: number, ay: number, bx: number, by: number, rr = 2): boolean {
+  const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / (TILE * 0.5)));
+  for (let i = 0; i <= steps; i++) {
+    const x = ax + ((bx - ax) * i) / steps;
+    const y = ay + ((by - ay) * i) / steps;
+    if (hullBlocksWorldPoint(pose, grid, x, y, rr)) return true;
+  }
+  return false;
 }
 
 /**
  * Steer toward (ax,ay): straight if the body can clear the direct line, else A* around walls (cached, repathed
  * every 0.5s). Returns a raw (dx,dy) toward the next waypoint. Shared by chase (pursuit) and wander (returning
  * to post), so both route around blocks identically. Manages bb.path / pathIdx / repathT.
+ * `goalShipId` = the movement FRAME the goal lives in (a target's `onDeck.shipId`, undefined = world): a
+ * cross-frame goal is redirected leg-by-leg through the gangplank door (frameLeg) — the ONE steering chokepoint
+ * stays the only place any brain needs to know frames exist.
  */
-function routeTo(e: Entity, ctx: AIContext, dt: number, ax: number, ay: number): [number, number] {
+function routeTo(e: Entity, ctx: AIContext, dt: number, ax: number, ay: number, goalShipId?: number): [number, number] {
   const t = e.transform!;
   const m = e.mover!;
   const bb = e.ai!.bb;
-  if (ctx.pathfinder.clearLine(t.x, t.y, ax, ay, m.mode, t.r)) {
+  const leg = frameLeg(e, ctx.world, ax, ay, goalShipId);
+  if (!leg.plan) {
+    bb.path = null; // a deck leg / the door push: direct steering — deck collision slides around rails/stations
+    return [leg.x - t.x, leg.y - t.y];
+  }
+  if (ctx.pathfinder.clearLine(t.x, t.y, leg.x, leg.y, m.mode, t.r)) {
     bb.path = null;
-    return [ax - t.x, ay - t.y];
+    return [leg.x - t.x, leg.y - t.y];
   }
   let path = bb.path;
   const rep = ((bb.repathT) ?? 0) - dt;
   if (!path || rep <= 0) {
-    path = ctx.pathfinder.findPath(t.x, t.y, ax, ay, m.mode);
+    path = ctx.pathfinder.findPath(t.x, t.y, leg.x, leg.y, m.mode);
     bb.path = path;
     bb.pathIdx = 0;
     bb.repathT = 0.5;
   } else {
     bb.repathT = rep;
   }
-  let wx = ax;
-  let wy = ay;
+  let wx = leg.x;
+  let wy = leg.y;
   if (path && path.length) {
     let idx = (bb.pathIdx) ?? 0;
     while (idx < path.length && dist(t.x, t.y, path[idx].x, path[idx].y) < TILE * 0.5) idx++;
@@ -308,8 +411,10 @@ function syncFollow(e: Entity, ctx: AIContext): void {
   if (leader?.transform && !leader.health?.dead) {
     bb.home.x = leader.transform.x;
     bb.home.y = leader.transform.y;
+    bb.homeShipId = leader.onDeck?.shipId; // home's FRAME rides with the leader: aboard ⇒ heel via the gangplank
   } else {
     bb.followId = undefined; // leader gone → become a normal post-holder at the current home
+    bb.homeShipId = undefined; // …a WORLD post (the last derived spot) — never a stale deck frame
   }
 }
 
@@ -326,8 +431,9 @@ const wander: FsmState = {
       bb.lastSeenX = foe.transform!.x;
       bb.lastSeenY = foe.transform!.y;
       bb.lostT = 0;
-      bb.perceivedX = foe.transform!.x; // seed perceived position = actual on first sighting
-      bb.perceivedY = foe.transform!.y;
+      bb.perceivedX = foe.transform!.x; // seed perceived position = actual on first sighting (world coords —
+      bb.perceivedY = foe.transform!.y; //   chase re-frames the memory on its first tick if a deck is shared)
+      bb.perceivedFrame = undefined;
       bb.quarryId = foe.id;
       // FRESH SIGHTING → the "!" double-take (alert state) before committing. A passive critter (or a
       // spotDelay-0 profile) skips straight to its response — no double-take for a fleeing prey animal.
@@ -361,7 +467,7 @@ const wander: FsmState = {
       if (d > FOLLOW_FAR) bb.heeling = true;
       else if (d < FOLLOW_NEAR) bb.heeling = false;
       if (bb.heeling) {
-        const [dx, dy] = routeTo(e, ctx, dt, bb.home.x, bb.home.y);
+        const [dx, dy] = routeTo(e, ctx, dt, bb.home.x, bb.home.y, bb.homeShipId); // leader aboard ⇒ heel via the plank
         const [nx, ny] = norm(dx, dy);
         if (nx !== 0 || ny !== 0) t.angle += angleDiff(Math.atan2(ny, nx), t.angle) * smoothFactor(p.wanderTurn, dt);
         m.vx = nx * m.speed;
@@ -462,8 +568,9 @@ const alert: FsmState = {
     if (foe) {
       bb.lastSeenX = foe.transform!.x;
       bb.lastSeenY = foe.transform!.y;
-      bb.perceivedX = foe.transform!.x;
+      bb.perceivedX = foe.transform!.x; // world coords (chase re-frames on its first tick — see perceivedFrame)
       bb.perceivedY = foe.transform!.y;
+      bb.perceivedFrame = undefined;
       // turn to face the target during the beat (turn-capped for a heavy body — the Moat / ai/steering)
       const want = Math.atan2(foe.transform!.y - t.y, foe.transform!.x - t.x);
       if (isHeavy(p)) steerFacing(e, want, p, dt, false);
@@ -507,6 +614,7 @@ const chase: FsmState = {
     if (!foe && (bb.alertT) <= 0 && ((bb.lostT) > p.loseSightSec || strayed)) {
       bb.path = null;
       bb.perceivedX = undefined; // forget perceived aim; re-seed fresh on next sighting
+      bb.perceivedFrame = undefined;
       bb.quarryId = undefined;
       return 'wander';
     }
@@ -573,16 +681,35 @@ const chase: FsmState = {
 
     // Perceived (reaction-lagged) target position: the enemy aims & commits to where it THINKS you are.
     // A still target is tracked exactly and gets hit; a moving one is punched where it *was* → natural misses.
+    // FRAME-AWARE (movement-frames): perception lags RELATIVE motion — eyes ride the observer's frame. Two
+    // bodies on the SAME sailing deck are mutually still, but easing a WORLD point made the memory trail the
+    // ship by speed×reaction ("he stops attacking when I set sail" — the seated pilot read as a runner). So
+    // same-deck memory eases in DECK-LOCAL coords (converted out for use); everything else keeps the world
+    // model — a ship carrying the target away from a SHORE observer is real relative motion, honestly lagged.
     const react = p.reaction;
+    const frameShip = foe?.onDeck !== undefined && e.onDeck?.shipId === foe.onDeck.shipId ? ctx.world.byId(e.onDeck.shipId) : undefined;
+    const frame = frameShip?.transform && frameShip.ship ? frameShip.id : undefined;
+    if (bb.perceivedFrame !== frame) {
+      bb.perceivedX = undefined; // frame switch (boarded / stepped off / new fight) → forget; re-seed fresh below
+      bb.perceivedY = undefined;
+      bb.perceivedFrame = frame;
+    }
+    const tgtX = frame !== undefined ? foe!.onDeck!.lx : rx; // ! : frame is only set when foe.onDeck exists (gate above)
+    const tgtY = frame !== undefined ? foe!.onDeck!.ly : ry;
     if (bb.perceivedX === undefined || bb.perceivedY === undefined) {
-      bb.perceivedX = rx;
-      bb.perceivedY = ry;
+      bb.perceivedX = tgtX;
+      bb.perceivedY = tgtY;
     }
     const lag = smoothFactor(1 / react, dt); // exp form: same convergence per real second at any fps
-    bb.perceivedX += (rx - bb.perceivedX) * lag;
-    bb.perceivedY += (ry - bb.perceivedY) * lag;
+    bb.perceivedX += (tgtX - bb.perceivedX) * lag;
+    bb.perceivedY += (tgtY - bb.perceivedY) * lag;
     let px = bb.perceivedX;
     let py = bb.perceivedY;
+    if (frame !== undefined) {
+      const w = deckToWorld(frameShip!.transform!, px, py); // ! : frame proves frameShip.transform (gate above)
+      px = w.x;
+      py = w.y;
+    }
     // LEAD AIM (predictive): aim where the target WILL be — the perceived pos pushed along its velocity × leadAim
     // (the Calamity-boss trick that beats circle-kiting: steady orbiting just feeds the boss your future spot, so
     // the counter becomes CHANGING speed/direction, not merely circling). Reads the visible target's mover; falls
@@ -906,7 +1033,9 @@ const chase: FsmState = {
       dx = aimX - t.x;
       dy = aimY - t.y;
     } else {
-      [dx, dy] = routeTo(e, ctx, dt, aimX, aimY);
+      // the foe's FRAME rides along: a target on a deck routes the chaser through the gangplank (frameLeg)
+      // instead of stalling at the hull. A frameless memory-chase (foe lost) stays a world goal — honest.
+      [dx, dy] = routeTo(e, ctx, dt, aimX, aimY, foe?.onDeck?.shipId);
     }
 
     const [nx, ny] = norm(dx, dy);

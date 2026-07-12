@@ -52,6 +52,69 @@ describe('GridCollider geometry (toy oracle)', () => {
     CTX.airborne = false;
   });
 
+  it('CORNER ASSIST: a pure south push clipping a wall corner ROLLS AROUND it (no manual sidestep)', () => {
+    // the report: standing just east of a wall corner, pushing straight south pinned the body on the corner —
+    // the circle clipped the solid by a few px and the whole step was rejected, every tick, forever.
+    const c = oneCellCollider(Q_SOLID); // solid box [20,30]×[20,30]
+    const pos = { x: 32, y: 14 }; // body r=3 → x-span [29,35] clips the box's east edge by 1px on the way south
+    for (let i = 0; i < 40; i++) c.tryMove(pos, 0, 1.5, 3, CTX); // hold SOUTH only
+    expect(pos.y).toBeGreaterThan(33); // passed the corner — assist shifted him east and south resumed
+    expect(pos.x).toBeGreaterThan(32.9); // …by nudging PAST the box's edge (30 + r), not through it
+  });
+
+  it('CORNER ASSIST helps the mirrored side too, and picks the side that is actually open', () => {
+    const c = oneCellCollider(Q_SOLID);
+    const pos = { x: 18, y: 14 }; // clipping the WEST edge on the way south → must nudge WEST (negative side)
+    for (let i = 0; i < 40; i++) c.tryMove(pos, 0, 1.5, 3, CTX);
+    expect(pos.y).toBeGreaterThan(33);
+    expect(pos.x).toBeLessThan(17.1);
+  });
+
+  it('a real wall FACE gets NO assist — head-on into the middle of the box still stops dead', () => {
+    const c = oneCellCollider(Q_SOLID);
+    const pos = { x: 25, y: 14 }; // dead-center on the box's north face; ±r probes are still blocked
+    for (let i = 0; i < 40; i++) c.tryMove(pos, 0, 1.5, 3, CTX);
+    expect(pos.y).toBeLessThan(18); // walled (never entered the box), no sideways drift
+    expect(pos.x).toBe(25);
+  });
+
+  it('CORNER ASSIST on a DIAGONAL push pinned on a convex corner tip — curls the way you are pressing', () => {
+    // the residual stick: holding S+E straight into a corner point rejects BOTH axis steps (each clips the
+    // same corner), so the axis-split slide never engages and the old assist (pure-axis only) never fired.
+    const c = oneCellCollider(Q_SOLID); // solid box [20,30]×[20,30]
+    const pos = { x: 17.5, y: 17.5 }; // body r=3 kissing the box's NW corner tip (dist √12.5 ≈ 3.54)
+    for (let i = 0; i < 60; i++) c.tryMove(pos, 1.2, 1.2, 3, CTX); // hold SE, straight into the tip
+    // it curled around one face (either is legal) instead of freezing on the tip forever
+    expect(Math.hypot(pos.x - 17.5, pos.y - 17.5)).toBeGreaterThan(10);
+  });
+
+  it('a 45° push THREADS a near-body-width gap (the doorway stick): the probe ladder finds the sweet spot', () => {
+    // gap between two boxes: x∈[30,36] open (6px), body r=2.5 (5px wide) → the thread window is ±0.5px.
+    // A single ±r probe overshoots onto the far jamb; the ladder's near rung finds the line through.
+    const c = new GridCollider({ cellPx: 10, originX: 0, originY: 0 }, (cx, cy) => (cy === 3 && cx !== 3 ? Q_SOLID : Q_CLEAR));
+    // wall row y∈[30,40] with the open cell x∈[30,40]; approach ABOVE it, slightly off the gap line, pushing SE
+    const pos = { x: 33, y: 26 };
+    for (let i = 0; i < 120; i++) c.tryMove(pos, 1.0, 1.0, 2.5, CTX); // hold SE into the gap mouth
+    expect(pos.y).toBeGreaterThan(42); // threaded the doorway instead of freezing at its mouth
+  });
+
+  it('a CONCAVE (inside) corner still stops a diagonal dead — assist never digs into pockets', () => {
+    // walls east AND south of the body (an L-pocket): pushing SE has no way around — both probes stay blocked
+    const c = new GridCollider({ cellPx: 10, originX: 0, originY: 0 }, (cx, cy) => ((cx === 3 && cy <= 3) || (cy === 3 && cx <= 3) ? Q_SOLID : Q_CLEAR));
+    const pos = { x: 25, y: 25 }; // inside the pocket, walls at x∈[30,40] and y∈[30,40]
+    for (let i = 0; i < 40; i++) c.tryMove(pos, 1.2, 1.2, 3, CTX);
+    expect(pos.x).toBeLessThan(27.1); // walled at the pocket faces, no digging, no drift
+    expect(pos.y).toBeLessThan(27.1);
+  });
+
+  it('CORNER ASSIST respects the moving-obstacle veto (a hull corner assists only where the hull allows)', () => {
+    const c = oneCellCollider(Q_SOLID);
+    const wallEast = (x: number): boolean => x > 30; // a "hull" occupying everything east of the box
+    const pos = { x: 32, y: 14 }; // the east-side assist would clear the grid — but the hull vetoes it
+    for (let i = 0; i < 20; i++) c.tryMove(pos, 0, 1.5, 3, CTX, (x) => wallEast(x));
+    expect(pos.y).toBeLessThan(18); // no way around: grid blocks ahead + west, hull vetoes east → walled
+  });
+
   it('hard bounds keep the CENTER r inside the rect — even where the oracle is clear', () => {
     const c = new GridCollider({ cellPx: 10, originX: 0, originY: 0, bounds: { w: 100, h: 100 } }, () => Q_CLEAR);
     expect(c.canOccupy(50, 50, 5, CTX)).toBe(true);

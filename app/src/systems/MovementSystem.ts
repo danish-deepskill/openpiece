@@ -5,7 +5,7 @@ import { applyEffect, Effects, TAG_SLOWED, TAG_STUNNED } from '../combat/Effect'
 import { SWIM_SPEED_STAT } from '../defs/traits';
 import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, tileAt, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
-import { deckCanOccupy, deckTryMove, hullBlocksOutside, hullBlocksWorldPoint } from '../world/deckCollision';
+import { deckCanOccupy, deckTryMove, hullBlocksOutside, hullBlocksWorldPoint, hullRailPen, hullWoodClearance } from '../world/deckCollision';
 import { enterDeck, exitDeck, inFrameCooldown } from '../world/frames';
 import type { Entity, Mover } from '../ecs/components';
 import type { World } from '../ecs/World';
@@ -57,6 +57,11 @@ function railSeaward(grid: DeckGrid, cell: DeckCell, dlx: number, dly: number): 
 export class MovementSystem {
   /** Ships snapshotted ONCE per update (not per entity) for the hull-blocker — see hullBlocked. */
   private ships: Entity[] = [];
+  /** Which hull truth the blocker tests (the per-mover scratch, same idiom as deckCollision's CTX): true = the
+   *  GROUNDED wall (rails full-cell — a wader must never stand in the rail's open sea-half strip and read as
+   *  boarded-without-a-jump); false = the hull AS DRAWN (a swimmer hugs the drawn wood; also the embedded GATE,
+   *  so only real wood-overlap lifts the veto). Set before each mover's checks; single-threaded sim. */
+  private hullWalker = false;
   /** ONE persistent hull-blocker closure (reads the per-tick snapshot) — never allocated per entity per tick.
    *  A conservative distance reject ((length+width)/2 ≥ the grid's half-diagonal — NOT ship.r, the ocean radius,
    *  which under-covers a long hull's bow corners) skips the frame transform for the common far-away case. */
@@ -68,9 +73,47 @@ export class MovementSystem {
       const dx = x - st.x;
       const dy = y - st.y;
       if (dx * dx + dy * dy > reach * reach) continue; // nowhere near this hull
-      if (hullBlocksWorldPoint(st, deckOf(s.ship!.hull, d.deck), x, y, r)) return true;
+      if (hullBlocksWorldPoint(st, deckOf(s.ship!.hull, d.deck), x, y, r, this.hullWalker)) return true;
     }
     return false;
+  };
+
+  /** The BLOCKED-body move rule (replaces the old blanket veto lift, which let a wedged body slide ALONG the
+   *  gunwale at constant depth — the rail-traversal glitch — while a hard veto instead FROZE a wader whose body
+   *  ended up inside the rail wall band, e.g. right after a dockside walk-off): a body blocked under its OWN
+   *  hull truth may only take steps that STRICTLY increase its clearance from that truth's solid. It always
+   *  escapes (any outward direction gains clearance every step), never enters deeper, never creeps the rail
+   *  line. embedPose/embedGrid/embedClear are set by the per-mover gate below; single-threaded scratch. */
+  private embedPose: { x: number; y: number; angle: number } | undefined;
+  private embedGrid: DeckGrid | undefined;
+  private embedClear = 0;
+  private embedOnRail = false; // is the CURRENT center already inside a rail cell? (exit-only mode)
+  private embedRailPen = 0; // the current RAIL-cell penetration — the escape rule's hard budget (never grows)
+  private readonly hullClearer = (x: number, y: number, r: number): boolean => {
+    const l = worldToDeck(this.embedPose!, x, y); // ! : only installed when the gate found the blocking ship
+    // the CENTER rule binds ESCAPES too: near a corner rail, "improving wood clearance" can point INTO the
+    // cell's open part (away from its small wood quarter) — the escape rule itself walked centers onto the
+    // rail. A target standing ON a rail cell is refused outright; a body ALREADY inside one may only take
+    // strictly-improving steps or step OUT (exits always open — never a cage).
+    const targetOnRail = deckCellAtLocal(this.embedGrid!, l.lx, l.ly)?.tile === 'rail';
+    if (targetOnRail && !this.embedOnRail) return true;
+    const c = hullWoodClearance(this.embedGrid!, l.lx, l.ly, this.hullWalker, r);
+    if (this.embedOnRail) return targetOnRail && c <= this.embedClear + 0.01; // inside: exit freely, else climb only
+    // RAIL penetration may NEVER grow mid-escape: the sum measure is blind to WHICH box holds the depth, so a
+    // body overlapping the interior column (a legal walk-off leaves you 60/40 across the plank edge) could
+    // TRADE that invisible overlap for GUNWALE overlap one-for-one and push ~a third of itself into the rail
+    // ("parallel" by the sum). Interior depth trades freely; the visible rail line is a hard budget.
+    if (hullRailPen(this.embedGrid!, l.lx, l.ly, r) > this.embedRailPen + 0.01) return true;
+    if (c > this.embedClear + 0.01) return false; // clearer — always allowed (the escape)
+    // PARALLEL wall-hug (constant clearance) is allowed only while total penetration is at most ONE BODY
+    // RADIUS — a one-sided press against a face (the wedged wader sliding to the corner where the gain
+    // begins). Beyond a radius you're not hugging a wall, you're THREADING solids (riding the seam between
+    // two solid rows read as "parallel" and walked a body clean through the hull) — that must climb out.
+    // ZERO tolerance on "parallel": a per-tick grace RATCHETED (the baseline re-captures each tick, so a
+    // held push crept ~0.6px/s INTO the band — the half-a-hitbox-in-the-rail report on the diagonal ship).
+    // Axis-aligned hugs stay exactly equal, so they still slide; anything that loses clearance is deeper.
+    if (this.embedClear >= -r && c >= this.embedClear) return false;
+    return true; // deeper — rejected
   };
 
   constructor(
@@ -184,7 +227,35 @@ export class MovementSystem {
         // self-heals; revisit per-hull when battle boarding parks hulls rail-to-rail.) The embedded probe lives
         // INSIDE the movement gate — an idle crowd must not pay a per-tick hull sweep for a veto only moves read.
         if (vx !== 0 || vy !== 0) {
-          const hullBlock = !airborne && this.ships.length > 0 && !this.hullBlocked(t.x, t.y, t.r) ? this.hullBlocked : undefined;
+          // ONE rule, each mover under its OWN hull truth (walker = full-cell rail walls; swimmer = the wood
+          // as drawn): a body whose CURRENT spot is blocked under that truth gets the ESCAPE rule (hullClearer —
+          // every step must move it strictly clearer, so it always walks itself out, never deeper, never along
+          // the rail line at constant depth); a clear body gets the plain wall veto. This is what keeps the
+          // sea-half strip a swimmer's affordance and not a footpath WITHOUT freezing a wader whose body ends
+          // up inside the wall band (the post-walk-off dockside pin).
+          this.hullWalker = m.mode !== 'swim';
+          this.embedGrid = undefined;
+          if (!airborne && this.ships.length > 0) {
+            for (const s of this.ships) {
+              const st = s.transform!;
+              const d = ShipHulls.get(s.ship!.hull);
+              const reach = (d.length + d.width) / 2 + t.r;
+              const ddx = t.x - st.x;
+              const ddy = t.y - st.y;
+              if (ddx * ddx + ddy * ddy > reach * reach) continue;
+              const grid = deckOf(s.ship!.hull, d.deck);
+              if (hullBlocksWorldPoint(st, grid, t.x, t.y, t.r, this.hullWalker)) {
+                this.embedPose = st; // blocked under our truth against THIS hull — the escape rule governs
+                this.embedGrid = grid;
+                const l = worldToDeck(st, t.x, t.y);
+                this.embedClear = hullWoodClearance(grid, l.lx, l.ly, this.hullWalker, t.r);
+                this.embedOnRail = deckCellAtLocal(grid, l.lx, l.ly)?.tile === 'rail';
+                this.embedRailPen = hullRailPen(grid, l.lx, l.ly, t.r);
+                break;
+              }
+            }
+          }
+          const hullBlock = airborne || this.ships.length === 0 ? undefined : this.embedGrid ? this.hullClearer : this.hullBlocked;
           // WALL-SLAM watch (the marine Buttstroke proc): a target flung with slamStun armed, mid-knockback — if
           // this fast shove is STOPPED by a wall, it slammed → electrified pin. We measure progress ALONG the shove
           // DIRECTION (the projection), NOT total distance — a DIAGONAL hit slides along the wall (high total
@@ -192,6 +263,41 @@ export class MovementSystem {
           // it. Projecting onto the heading catches perpendicular AND glancing slams (the "diagonal doesn't stun" bug).
           const wx0 = t.x, wy0 = t.y;
           this.collision.tryMove(t, vx * dt, vy * dt, t.r, m.mode, airborne, m.onLedge, hullBlock);
+          // ROTATED-HULL SLIDE: axis-separated WORLD steps cannot slide along a ROTATED hull face — both
+          // world-axis targets clip the angled wall, so a diagonally-docked ship felt sticky (players) and
+          // pinned approaching AI dead. If a hull veto ate the WHOLE step, retry it decomposed in the
+          // BLOCKING SHIP's own axes: the tangential component slides along the face like any wall, the
+          // normal component stays refused. Terrain and the hull rules are re-tested per component — this
+          // adds no new permission, only the correct slide DIRECTIONS.
+          if (hullBlock && t.x === wx0 && t.y === wy0 && (vx !== 0 || vy !== 0)) {
+            const wdx = vx * dt;
+            const wdy = vy * dt;
+            for (const s of this.ships) {
+              const st = s.transform!;
+              const d = ShipHulls.get(s.ship!.hull);
+              const reach = (d.length + d.width) / 2 + t.r + Math.abs(wdx) + Math.abs(wdy);
+              if ((wx0 - st.x) ** 2 + (wy0 - st.y) ** 2 > reach * reach) continue;
+              if (!hullBlocksWorldPoint(st, deckOf(s.ship!.hull, d.deck), wx0 + wdx, wy0 + wdy, t.r, this.hullWalker)) continue; // not the blocker
+              const cosA = Math.cos(st.angle);
+              const sinA = Math.sin(st.angle);
+              const slx = wdx * cosA + wdy * sinA; // the step in the ship's axes
+              const sly = -wdx * sinA + wdy * cosA;
+              // ship-x component (world (slx·cos, slx·sin)), then ship-y — same axis-separated slide, rotated
+              const ax = slx * cosA;
+              const ay = slx * sinA;
+              if (this.collision.canOccupy(t.x + ax, t.y + ay, t.r, m.mode, airborne, m.onLedge) && !hullBlock(t.x + ax, t.y + ay, t.r)) {
+                t.x += ax;
+                t.y += ay;
+              }
+              const bx = -sly * sinA;
+              const by = sly * cosA;
+              if (this.collision.canOccupy(t.x + bx, t.y + by, t.r, m.mode, airborne, m.onLedge) && !hullBlock(t.x + bx, t.y + by, t.r)) {
+                t.x += bx;
+                t.y += by;
+              }
+              break; // one blocker owns the slide (multi-hull rail-to-rail is the recorded battle-boarding revisit)
+            }
+          }
           if ((m.slamStun ?? 0) > 0 && m.dodgeT > 0) {
             const intended = Math.hypot(vx, vy) * dt;
             if (intended > 4) {
@@ -219,10 +325,32 @@ export class MovementSystem {
       // NOT while ON DECK: an on-deck actor rides the BOAT's deck (parented by ShipSystem), so its mode/position
       // follow the ship — the terrain under it (open sea) must NOT relabel it a swimmer (it'd drain breath + show
       // the swim pose while safely aboard). Boarding sets things up; here we just leave an on-deck actor's mode alone.
+      // …with ONE surface exception: the GANGPLANK BOARD is a floor over the sea (like a dock tile) — a
+      // world walker whose center is on the plank cell STANDS on wood: 'foot', not 'swim'. Without it, a
+      // body in the lane over deep water counted as a SWIMMER, and the swimmer wood-hug let it slide half
+      // its hitbox onto the flanking rail with no jump (and drained breath while standing on a board).
       if (!airborne && !e.onDeck && (m.mode === 'foot' || m.mode === 'swim')) {
-        m.mode = this.collision.terrainAtPx(t.x, t.y).water === 'deep' ? 'swim' : 'foot';
+        m.mode = this.collision.terrainAtPx(t.x, t.y).water === 'deep' && !this.onPlank(t.x, t.y) ? 'swim' : 'foot';
       }
     }
+  }
+
+  /** Is this WORLD point on some ship's gangplank BOARD (the walkable door cell)? The plank is a floor over
+   *  the sea — the mode relabel reads it as dry standing ground (see the surface exception above). Distance-
+   *  rejected per ship; only consulted for bodies already over deep water near a hull (cold). */
+  private onPlank(x: number, y: number): boolean {
+    for (const s of this.ships) {
+      const st = s.transform!;
+      const d = ShipHulls.get(s.ship!.hull);
+      const reach = (d.length + d.width) / 2;
+      const dx = x - st.x;
+      const dy = y - st.y;
+      if (dx * dx + dy * dy > reach * reach) continue;
+      const grid = deckOf(s.ship!.hull, d.deck);
+      const l = worldToDeck(st, x, y);
+      if (deckCellAtLocal(grid, l.lx, l.ly)?.tile === 'gangplank') return true;
+    }
+    return false;
   }
 
   /** Touch down from a jump/fall: back to the ground layer + a punishable landing stun, then set the PERCH if you

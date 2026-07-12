@@ -68,7 +68,8 @@ export class TileGrid {
     return terrainByOrdinal(ordinal).water === 'deep' ? SWIM_MOVE_MULT : SHALLOW_MOVE_MULT;
   }
 
-  /** Looser TERRAIN rule for AI PLANNING + line-of-sight: deep water counts as blocked for foot (a land brain
+  /** Looser TERRAIN rule for AI PLANNING only (never vision — that's Pathfinder.sightLine; eyes have no move
+   *  mode, so deep water must not blind a foot chaser): deep water counts as blocked for foot (a land brain
    *  has no swim logic) — a def flag, not a tile branch. Doors are STRUCTURES now — their plan-through rule
    *  lives on StructureIndex.pathable, composed with this by the Pathfinder. */
   static pathable(ordinal: number, mode: MoveMode): boolean {
