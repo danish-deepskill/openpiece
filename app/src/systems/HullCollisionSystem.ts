@@ -67,10 +67,13 @@ export class HullCollisionSystem {
           e.mover!.onLedge = !deckCanOccupy(grid, local.lx, local.ly, t.r, false, false);
           continue;
         }
-        if (cell?.tile === 'rail') {
+        if (cell?.tile === 'rail' && !inFrameCooldown(e)) {
           // a grounded world body whose center sits ON the rail BLOCK (a jump landing, incl. half-over-the-sea)
           // PERCHES on it — the block is standable exactly like a world stone wall. Ejecting instead (the
-          // pushOut fallthrough) teleported rail-landers to the nearest sea under full-tile rails.
+          // pushOut fallthrough) teleported rail-landers to the nearest sea under full-tile rails. MUTED by the
+          // frame beat, unlike the interior land-boarding: a fresh gunwale WALK-OFF is exactly such a body
+          // (center still on the rail, walking its overlap clear), and adopting it re-boarded the drop-off in
+          // a ping-pong — the beat lets it walk free first.
           enterDeck(e, ship.id, local.lx, local.ly);
           e.mover!.onLedge = true;
           continue;

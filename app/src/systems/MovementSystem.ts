@@ -445,23 +445,21 @@ export class MovementSystem {
     // at an invisible wall (off-hull blocks grounded movement, so the only exits were gangplank/jump). Muted during
     // the post-transition beat: landing on the rail while still holding seaward must not instantly dunk you.
     if (!airborne && m.onLedge && cell?.tile === 'rail' && !cooldown && (dlx !== 0 || dly !== 0) && railSeaward(grid, cell, dlx, dly)) {
-      // STEP DOWN off the gunwale BLOCK (full-tile rails): the perch spot has NO legal in-place world position —
-      // it's inside a solid block — so the drop-off is ONE deliberate, bounded step to just past the block's
-      // seaward face, clear by the body radius. The zero-displacement transition rule governs the open DOOR
-      // (walking the plank stays continuous); a block you were perched ON has no continuous exit, and this
-      // intentional hop replaces what used to surface as an accidental deep-eject snap mid-walk.
-      let sx = 0; // the pushed, actually-seaward axis (railSeaward guaranteed at least one matches the push)
-      let sy = 0;
-      if (dly < 0 && tileAt(grid, cell.cx, cell.cy - 1) === undefined) sy = -1;
-      else if (dly > 0 && tileAt(grid, cell.cx, cell.cy + 1) === undefined) sy = 1;
-      else if (dlx < 0 && tileAt(grid, cell.cx - 1, cell.cy) === undefined) sx = -1;
-      else sx = 1;
-      const hop = grid.tilePx / 2 + e.transform!.r + 1; // cell center → past the block face, clear by r
-      const w = deckToWorld(ship.transform, cell.lx + sx * hop, cell.ly + sy * hop);
-      exitDeck(e, w.x, w.y); // the step down lands you beside the hull; the water relabels you a swimmer
-      m.onLedge = false; // off the wall
-      this.waterEntryFx(w.x, w.y, e.transform!.r); // splashes only if the drop enters water (not onto a dock/sand)
-      return;
+      // WALK OFF THE GUNWALE CONTINUOUSLY (the developer's spec): the perched walk carries the center across
+      // the rail block seaward — body sliding progressively out over the edge — and the frame handoff fires
+      // IN PLACE only at the STRADDLE point: the very next center step would leave the hull, i.e. half on the
+      // gunwale, half over whatever is outside (open sea OR a dock/land tile alike — the world terrain below
+      // decides swim vs foot). Zero displacement at the transition; the world-side escape rule walks the
+      // remaining block overlap out smoothly while the frame beat mutes the eject. (The first full-tile cut
+      // used a one-hop step-down here — it read as a teleport.)
+      if (deckCellAtLocal(grid, e.onDeck.lx + dlx, e.onDeck.ly + dly) === undefined) {
+        const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
+        exitDeck(e, w.x, w.y); // hand off exactly where you stand — the straddle point
+        m.onLedge = false; // off the wall
+        this.waterEntryFx(w.x, w.y, e.transform!.r); // splashes only if the drop enters water (not onto a dock)
+        return;
+      }
+      // not at the brink yet — fall through to the perched walk (the center keeps crossing the block)
     }
     // A PERCHED CENTER stays ON the wall: the perched mask lets the BODY overhang open sea, but the center may
     // never WALK off the hull — leaving is only the deliberate step-down above (or a jump). Without this clamp,
