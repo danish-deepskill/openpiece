@@ -421,12 +421,22 @@ export class MovementSystem {
     if (cell?.tile === 'gangplank' && !airborne && (dlx !== 0 || dly !== 0)) {
       const [ox, oy] = gangplankOutward(grid, cell);
       const proj = dlx * ox + dly * oy; // the outward component of this tick's step
-      if (proj > 0 && !deckCanOccupy(grid, e.onDeck.lx + ox * proj, e.onDeck.ly + oy * proj, e.transform!.r, false, false)) {
-        const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
-        exitDeck(e, w.x, w.y);
-        return;
+      if (proj > 0) {
+        // the TRUE STRADDLE: the very next center step would leave the board — hand off IN PLACE, half on,
+        // half off (the same line the walk-ON boards at, opposite direction — the frame follows the floor edge)
+        if (deckCellAtLocal(grid, e.onDeck.lx + dlx, e.onDeck.ly + dly) === undefined) {
+          const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
+          exitDeck(e, w.x, w.y);
+          return;
+        }
+        // WALLED at the board's end (the grounded walk can't overhang) → balance onto the LIP: perch-as-needed
+        // lets the body overhang the last radius so the center can actually REACH the straddle line (without
+        // this, the exit fired a full body radius early — visibly still on the board). Self-clears (the
+        // step-off-perch rule) if the walker turns back inboard.
+        if (!m.onLedge && !deckCanOccupy(grid, e.onDeck.lx + ox * proj, e.onDeck.ly + oy * proj, e.transform!.r, false, false)) {
+          m.onLedge = true;
+        }
       }
-      // pushing outward but not at the board's end yet → keep walking the plank, deck-framed
     }
     // AIRBORNE LEAVE: airborne + moving OUTWARD off an OUTER cell (a full tile ahead is off-grid) → hand off to
     // world space AT THE CURRENT SPOT (mirror of land-on-deck boarding). The tile lookahead is only the TRIGGER
