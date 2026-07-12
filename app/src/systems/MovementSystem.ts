@@ -412,17 +412,21 @@ export class MovementSystem {
     let dly = (vx * sin + vy * cos) * dt;
     const cooldown = inFrameCooldown(e);
     const cell = deckCellAtLocal(grid, e.onDeck.lx, e.onDeck.ly);
-    // GANGPLANK WALK-OFF: grounded on the door, pushing OUTWARD (dot test) → hand off to world space AT THE
-    // CURRENT SPOT — a pure address-book switch, zero displacement (the old exit placed you a body+tile past the
-    // door: a visible pop). No cooldown mute either: the DOOR IS DIRECTION-AWARE — walking on needs INWARD motion
-    // (HullCollisionSystem), walking off needs OUTWARD — so on/off can't oscillate; each needs the opposite input.
+    // GANGPLANK WALK-OFF: THE DECK FRAME HOLDS ACROSS THE WHOLE PLANK (the developer's spec) — pushing
+    // outward keeps you a deck walker until the board's OUTER END, where the grounded walk can't advance
+    // any further (body flush with the end of the board); only THERE does the handoff fire, at the current
+    // spot, zero displacement (the gunwale straddle's door twin — the old exit flipped you to world from
+    // ANYWHERE on the plank, even half over the interior floor). Still loop-free without a cooldown: the
+    // DOOR IS DIRECTION-AWARE — walking on needs INWARD motion (HullCollisionSystem), off needs OUTWARD.
     if (cell?.tile === 'gangplank' && !airborne && (dlx !== 0 || dly !== 0)) {
       const [ox, oy] = gangplankOutward(grid, cell);
-      if (dlx * ox + dly * oy > 0) {
+      const proj = dlx * ox + dly * oy; // the outward component of this tick's step
+      if (proj > 0 && !deckCanOccupy(grid, e.onDeck.lx + ox * proj, e.onDeck.ly + oy * proj, e.transform!.r, false, false)) {
         const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
         exitDeck(e, w.x, w.y);
         return;
       }
+      // pushing outward but not at the board's end yet → keep walking the plank, deck-framed
     }
     // AIRBORNE LEAVE: airborne + moving OUTWARD off an OUTER cell (a full tile ahead is off-grid) → hand off to
     // world space AT THE CURRENT SPOT (mirror of land-on-deck boarding). The tile lookahead is only the TRIGGER

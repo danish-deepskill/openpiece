@@ -237,17 +237,19 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     expect(air.mover!.layer).toBe('air'); // still airborne (will land in the world)
   });
 
-  it('WALK-OFF: on the gangplank pushing OUTWARD steps off the ship (deck → world), even from the cell center', () => {
+  it('WALK-OFF: the deck frame HOLDS across the plank; the handoff fires only at the board\'s outer END', () => {
     const { world, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0); // heading 0
     const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
     const gp = gangplankCell(grid)!; // sloop gangplank faces WEST (−x is off-grid)
     const a = makeActor(world, 0, 0);
-    a.onDeck = { shipId: ship.id, lx: gp.lx, ly: gp.ly }; // stood on the gangplank CELL CENTER (the old bug spot)
+    a.onDeck = { shipId: ship.id, lx: gp.lx, ly: gp.ly }; // stood on the gangplank CELL CENTER
     a.mover!.frameCd = 0; // not in the post-board cooldown
-    walkDeckIntent(move, a, -100, 0, 1); // push WEST (outward through the door), one tick
-    expect(a.onDeck).toBeUndefined(); // stepped off — now a world-space walker
-    expect(a.transform!.x).toBeLessThan(500); // landed west of the ship center (out the door)
+    walkDeckIntent(move, a, -100, 0, 1); // one outward tick from mid-board…
+    expect(a.onDeck).toBeDefined(); // …still DECK-framed (the old exit flipped from anywhere on the plank)
+    walkDeckIntent(move, a, -100, 0, 30); // keep walking the board out
+    expect(a.onDeck).toBeUndefined(); // handed off at the board's end — now a world-space walker
+    expect(a.transform!.x).toBeLessThan(500); // west of the ship center (out the door)
   });
 
   it('WALK-OFF does NOT fire while pushing INWARD on the gangplank (you keep walking the deck)', () => {
@@ -270,7 +272,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     const gp = gangplankCell(grid)!;
     const a = makeActor(world, 0, 0);
     enterDeck(a, ship.id, gp.lx, gp.ly); // just boarded → frameCd is running
-    walkDeckIntent(move, a, -100, 0, 1); // reverse straight back out (outward = west)
+    walkDeckIntent(move, a, -100, 0, 30); // reverse straight back out (outward = west) across the board
     expect(a.onDeck).toBeUndefined(); // no 0.4s hold at the door — leaving is DIRECTION, not cooldown
     a.mover!.vx = -100; // still heading out through the lane
     a.mover!.vy = 0;
