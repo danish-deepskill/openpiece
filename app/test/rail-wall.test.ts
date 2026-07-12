@@ -171,8 +171,13 @@ describe('the rail walls a grounded walker (hullWall)', () => {
       move.update(SIM);
       ships.update(SIM);
       hulls.update();
-      const l = worldToDeck(ship.transform!, a.transform!.x, a.transform!.y);
-      expect(deckCellAtLocal(grid, l.lx, l.ly)?.tile).not.toBe('rail'); // never half-inside the jamb, any frame
+      // the invariant guards the SETTLED world frame: a world body's center may never sit on a rail cell —
+      // except mid-TRANSITION (frameCd running): the straddle walk-off exits with the center still on the
+      // rail by design, walking its overlap out during the beat. Deck-frame perch on the gunwale is legal.
+      if (!a.onDeck && (a.mover!.frameCd ?? 0) <= 0) {
+        const l = worldToDeck(ship.transform!, a.transform!.x, a.transform!.y);
+        expect(deckCellAtLocal(grid, l.lx, l.ly)?.tile).not.toBe('rail');
+      }
     }
   });
 });

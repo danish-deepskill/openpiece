@@ -38,17 +38,18 @@ export class HullCollisionSystem {
         // its radius overlaps the flanking rails). The DOOR IS DIRECTION-AWARE + CONTINUOUS: board WHERE THE FEET
         // ARE (no snap to the cell center — that was a visible pop), only while moving INWARD (loitering in the
         // doorway or heading out boards nothing — the walk-off's outward twin, so on/off can't oscillate and no
-        // cooldown mute is needed), and only once the BODY FITS on the plank by deck rules (boarding at the outer
-        // lip would wedge the body half over open sea with every deck step rejected). Until it fits, it stays a
-        // world walker in the lane — never pushed — walking in, so the handoff is seamless.
+        // cooldown mute is needed). The handoff fires the moment the center crosses ONTO the board — the STRADDLE,
+        // half on the plank, half outside (the developer's spec: the frame follows the floor edge, both ways) —
+        // with PERCH-AS-NEEDED covering the overhang for the first steps until the body fully fits (the old
+        // strict fit kept you world-framed until a full radius onto the board).
         if (this.inGangplankLane(grid, local.lx, local.ly)) {
           const gp = gangplankCell(grid)!;
           if (
             deckCellAtLocal(grid, local.lx, local.ly)?.tile === 'gangplank' &&
-            this.movingInward(e.mover!.vx, e.mover!.vy, st.angle, grid, gp) &&
-            deckCanOccupy(grid, local.lx, local.ly, t.r)
+            this.movingInward(e.mover!.vx, e.mover!.vy, st.angle, grid, gp)
           ) {
             enterDeck(e, ship.id, local.lx, local.ly);
+            e.mover!.onLedge = !deckCanOccupy(grid, local.lx, local.ly, t.r, false, false); // clears itself once fully aboard
           }
           continue; // in the lane → never pushed (the door is open)
         }
