@@ -1,4 +1,4 @@
-import { deckCellAtLocal, deckWalkable, isJamb, tileAt, worldToDeck, type DeckCell, type DeckGrid, type ShipPose } from '../defs/decks';
+import { deckCellAtLocal, deckWalkable, tileAt, worldToDeck, type DeckCell, type DeckGrid, type ShipPose } from '../defs/decks';
 import { GridCollider, Q_CLEAR, Q_E, Q_N, Q_NE, Q_NW, Q_S, Q_SE, Q_SOLID, Q_SW, Q_W, type MoveCtx, type QuarterMask } from './GridCollider';
 
 /**
@@ -82,12 +82,11 @@ function buildColliders(grid: DeckGrid): DeckColliders {
     } else if (c.tile === 'rail') {
       cleared[i] = Q_CLEAR; // the LOW WALL: airborne hops it, a perched walker balances along it
     }
-    // DOOR JAMBS are solid POSTS in EVERY truth: a rail flanking the gangplank blocks full-cell even for a
-    // swimmer. The sea-half hug is an OPEN-HULL affordance — at the door it let a body that briefly counted
-    // as swimming (two deep-water steps across the lane mouth) slide half its hitbox into the rail beside
-    // the plank, then freeze there as a walker (the world-frame door report). isJamb is the ONE predicate
-    // shared with the renderer (shipDraws draws jambs as full posts), so solid-as-drawn can't drift here.
-    if (c.tile === 'rail') wood[i] = isJamb(grid, c) ? Q_SOLID : railWoodMask(grid, c);
+    // Rails beside the DOOR are ordinary half-wood rails (the developer's consistency call): the door slips
+    // they once enabled are owned by stronger, uniform rules now — the walker WALL truth (full-cell rails for
+    // grounded movers), the CENTER-never-in-a-rail-cell rule in hullBlocksWorldPoint, and the escape rule's
+    // rail-penetration budget. A swimmer's edge-hug at the door reads the same as anywhere on the hull.
+    if (c.tile === 'rail') wood[i] = railWoodMask(grid, c);
     else if (c.tile !== 'gangplank') wood[i] = Q_SOLID; // interior (deck/helm/cannon/hole) is solid boat; the gangplank is the door
     if (c.tile === 'rail') wall[i] = wood[i] === 0 ? Q_CLEAR : Q_SOLID; // zero-wood rail = nothing drawn = no invisible wall
     else wall[i] = wood[i]; // interior solid / gangplank open — identical to the as-drawn truth

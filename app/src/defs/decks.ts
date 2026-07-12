@@ -143,19 +143,6 @@ export function gangplankCell(grid: DeckGrid): DeckCell | undefined {
   return grid.cells.find((c) => c.tile === 'gangplank');
 }
 
-/** Is this rail cell a DOOR JAMB — a rail 4-adjacent to the gangplank? The ONE predicate both the hull
- *  collision (full-cell solid, even to swimmers — deckCollision) and the renderer (a full wooden post —
- *  shipDraws) consume, so solid-as-drawn can never drift at the door. */
-export function isJamb(grid: DeckGrid, c: DeckCell): boolean {
-  return (
-    c.tile === 'rail' &&
-    (tileAt(grid, c.cx - 1, c.cy) === 'gangplank' ||
-      tileAt(grid, c.cx + 1, c.cy) === 'gangplank' ||
-      tileAt(grid, c.cx, c.cy - 1) === 'gangplank' ||
-      tileAt(grid, c.cx, c.cy + 1) === 'gangplank')
-  );
-}
-
 /** Parsed-deck cache keyed by the hull's id — the grid is immutable (defs are), so parse ONCE, not per frame.
  *  Render (step 1) + deck collision (step 2) share this one parse. Not on the entity (serialize-by-id canon). */
 const deckCache = new Map<string, DeckGrid>();

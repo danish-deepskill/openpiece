@@ -157,10 +157,12 @@ describe('the rail walls a grounded walker (hullWall)', () => {
     expect(hullBlocksOutside(grid, stripX, stripY, 11, false)).toBe(false); // a swimmer still floats in it, up to the wood
   });
 
-  it('door JAMBS are solid posts even to a SWIMMER: the angled lane approach can never slip into the rail', () => {
+  it('the CENTER rule holds at the door: the angled lane approach can never put a center inside the rail', () => {
     // the world-frame door report: crossing the lane MOUTH (deep water) makes you a swimmer for two steps,
-    // and the old sea-half opening beside the plank let those steps slide HALF A HITBOX into the flanking
-    // rail — then you flipped back to foot, frozen half-in. The jambs now block full-cell in every truth.
+    // and the sea-half opening beside the plank let those steps slide the CENTER into the flanking rail —
+    // then you flipped back to foot, frozen half-in. The center-never-in-a-rail-cell rule blocks it for
+    // every mode (door rails are ordinary half-wood rails, consistent with the rest of the hull — the
+    // developer's call; a swimmer's EDGE may hug the open half here like anywhere else).
     const { world, move, hulls, ships } = sea(); // DEEP water — the exact failing context
     const ship = makeShip(world);
     const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
