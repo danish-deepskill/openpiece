@@ -44,12 +44,20 @@ export class HullCollisionSystem {
         // strict fit kept you world-framed until a full radius onto the board).
         if (this.inGangplankLane(grid, local.lx, local.ly)) {
           const gp = gangplankCell(grid)!;
+          // inward is RELATIVE (walker velocity MINUS the hull's own drift): the door line belongs to the
+          // SHIP, so a reversing hull sliding its plank under an IDLE walker crosses the same line — gating
+          // on the walker's intent alone left him world-framed across the whole board, flipping only at the
+          // INNER straddle via the interior land-on fallback (the report). Linear drift only: the turn
+          // sweep (ω×r) isn't tracked as state (pilot() writes angle directly), and a turning hull sweeps
+          // the plank SIDEWAYS out of the lane rather than through the door line.
+          const svx = Math.cos(st.angle) * ship.ship!.speed;
+          const svy = Math.sin(st.angle) * ship.ship!.speed;
           if (
             deckCellAtLocal(grid, local.lx, local.ly)?.tile === 'gangplank' &&
-            this.movingInward(e.mover!.vx, e.mover!.vy, st.angle, grid, gp)
+            this.movingInward(e.mover!.vx - svx, e.mover!.vy - svy, st.angle, grid, gp)
           ) {
-            enterDeck(e, ship.id, local.lx, local.ly);
-            e.mover!.onLedge = !deckCanOccupy(grid, local.lx, local.ly, t.r, false, false); // clears itself once fully aboard
+            enterDeck(e, ship.id, local.lx, local.ly); // NO perch: the plank is a corridor — moveOnDeck walks
+            //                                            the entry overhang in along the board axis (no PERCH state)
           }
           continue; // in the lane → never pushed (the door is open)
         }
@@ -89,14 +97,16 @@ export class HullCollisionSystem {
     }
   }
 
-  /** Is this walker's intent (world-space vx/vy) pointing INTO the ship through the door? The gangplank's outward
-   *  direction is deck-local — rotate it by the ship heading and dot it against the intent. Strictly negative:
-   *  standing still in the doorway boards nothing (the door is a passage, not a pressure plate). */
-  private movingInward(vx: number, vy: number, angle: number, grid: DeckGrid, gp: DeckCell): boolean {
+  /** Is this walker moving INTO the ship through the door — in SHIP-RELATIVE terms (callers pass walker
+   *  velocity minus hull drift, so a plank sliding under an idle walker counts as inward)? The gangplank's
+   *  outward direction is deck-local — rotate it by the ship heading and dot it against the relative motion.
+   *  Strictly negative: standing still in the doorway of a STILL ship boards nothing (the door is a passage,
+   *  not a pressure plate). */
+  private movingInward(rvx: number, rvy: number, angle: number, grid: DeckGrid, gp: DeckCell): boolean {
     const [ox, oy] = gangplankOutward(grid, gp);
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    return vx * (ox * cos - oy * sin) + vy * (ox * sin + oy * cos) < 0;
+    return rvx * (ox * cos - oy * sin) + rvy * (ox * sin + oy * cos) < 0;
   }
 
   /** Is the LOCAL point inside the gangplank LANE — the open corridor through the door? The lane spans the

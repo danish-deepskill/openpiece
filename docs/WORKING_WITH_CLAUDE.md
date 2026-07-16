@@ -59,6 +59,13 @@ reach, squad tokens.
 - **Gates** — typecheck + tests (+ build). "Gates green?" = "is it verified?"
 - **Slice** — a small end-to-end playable piece of a bigger feature (how everything gets built here).
 - **Handoff** — the saved state that lets the next session resume without re-teaching (`/handoff`).
+- **Frame** — the space a body's position lives in: **world** or **deck** (aboard a ship, `D-`/`W-` in the
+  debug readout). Handoffs between them follow the floor edge.
+- **Straddle** — center on a floor edge, body half over each side. **Outer straddle** = the gangplank's
+  outer end (plank ↔ water/land) — THE world↔deck handoff line, both directions. **Inner straddle** = the
+  plank's deck-side end (NOT a transition; the deck frame holds across the whole plank). **Rail straddle** =
+  gunwale ↔ sea, where the walk-off fires. Also: the **lane** (plank cell + one tile outward — the open
+  corridor through the door) and the **lane mouth** (that outward approach tile).
 
 ## 5. Session rituals (the daily rhythm)
 

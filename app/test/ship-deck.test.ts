@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deckOf, deckToWorld, gangplankCell, helmSpot } from '../src/defs/decks';
+import { deckCellAtLocal, deckOf, deckToWorld, gangplankCell, helmSpot, worldToDeck } from '../src/defs/decks';
 import { ShipHulls } from '../src/defs/ships';
 import { deckCanOccupy, hullBlocksWorldPoint } from '../src/world/deckCollision';
 import type { Entity } from '../src/ecs/components';
@@ -252,6 +252,34 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     expect(a.transform!.x).toBeLessThan(500); // west of the ship center (out the door)
   });
 
+  it('JUMPING out over the plank crosses frames at the SAME line as walking: the board\'s outer END, not the inner straddle', () => {
+    // the report: an airborne outward mover flipped to world right past the INNER straddle — the leave's old
+    // full-tile lookahead reached off-grid from the whole 1-tile-deep plank. The frame follows the floor edge
+    // for jumpers too: deck frame HOLDS across the board, handing off only in the outer-straddle band (the
+    // leading-edge lookahead — as close to the door line as the airborne clamp allows).
+    const { world, move } = seaSystem();
+    const ship = makeShip(world, 500, 500, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const gp = gangplankCell(grid)!; // faces WEST — outward is −x
+    const a = makeActor(world, 0, 0);
+    a.mover!.layer = 'air'; // mid-jump the whole way
+    a.mover!.airT = 10;
+    a.mover!.airDur = 10;
+    a.onDeck = { shipId: ship.id, lx: gp.lx + grid.tilePx / 2 + 4, ly: gp.ly }; // on the ship floor, just inside the INNER straddle
+    a.mover!.frameCd = 0;
+    for (let i = 0; i < 200 && a.onDeck; i++) {
+      a.mover!.vx = -100; // fly OUT through the door line
+      a.mover!.vy = 0;
+      move.update(1 / 60);
+    }
+    expect(a.onDeck).toBeUndefined(); // flew off the board's end — world space now
+    const l = worldToDeck(ship.transform!, a.transform!.x, a.transform!.y);
+    const outerX = gp.lx - grid.tilePx / 2; // the board's outer end line
+    // handed off inside the outer-straddle band (center within a body radius + a step of the line) — the
+    // regression put the exit a full TILE east of here, right at the inner straddle
+    expect(l.lx).toBeLessThan(outerX + a.transform!.r + 4);
+  });
+
   it('WALK-OFF does NOT fire while pushing INWARD on the gangplank (you keep walking the deck)', () => {
     const { world, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
@@ -316,6 +344,33 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     expect(a.onDeck).toBeUndefined(); // the door is a passage, not a pressure plate
     expect(a.transform!.x).toBe(w.x); // and the lane never pushes
     expect(a.transform!.y).toBe(w.y);
+  });
+
+  it('the door is RELATIVE: a ship REVERSING under an idle walker boards him at the OUTER straddle', () => {
+    // the report: standing world-framed at the outer straddle, idle, then backing the ship up — the deck
+    // slid beneath him across the whole plank with no handoff (the direction gate read only the WALKER's
+    // intent, and idle = "not inward"), until the interior land-on fallback adopted him at the INNER
+    // straddle. Inward means RELATIVE motion — walker minus hull — so the floor edge passing under your
+    // feet is the same handoff line whether you walk over it or it slides under you.
+    const { world, ships, move } = seaSystem();
+    const hulls = new HullCollisionSystem(world);
+    const ship = makeShip(world, 500, 500, 0);
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const gp = gangplankCell(grid)!; // sloop's door faces WEST (outward −x)
+    const start = deckToWorld(ship.transform!, gp.lx - grid.tilePx / 2 - 2, gp.ly); // 2px outside the board's end line
+    const a = makeActor(world, start.x, start.y); // IDLE — never presses a key
+    ship.ship!.throttle = -1; // held in reverse (non-zero throttle keeps the coast-drag/stop-snap off)
+    ship.ship!.speed = -40; // backing WEST — the plank sweeps under the walker: relatively INWARD
+    for (let i = 0; i < 300 && !a.onDeck; i++) {
+      move.update(1 / 60);
+      ships.update(1 / 60);
+      hulls.update();
+    }
+    expect(a.onDeck).toBeDefined(); // boarded by the floor arriving under his feet
+    // …AT the outer straddle: the adopted local spot is still on the PLANK, within a step of its outer end
+    // line — not the interior floor cell (the inner straddle, where the old fallback finally caught him)
+    expect(deckCellAtLocal(grid, a.onDeck!.lx, a.onDeck!.ly)?.tile).toBe('gangplank');
+    expect(gp.lx - a.onDeck!.lx).toBeGreaterThan(grid.tilePx / 2 - 4); // ≤4px inside the outer end line
   });
 
   it('landing STRADDLING the rail seam (center on the interior, body over the rail) perches instead of freezing', () => {

@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL } from '../config/constants';
 import { draws, type DrawFn } from '../draw/actorDraws';
 import { drawShip } from '../draw/shipDraws';
+import { ShipHulls } from '../defs/ships';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { TileGrid } from '../world/TileGrid';
@@ -76,12 +77,19 @@ export class RenderSystem {
 
   /** The y a unit's layers (body, accessories, weapon) sort by. Normally its own transform.y — but an ON-DECK
    *  actor must draw ABOVE its hull yet still order fore/aft AMONG on-deck actors as they walk. So it sorts by its
-   *  OWN world y, lifted past the hull's y-extent (ship.y + its radius) so it always clears the deck it stands on.
+   *  OWN world y, lifted past the hull's CURRENT on-screen y-extent — |sin|·length/2 + |cos|·width/2 for the
+   *  ship's heading, NOT ship.r (the ocean radius ≈ half-WIDTH: it under-lifted a rotated hull — facing south the
+   *  long axis is vertical, and a stern-side rider sorted UNDER the deck he stood on). Per-angle keeps the lift
+   *  minimal, so riders overdraw as little as possible of whatever stands just south of the hull.
    *  The ONE home for this rule; every render layer reads it so they can never disagree. */
   sortY(e: Entity): number {
     if (e.onDeck) {
       const ship = this.world.byId(e.onDeck.shipId);
-      if (ship?.transform) return e.transform!.y + ship.transform.r; // own y (fore/aft order) lifted clear of the hull
+      if (ship?.transform && ship.ship) {
+        const hull = ShipHulls.get(ship.ship.hull);
+        const extentY = (Math.abs(Math.sin(ship.transform.angle)) * hull.length + Math.abs(Math.cos(ship.transform.angle)) * hull.width) / 2;
+        return e.transform!.y + extentY; // own y (fore/aft order) lifted clear of the hull at ANY heading
+      }
     }
     return e.transform!.y;
   }

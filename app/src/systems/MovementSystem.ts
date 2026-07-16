@@ -1,4 +1,4 @@
-import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN, LEDGE_MOVE_MULT, SLOW_MULT, TILE } from '../config/constants';
+import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN, LEDGE_MOVE_MULT, SLOW_MULT } from '../config/constants';
 import { spendStamina } from '../combat/stamina';
 import { events } from '../core/EventBus';
 import { applyEffect, Effects, TAG_SLOWED, TAG_STUNNED } from '../combat/Effect';
@@ -421,34 +421,72 @@ export class MovementSystem {
     if (cell?.tile === 'gangplank' && !airborne && (dlx !== 0 || dly !== 0)) {
       const [ox, oy] = gangplankOutward(grid, cell);
       const proj = dlx * ox + dly * oy; // the outward component of this tick's step
-      if (proj > 0) {
-        // the TRUE STRADDLE: the very next center step would leave the board — hand off IN PLACE, half on,
-        // half off (the same line the walk-ON boards at, opposite direction — the frame follows the floor edge)
-        if (deckCellAtLocal(grid, e.onDeck.lx + dlx, e.onDeck.ly + dly) === undefined) {
-          const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
-          exitDeck(e, w.x, w.y);
-          return;
+      // the TRUE STRADDLE: the very next center step would leave the board — hand off IN PLACE, half on,
+      // half off (the same line the walk-ON boards at, opposite direction — the frame follows the floor edge)
+      if (proj > 0 && deckCellAtLocal(grid, e.onDeck.lx + dlx, e.onDeck.ly + dly) === undefined) {
+        const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
+        exitDeck(e, w.x, w.y);
+        return;
+      }
+      const overhangNow = !deckCanOccupy(grid, e.onDeck.lx, e.onDeck.ly, e.transform!.r, false, false);
+      // at the OUTER OVERHANG, a push with NO inward component that is essentially LATERAL steps off the
+      // board's SIDE: hand off to the world frame in place — half outside means sideways movement continues
+      // OUTSIDE, sliding along the hull face. STRICTLY proj ≥ 0: any inward tilt stays deck-framed (an
+      // exit with an inward component immediately re-boarded — an exit/board ping-pong that froze shallow
+      // diagonal input at the straddle).
+      const stepLen = Math.hypot(dlx, dly);
+      // outward share < 30% of the step ⇒ "essentially lateral" (≥ ~72° off the outward axis): wide enough
+      // to catch drift on a vertical push, narrow enough that a genuine 45° outward diagonal (71% share)
+      // still walks the corridor to the straddle exit ahead instead of side-stepping off early
+      const LATERAL_EXIT_CONE = 0.3;
+      if (overhangNow && proj >= 0 && proj < stepLen * LATERAL_EXIT_CONE) {
+        const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
+        exitDeck(e, w.x, w.y);
+        return;
+      }
+      // THE BOARD IS A CORRIDOR (the developer's call: NO perch on the gangplank — walking a plank is just
+      // walking). While the body is in an END ZONE — already overhanging, OR the along-step's TARGET would
+      // overhang (the approach: body flush with the end, center still up to a radius inside the line;
+      // gating on the CURRENT spot alone left an 11px dead zone where outward walk was walled — the
+      // "can't get out from the gangplank" report) — the phantom off-hull solid must not wall ANY
+      // component; the handoffs own the ends: the ALONG-axis moves freely, and the LATERAL axis moves
+      // clamped to the real flank clearance (±(halfTile − r) around the lane centerline) instead of dying
+      // against the walker's own overhang (inward diagonals crab-walked with the lateral component dead).
+      const overhangNext =
+        proj !== 0 && !deckCanOccupy(grid, e.onDeck.lx + ox * proj, e.onDeck.ly + oy * proj, e.transform!.r, false, false);
+      if (overhangNow || overhangNext) {
+        e.onDeck.lx += ox * proj;
+        e.onDeck.ly += oy * proj;
+        // move-relative, never a positional snap: a walker who BOARDED off-center (the walk-on takes the
+        // center anywhere across the plank's tile width) may sit outside the band — clamping position would
+        // teleport him sideways; instead he may only move back TOWARD it, never further out.
+        const bound = Math.max(0, grid.tilePx / 2 - e.transform!.r);
+        const latC = ox !== 0 ? cell.ly : cell.lx;
+        const lat = ox !== 0 ? e.onDeck.ly : e.onDeck.lx;
+        const dLat = ox !== 0 ? dly : dlx;
+        const next = lat + dLat;
+        if (Math.abs(next - latC) <= bound || Math.abs(next - latC) < Math.abs(lat - latC)) {
+          if (ox !== 0) e.onDeck.ly = next;
+          else e.onDeck.lx = next;
         }
-        // WALLED at the board's end (the grounded walk can't overhang) → balance onto the LIP: perch-as-needed
-        // lets the body overhang the last radius so the center can actually REACH the straddle line (without
-        // this, the exit fired a full body radius early — visibly still on the board). Self-clears (the
-        // step-off-perch rule) if the walker turns back inboard.
-        if (!m.onLedge && !deckCanOccupy(grid, e.onDeck.lx + ox * proj, e.onDeck.ly + oy * proj, e.transform!.r, false, false)) {
-          m.onLedge = true;
-        }
+        return; // fully handled — the grounded mask would fight every remaining step against the overhang
       }
     }
-    // AIRBORNE LEAVE: airborne + moving OUTWARD off an OUTER cell (a full tile ahead is off-grid) → hand off to
-    // world space AT THE CURRENT SPOT (mirror of land-on-deck boarding). The tile lookahead is only the TRIGGER
-    // (a 1-tick lookahead can't reach off-grid from a cell center — the old invisible-block bug); exiting AT the
-    // lookahead point snapped the body a full tile sideways — the "teleported off the ship" pop. Position stays
-    // CONTINUOUS: the remaining flight carries you out, and a short hop that comes down still over the rail just
-    // perches you there (land()'s rail adoption) — honest, and the drop-off below gets you to the water anyway.
-    // No cooldown mute: a jump is EXPLICIT intent (leaving must work right after landing on the rail), and the
-    // leave/board pair is air/ground-asymmetric — it cannot loop.
+    // AIRBORNE LEAVE: airborne + moving OUTWARD, with the body's LEADING EDGE about to cross off-grid (the
+    // lookahead is r + one step — the airborne twin of the OUTER STRADDLE) → hand off to world space AT THE
+    // CURRENT SPOT (mirror of land-on-deck boarding). Why a lookahead at all: the airborne mask clamps the
+    // CENTER a radius short of the grid edge, so a bare next-step test never reaches off-grid (the old
+    // invisible-block bug). Why not a full TILE: every edge cell then triggers from its whole width — a jump
+    // over the 1-tile-deep gangplank flipped to world right past the INNER straddle, a tile before the door
+    // line the walk handoffs hold to (the report: jumping and walking must cross frames at the SAME line).
+    // Position stays CONTINUOUS: the remaining flight carries you out, and a short hop that comes down still
+    // over the rail just perches you there (land()'s rail adoption) — honest, and the drop-off below gets you
+    // to the water anyway. No cooldown mute: a jump is EXPLICIT intent (leaving must work right after landing
+    // on the rail), and the leave/board pair is air/ground-asymmetric — it cannot loop.
     if (airborne && (dlx !== 0 || dly !== 0)) {
       const len = Math.hypot(dlx, dly);
-      if (deckCellAtLocal(grid, e.onDeck.lx + (dlx / len) * grid.tilePx, e.onDeck.ly + (dly / len) * grid.tilePx) === undefined) {
+      const ahead = e.transform!.r + len; // where the body's leading edge will be after this step
+      if (deckCellAtLocal(grid, e.onDeck.lx + (dlx / len) * ahead, e.onDeck.ly + (dly / len) * ahead) === undefined) {
         const w = deckToWorld(ship.transform, e.onDeck.lx, e.onDeck.ly);
         exitDeck(e, w.x, w.y); // stays airborne (layer unchanged) → keeps flying in world space, lands later
         return;

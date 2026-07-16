@@ -19,6 +19,7 @@
 - **Serialize plain data, rehydrate references** — sprites/functions/entity-links don't survive JSON; store **by id**, rebuild + rewire on load. *(= the persistence/reference-resolution architecture — cutlass/Shanks — `DEEP_SIMULATION.md §7`.)*
 - **Order of operations:** mutate → **clamp** → check transition (death/complete) → update UI. Reordering causes "bar wrong" / "dies instantly". ✅ (`StrikeResolver`)
 - **Null/destroyed refs** — in ECS, an entity ref held across frames may point at a dead/removed unit → guard (`e?.health?.dead`). ✅
+- **Position writes name their movement frame** — a body's position is OWNED by exactly one frame (`onDeck.lx/ly` aboard, `transform` ashore); writing the other is a **dead write** (parenting overwrites next tick). Stored spatial points (goals, aim memory, posts) carry a frame id or they **treadmill** on a moving deck; systems pair bodies only within one frame. ✅ (`perceivedFrame`, `roamShipId`, frame-aware BodyCollision — DESIGN_PATTERNS §4)
 
 ---
 

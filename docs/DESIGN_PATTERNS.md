@@ -113,6 +113,15 @@ data. Data-only rows live in `defs/`. (Abilities/Effects rows move to `defs/` wi
 - **Queries narrow:** `with<K>(...)` returns entities with those components non-optional. Singleton lookups via
   `first('control')`.
 - Identity facts (name, tier) live on `identity`, not on `render` — the server needs them; pixels don't.
+- **Movement frames — reads are free, writes are owned.** `transform.x/y` is every body's WORLD PROJECTION,
+  kept fresh by deck parenting — always safe to READ across frames (perception, reach, rendering, overlap).
+  But position WRITES go to the frame that OWNS the position: `onDeck.lx/ly` aboard (through the deck
+  colliders), `transform` ashore (through world Collision) — a transform write on a parented body is a DEAD
+  WRITE, silently overwritten next tick. Corollary: any STORED spatial point (aim memory, roam spot, post)
+  must name its frame (`perceivedFrame`, `roamShipId`, `homeShipId`) — a world-anchored point on a moving
+  deck is a treadmill pointing at the stern. Systems act on bodies only WITHIN one frame unless they
+  explicitly handle the seam (frames.ts handoffs, frameLeg); "exclude the deck" is not a valid answer once
+  an invariant like "riders don't walk" dies (BodyCollisionSystem's ghost-bodies bug).
 
 ## 5. Systems canon
 
@@ -205,6 +214,8 @@ Three channels, never confused:
 - [ ] All time-based math scaled by dt (exp forms for decay/smoothing)
 - [ ] Mutate → clamp → edge-trigger transition → publish (and the rest of EDGE_CASES ★ cross-cutting)
 - [ ] Values with min/max clamped; NaN-safe ratios; ids compared, never hardcoded
+- [ ] Position writes + stored spatial points name their FRAME (§4) — no transform writes on parented bodies,
+      no world-anchored goals that should ride a deck
 - [ ] `!` only where a query/guard proves it; no shadowed imports; naming per §3
 - [ ] Events: discrete + typed + consumed; per-frame state via registry
 - [ ] Tests updated (behavior contracts, registry sweeps); ARCHITECTURE.md tree still true

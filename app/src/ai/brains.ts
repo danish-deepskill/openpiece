@@ -10,7 +10,7 @@ import { facesTarget, heavyHeading, isHeavy, steerFacing } from './steering';
 import { angleDiff, dist, norm, smoothFactor } from '../core/math';
 import { events } from '../core/EventBus';
 import { combatStance, type AIProfileDef } from '../defs/aiProfiles';
-import { deckCellAtLocal, deckOf, deckToWorld, gangplankCell, gangplankOutward, type DeckGrid, type ShipPose } from '../defs/decks';
+import { deckCellAtLocal, deckOf, deckToWorld, gangplankCell, gangplankOutward, worldToDeck, type DeckGrid, type ShipPose } from '../defs/decks';
 import { hullBlocksWorldPoint } from '../world/deckCollision';
 import { Bodies } from '../defs/bodies';
 import { Races } from '../defs/races';
@@ -418,6 +418,48 @@ function syncFollow(e: Entity, ctx: AIContext): void {
   }
 }
 
+/** Anchor a just-picked roam spot (bb.roamX/Y, WORLD px) to the actor's movement FRAME: aboard a ship it is
+ *  re-stored DECK-LOCAL (+roamShipId) and resolved through the ship's LIVE pose at use. World-anchored, an
+ *  amble spot on a sailing deck is a treadmill pointing at the stern — the idle recruit walked backward
+ *  chasing the spot the ship had left and exited through the direction-aware door. Third instance of the
+ *  goals-carry-a-frame pattern (bb.homeShipId, bb.perceivedFrame). */
+function anchorRoam(e: Entity, ctx: AIContext): void {
+  const bb = e.ai!.bb;
+  bb.roamShipId = undefined;
+  const ship = e.onDeck ? ctx.world.byId(e.onDeck.shipId) : undefined;
+  if (!ship?.transform || bb.roamX == null || bb.roamY == null) return;
+  const l = worldToDeck(ship.transform, bb.roamX, bb.roamY);
+  bb.roamShipId = e.onDeck!.shipId; // e.onDeck proven by the ship lookup above
+  bb.roamX = l.lx;
+  bb.roamY = l.ly;
+}
+
+/** Resolve the roam target to WORLD px for steering. The anchor is valid ONLY while the actor is still in
+ *  the frame it was picked in — checked SYMMETRICALLY (one comparison covers deck→world, world→deck, and
+ *  deck→other-deck): the first cut only invalidated deck→world, so a WORLD spot picked ashore survived
+ *  BOARDING and treadmilled the fresh rider aft for up to a full wanderT (the canon-review catch). Any
+ *  frame change, or the ship despawning, kills the spot for an immediate re-pick. No valid target ⇒
+ *  "stand here" (rd = 0, same as the old ?? t.x). */
+function roamWorld(e: Entity, ctx: AIContext): [number, number] {
+  const bb = e.ai!.bb;
+  const t = e.transform!;
+  if (bb.roamX == null || bb.roamY == null) return [t.x, t.y];
+  if (bb.roamShipId !== e.onDeck?.shipId) {
+    bb.roamX = undefined; // the pick blocks re-roll on roamX == null
+    bb.roamShipId = undefined;
+    return [t.x, t.y];
+  }
+  if (bb.roamShipId === undefined) return [bb.roamX, bb.roamY];
+  const ship = ctx.world.byId(bb.roamShipId);
+  if (!ship?.transform) {
+    bb.roamX = undefined;
+    bb.roamShipId = undefined;
+    return [t.x, t.y];
+  }
+  const w = deckToWorld(ship.transform, bb.roamX, bb.roamY);
+  return [w.x, w.y];
+}
+
 const wander: FsmState = {
   update(e, ctx, dt) {
     const t = e.transform!;
@@ -459,6 +501,7 @@ const wander: FsmState = {
           bb.roamX = t.x + Math.cos(a) * r;
           bb.roamY = t.y + Math.sin(a) * r;
         }
+        anchorRoam(e, ctx); // aboard ⇒ the spot rides the deck (a critter carted on a ship grazes in place)
       }
     } else if (bb.followId !== undefined) {
       // FOLLOWER: heel to the leader (bb.home tracks them via syncFollow) with HYSTERESIS — start closing past
@@ -489,6 +532,8 @@ const wander: FsmState = {
           bb.roamX = t.x; // pause in place
           bb.roamY = t.y;
         }
+        anchorRoam(e, ctx); // aboard ⇒ the amble spot rides the deck — the fix for the recruit who slid
+        //                     aft chasing a world-anchored spot and walked out the stern door under sail
       }
     } else {
       // post-holder (townsfolk / an idle fighter): strayed from its post → route back, pathfinding AROUND any
@@ -514,10 +559,12 @@ const wander: FsmState = {
           bb.roamX = t.x; // pause in place
           bb.roamY = t.y;
         }
+        anchorRoam(e, ctx); // aboard ⇒ the spot rides the deck (a deck-posted guard holds his deck spot)
       }
     }
-    const rdx = (bb.roamX ?? t.x) - t.x; // roam target is set by the blocks above; ?? satisfies the checker
-    const rdy = (bb.roamY ?? t.y) - t.y;
+    const [rwx, rwy] = roamWorld(e, ctx); // deck-anchored spots resolve through the ship's LIVE pose
+    const rdx = rwx - t.x;
+    const rdy = rwy - t.y;
     const rd = Math.hypot(rdx, rdy);
     // a FOLLOWER roams at its full WALK speed (the player can't stroll at grazing pace, so a slow-ambling crew
     // member reads inconsistent); townsfolk/wildlife keep the slower wanderSpeed graze.

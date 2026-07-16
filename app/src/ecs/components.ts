@@ -133,8 +133,11 @@ export interface Blackboard {
   //                        stopgap) — held with hysteresis so a head-on read can't flip-flop mid-circuit
   // wander / roam
   wanderT: number; // countdown to the next roam point
-  roamX?: number;
+  roamX?: number; // COORDS ARE FRAME-DEPENDENT: deck-LOCAL px while roamShipId is set, else world px
   roamY?: number;
+  roamShipId?: number; // the movement FRAME the roam spot lives in (the actor's ship while aboard, undefined =
+  //                      world): an amble spot must RIDE the deck — world-anchored, a sailing ship turns it into
+  //                      a treadmill pointing at the stern (the idle recruit who walked out the door)
   // pathfinding (managed by routeTo)
   path?: Waypoint[] | null;
   pathIdx?: number;

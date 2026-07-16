@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { deckCellAtLocal, deckOf, deckToWorld, gangplankCell, worldToDeck } from '../src/defs/decks';
+import { deckCellAtLocal, deckOf, deckToWorld, gangplankCell, gangplankOutward, worldToDeck } from '../src/defs/decks';
 import { TERRAIN } from '../src/defs/terrains';
 import { ShipHulls } from '../src/defs/ships';
 import { hullBlocksOutside } from '../src/world/deckCollision';
+import { enterDeck } from '../src/world/frames';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
 import { Collision } from '../src/world/Collision';
@@ -151,6 +152,44 @@ describe('the rail walls a grounded walker (hullWall)', () => {
     const rail = grid.cells.find((c) => c.cx === 2 && c.cy === 3)!; // south rail amidships
     expect(hullBlocksOutside(grid, rail.lx, rail.ly + 12, 11)).toBe(true); // anywhere in the cell blocks anyone
     expect(hullBlocksOutside(grid, rail.lx, rail.ly + 16 + 12, 11)).toBe(false); // a radius past the cell line — open sea
+  });
+
+  it('the plank STRADDLE takes every direction — 8 compass pushes all make real progress (no diagonal stick)', () => {
+    // the report sequence: at the outer straddle (half on the board, half off) vertical input was fixed by
+    // the lateral side-exit, but DIAGONALS still stuck — inward diagonals crab-walked with the lateral
+    // component dead against the walker's own overhang, and shallow-tilted laterals ping-ponged exit/board
+    // (an exit with any inward component immediately re-boarded). Every push must move you ALONG ITS OWN
+    // direction, whether that resolves deck-framed (the corridor) or via a handoff to world.
+    const DIRS: Array<[number, number]> = [
+      [1, 0], [-1, 0], [0, 1], [0, -1],
+      [Math.SQRT1_2, Math.SQRT1_2], [Math.SQRT1_2, -Math.SQRT1_2],
+      [-Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, -Math.SQRT1_2],
+    ];
+    for (const [ux, uy] of DIRS) {
+      const { world, move, hulls, ships } = sea(TERRAIN.shallowWater);
+      const ship = makeShip(world);
+      const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+      const gp = gangplankCell(grid)!;
+      const [ox, oy] = gangplankOutward(grid, gp);
+      // the straddle: center 1px inside the board's outer end line, nudged 5px off the lane centerline
+      // (a perfectly centered start would hide lateral-axis bugs behind symmetry)
+      const slx = gp.lx + ox * (grid.tilePx / 2 - 1) - oy * 5;
+      const sly = gp.ly + oy * (grid.tilePx / 2 - 1) + ox * 5;
+      const w = deckToWorld(ship.transform!, slx, sly);
+      const a = actor(world, w.x, w.y);
+      enterDeck(a, ship.id, slx, sly);
+      a.mover!.frameCd = 0;
+      for (let i = 0; i < 90; i++) {
+        a.mover!.vx = ux * 95;
+        a.mover!.vy = uy * 95;
+        move.update(SIM);
+        ships.update(SIM);
+        hulls.update();
+      }
+      const wx = a.onDeck ? deckToWorld(ship.transform!, a.onDeck.lx, a.onDeck.ly) : a.transform!;
+      const progress = (wx.x - w.x) * ux + (wx.y - w.y) * uy;
+      expect(progress, `push (${ux.toFixed(2)}, ${uy.toFixed(2)}) from the straddle`).toBeGreaterThan(10);
+    }
   });
 
   it('the CENTER rule holds at the door: the angled lane approach can never put a center inside the rail', () => {

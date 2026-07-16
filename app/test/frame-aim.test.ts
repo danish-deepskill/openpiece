@@ -4,7 +4,7 @@ import type { AIContext } from '../src/ai/Brain';
 import { TagSet } from '../src/combat/TagSet';
 import { Rng } from '../src/core/Rng';
 import { AIProfiles } from '../src/defs/aiProfiles';
-import { deckOf, helmSpot } from '../src/defs/decks';
+import { deckOf, gangplankCell, helmSpot } from '../src/defs/decks';
 import type { FactionId } from '../src/defs/factions';
 import { ShipHulls } from '../src/defs/ships';
 import type { Entity } from '../src/ecs/components';
@@ -12,6 +12,7 @@ import { BASE_KIT } from '../src/defs/units';
 import { World } from '../src/ecs/World';
 import { AbilitySystem } from '../src/systems/AbilitySystem';
 import { EffectSystem } from '../src/systems/EffectSystem';
+import { HullCollisionSystem } from '../src/systems/HullCollisionSystem';
 import { MovementSystem } from '../src/systems/MovementSystem';
 import { ShipSystem } from '../src/systems/ShipSystem';
 import type { StrikeResolver } from '../src/systems/StrikeResolver';
@@ -29,13 +30,13 @@ import { TileGrid } from '../src/world/TileGrid';
 
 const SIM = 1 / 60;
 
-function harness(): { world: World; ships: ShipSystem; move: MovementSystem; ctx: AIContext } {
-  const g = new TileGrid(40, 40);
-  g.tiles = Array.from({ length: 40 }, () => Array.from({ length: 40 }, () => 0 /* TERRAIN.water */));
+function harness(seed = 11): { world: World; ships: ShipSystem; move: MovementSystem; ctx: AIContext } {
+  const g = new TileGrid(120, 40); // wide, so a full-sail run never hits the world edge (grounding kills the treadmill under test)
+  g.tiles = Array.from({ length: 40 }, () => Array.from({ length: 120 }, () => 0 /* TERRAIN.water */));
   const world = new World();
   const collision = new Collision(g);
   const abilities = new AbilitySystem(world, new EffectSystem(world), {} as StrikeResolver, new Rng(7)); // strikes stubbed: the assertion is the SWING starting, contact never resolves here
-  const ctx: AIContext = { world, query: new SpatialQuery(world), rng: new Rng(11), abilities, pathfinder: new Pathfinder(g) };
+  const ctx: AIContext = { world, query: new SpatialQuery(world), rng: new Rng(seed), abilities, pathfinder: new Pathfinder(g) };
   return { world, ships: new ShipSystem(world, collision), move: new MovementSystem(world, collision), ctx };
 }
 
@@ -92,4 +93,101 @@ it('a bandit keeps ATTACKING a seated pilot while the ship SAILS (same-deck aim 
     swung ||= bandit.melee !== undefined; // the swing STARTING is the whole assertion
   }
   expect(swung).toBe(true); // adjacent + visible + in reach ⇒ he fights; sailing must not turn him into a statue
+});
+
+it('a roam spot picked ASHORE dies on BOARDING — a world anchor must not survive into the deck frame', () => {
+  // the canon-review catch: invalidation was one-directional (deck→world only). A walker who boarded
+  // mid-wander-cycle kept chasing his stale WORLD spot — receding aft at sail speed — for up to a full
+  // wanderT before the next pick re-anchored it. The anchor is valid ONLY in the frame it was picked in;
+  // any frame change kills it for an immediate re-pick.
+  const { world, ships, move, ctx } = harness(11);
+  const hulls = new HullCollisionSystem(world);
+  const ship = world.create({
+    transform: { x: 500, y: 500, angle: 0, r: 56 },
+    ship: { hull: 'ship.sloop', mode: 'exploration', anchored: false, speed: 0, throttle: 0 },
+  });
+  const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+  const gp = gangplankCell(grid)!;
+  const leader = rider(world, 'straw_hat', ship.id, gp.lx + grid.tilePx, gp.ly);
+  const f = rider(world, 'straw_hat', ship.id, gp.lx + grid.tilePx + 24, gp.ly); // in the band, on the door row
+  ships.update(SIM);
+  f.ai = {
+    brain: actorBrain,
+    bb: {
+      state: 'wander',
+      profile: AIProfiles.get('ai.rusher'),
+      home: { x: leader.transform!.x, y: leader.transform!.y },
+      followId: leader.id,
+      canSprint: false,
+      wanderT: 999, // mid-cycle: the timer must NOT be what saves him — the frame check has to
+      lastSeenX: 0,
+      lastSeenY: 0,
+      lostT: 0,
+    },
+  };
+  f.ai.bb.roamX = f.transform!.x; // the boarded-mid-cycle state: a "pause in place" spot picked ASHORE —
+  f.ai.bb.roamY = f.transform!.y; // world px, roamShipId deliberately unset (the pre-boarding anchor shape)
+  ship.ship!.throttle = 1;
+  ship.ship!.speed = 120;
+  for (let i = 0; i < 240; i++) {
+    actorBrain.think(f, ctx, SIM);
+    move.update(SIM);
+    ships.update(SIM);
+    hulls.update();
+    expect(f.onDeck, `tick ${i}: treadmilled out the door chasing the stale ashore spot`).toBeDefined();
+    expect(f.onDeck!.lx).toBeGreaterThan(gp.lx - grid.tilePx / 2); // never even reaches the board's outer end
+  }
+});
+
+it('an idle FOLLOWER rides a sailing deck — the roam anchor must not treadmill him out the stern door', () => {
+  // the report: recruit aboard, player throttles forward — the recruit "slides back toward the gangplank and
+  // falls off behind". His idle-roam spot (incl. the pause-in-place variant) was a WORLD point: the ship
+  // sails away from it, so walking toward it is walking AFT across the deck, and the direction-aware door
+  // reads the aft-walk as an exit. The anchor must ride the deck (bb.roamShipId — the third instance of
+  // goals-carry-a-frame, after homeShipId and perceivedFrame).
+  // THREE seeds so the first roam pick exercises BOTH branches (amble-bubble AND pause-in-place) — the
+  // pause branch is the exact repro: chasing your own last spot straight out the stern door.
+  for (const seed of [7, 11, 13]) {
+    const { world, ships, move, ctx } = harness(seed);
+    const hulls = new HullCollisionSystem(world);
+    const ship = world.create({
+      transform: { x: 500, y: 500, angle: 0, r: 56 },
+      ship: { hull: 'ship.sloop', mode: 'exploration', anchored: false, speed: 0, throttle: 0 },
+    });
+    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const gp = gangplankCell(grid)!; // the sloop's door faces WEST — the stern side while sailing east
+    // leader one tile INSIDE the door, follower between him and the door (ON the plank row): the geometry
+    // where the pre-fix aft-slide crossed the board's outer end before the >90px heel could catch it
+    const leader = rider(world, 'straw_hat', ship.id, gp.lx + grid.tilePx, gp.ly);
+    const f = rider(world, 'straw_hat', ship.id, gp.lx + 8, gp.ly);
+    ships.update(SIM); // settle parenting so both have world transforms
+    f.ai = {
+      brain: actorBrain,
+      bb: {
+        state: 'wander',
+        profile: AIProfiles.get('ai.rusher'),
+        home: { x: leader.transform!.x, y: leader.transform!.y }, // syncFollow re-derives this every tick
+        followId: leader.id,
+        canSprint: false,
+        wanderT: 0, // pick the first roam spot on tick 1 — through the REAL pick path (the anchor under test)
+        lastSeenX: 0,
+        lastSeenY: 0,
+        lostT: 0,
+      },
+    };
+    ship.ship!.throttle = 1; // held at full sail (non-zero throttle keeps the coast-drag off)
+    ship.ship!.speed = 120; // faster than his 95px/s walk — the pre-fix treadmill outruns him for sure
+    for (let i = 0; i < 480; i++) {
+      actorBrain.think(f, ctx, SIM);
+      move.update(SIM);
+      ships.update(SIM);
+      hulls.update();
+      expect(f.onDeck, `seed ${seed}, tick ${i}: fell off the ship`).toBeDefined();
+      // never even reaches the board's outer end line — no aft-slide, just the amble bubble at the leader's side
+      expect(f.onDeck!.lx).toBeGreaterThan(gp.lx - grid.tilePx / 2);
+      const dl = Math.hypot(f.onDeck!.lx - leader.onDeck!.lx, f.onDeck!.ly - leader.onDeck!.ly);
+      expect(dl, `seed ${seed}, tick ${i}: drifted from the leader`).toBeLessThan(130);
+    }
+    expect(ship.ship!.speed).toBe(120); // sanity: the ship really sailed the whole run (grounding would defang the test)
+  }
 });

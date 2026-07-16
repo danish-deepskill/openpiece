@@ -46,26 +46,44 @@ The whole point: **no system branches on "am I on a deck." They branch on the FR
 - It DELETES the creeping `!e.onDeck` branches (MovementSystem's mode-derive, the InputSystem early-return) instead of adding more.
 - The frame is DATA (a component fact), so it serializes, replays, and works headless — same as MoveMode/Layer.
 
-## The transition rulebook (battle-tested — four playtest rounds of snap/freeze bugs distilled)
+## The transition rulebook (battle-tested — distilled from the full straddle/corridor playtest campaign)
 
 Every rule below exists because its violation shipped a real bug. Break one and the same bug family returns.
+Shared vocabulary: a **straddle** = the center ON a floor edge, body half over each side. The **outer
+straddle** is the plank's outer end (plank ↔ water/land); the **inner straddle** is the plank's deck-side end
+(plank ↔ ship floor); the **rail straddle** is the gunwale ↔ sea edge.
 
-1. **A transition NEVER moves the body** — with ONE named exception. Transitions through OPEN ground (the
-   gangplank door, airborne leaves, boarding) are pure address-book switches: convert the CURRENT point
-   between frames, never a lookahead or a snap target. The exception is the RAIL DROP-OFF under full-tile
-   rails (the simple-collision overhaul): the perch spot has NO legal in-place world position (it's inside
-   the solid block), so stepping off is ONE deliberate bounded hop past the block's seaward face — an
-   intentional step-down, exactly like descending a world stone wall, replacing what otherwise surfaced as
-   an accidental deep-eject snap. Everything else keeps the zero-displacement rule.
-2. **Every deck ENTRY is gated on a LEGAL deck state** (the landing spot must satisfy deck collision, else
+1. **A transition NEVER moves the body — zero displacement, no exceptions.** Every handoff (door walk-on/off,
+   gunwale drop-off, airborne leaves, land-on boarding) converts the CURRENT point between frames — never a
+   lookahead point, never a snap target. The rail drop-off earns this via the perch: the perched walk-mask
+   opens off-hull for the BODY (a clamp keeps the perched CENTER on the hull), so the walk carries you
+   continuously out over the edge and the handoff fires at the rail straddle, in place. (An earlier revision
+   allowed ONE "bounded step-down hop" exception here — rejected in playtest as a teleport, replaced by the
+   continuous perched walk-out.)
+2. **The frame follows the FLOOR EDGE: handoffs fire at the STRADDLE, both directions, walking or jumping.**
+   The outer straddle and the rail straddle are the transition lines; the INNER straddle is NOT one — the
+   deck frame HOLDS across the whole plank. "Inward/outward" is SHIP-RELATIVE (walker velocity MINUS hull
+   drift): a reversing hull sliding its plank under an idle walker crosses the same line as a walker crossing
+   a still plank. The airborne leave triggers on the body's LEADING EDGE reaching off-grid (as close to the
+   line as the airborne clamp allows), so jumps cross frames where walks do.
+3. **The plank is a CORRIDOR, not a perch.** Walking a plank is just walking: in the board's end zones the
+   phantom off-hull solid walls NOTHING — the along-axis moves freely, the lateral axis clamps to the real
+   flanks, and an essentially-lateral push at the outer overhang (strictly NO inward component — an inward
+   tilt would re-board and ping-pong) side-steps off to the world in place. The two handoffs own the ends.
+4. **Every deck ENTRY is gated on a LEGAL deck state** (the landing spot must satisfy deck collision, else
    perch). No entry may create an impossible position and hope later ticks fix it.
-3. **Direction-aware doors, not cooldowns.** The gangplank pair (walk-on/walk-off) is input-asymmetric
-   (inward intent boards, outward leaves), so it cannot oscillate — cooldown mutes on transitions were the
-   OLD bug source, not the fix.
-4. **Perch-as-needed landings in BOTH frames:** if grounded rules reject the landing cell, set `onLedge`
+5. **Direction-aware doors, not cooldowns.** The gangplank pair (walk-on/walk-off) is input-asymmetric
+   (relative-inward boards, relative-outward leaves), so it cannot oscillate — cooldown mutes on transitions
+   were the OLD bug source, not the fix.
+6. **Perch-as-needed landings in BOTH frames:** if grounded rules reject the landing cell, set `onLedge`
    rather than rejecting/teleporting the landing.
-5. **Depenetration is nearest-clear-spot, never a radial fling** — and an embedded body keeps its veto lifted
+7. **Depenetration is nearest-clear-spot, never a radial fling** — and an embedded body keeps its veto lifted
    (the hull veto applies only from CLEAR positions) so it can walk itself free instead of deadlocking.
+
+The ECS-side twin of this rulebook is `DESIGN_PATTERNS.md` §4 (reads are free, writes are owned): `transform`
+is every body's world PROJECTION — free to read in any frame, but position WRITES go to the frame that owns
+them (`onDeck.lx/ly` aboard), and every STORED spatial point names its frame (`perceivedFrame`, `roamShipId`,
+`homeShipId`). Systems act on bodies within ONE frame; cross-frame seams are handled only by the handoffs.
 
 ## Frames-as-LEVELS (where this goes next)
 
