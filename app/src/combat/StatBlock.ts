@@ -1,5 +1,11 @@
 import type { Modifier, StatId } from './Modifier';
 
+/** A StatBlock's SAVED state: base values + the modifier list. cache/dirty are derived — never serialized. */
+export interface StatBlockSnapshot {
+  base: Array<[StatId, number]>;
+  mods: Modifier[];
+}
+
 /**
  * Base stats + source-tracked modifiers, recomputed lazily. Evaluation order is fixed and order-independent
  * within a tier:  base → +Σflat → ×(1 + ΣaddPct) → ×Π(1 + mulPct) → override.
@@ -53,6 +59,21 @@ export class StatBlock {
   /** Every modifier touching a stat — for "where did this number come from" tooltips. */
   explain(stat: StatId): Modifier[] {
     return this.mods.filter((m) => m.stat === stat);
+  }
+
+  /** Serializable view (ecs/snapshot): full base map + modifier list, COPIED so the snapshot can't alias
+   *  live state. The derived cache/dirty pair is deliberately absent — a restored block recomputes on
+   *  first get(), so save data can never carry a stale computed value. */
+  snapshot(): StatBlockSnapshot {
+    return { base: [...this.base], mods: this.mods.map((m) => ({ ...m })) };
+  }
+
+  /** Rebuild from a snapshot — the exact inverse of snapshot(): same base, same mods, cache recomputed. */
+  static restore(s: StatBlockSnapshot): StatBlock {
+    const sb = new StatBlock();
+    for (const [stat, v] of s.base) sb.base.set(stat, v);
+    sb.mods = s.mods.map((m) => ({ ...m }));
+    return sb;
   }
 
   private recompute(): void {

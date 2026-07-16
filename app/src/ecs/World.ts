@@ -27,6 +27,32 @@ export class World {
     this.index.delete(e.id);
   }
 
+  /** Snapshot-restore path (ecs/snapshot): re-register an entity under its ORIGINAL id — ids are the
+   *  cross-entity refs (quarryId, shipId, projectile.owner…), so a restore that re-minted ids would sever
+   *  every one. nextId advances past every restored id, but that alone is NOT the collision guarantee —
+   *  the original world's nextId may sit above the highest LIVE id (despawned entities minted ids too, and
+   *  stale refs like grudge.ids may still point there). restoreWorld() replays the SAVED nextId via
+   *  advanceNextId() to close that gap. */
+  restoreEntity(id: number, components: Omit<Partial<Entity>, 'id'>): Entity {
+    if (this.index.has(id)) throw new Error(`World.restoreEntity: id ${id} is already live`);
+    const e = { id, ...components } as Entity;
+    this.entities.add(e);
+    this.index.set(id, e);
+    if (id >= this.nextId) this.nextId = id + 1;
+    return e;
+  }
+
+  /** The id the NEXT create() will mint — snapshotted so a restored world never re-issues an id that a
+   *  stale at-rest ref (a dead quarryId, a permanent grudge entry) might still name. */
+  get nextEntityId(): number {
+    return this.nextId;
+  }
+
+  /** Restore path only: never lower (a lowered counter would re-issue live or referenced ids). */
+  advanceNextId(to: number): void {
+    if (to > this.nextId) this.nextId = to;
+  }
+
   /** Resolve a stored entity id (components keep cross-entity refs as IDS at rest — serializable, and a
    *  destroyed entity reads as `undefined` instead of a stale live pointer). */
   byId(id: number): Entity | undefined {

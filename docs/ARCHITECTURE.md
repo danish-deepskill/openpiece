@@ -78,6 +78,7 @@ ballpiece/
         World.ts                # entity store + NARROWED queries (world.with<K>(...) proves components)
         components.ts           # Component data interfaces (plain, serializable) + Components union
         Spawner.ts              # sim-side factory: spawnHero/spawnUnit/spawnPickup/spawnShip from Defs
+        snapshot.ts             # world ↔ plain-JSON snapshots (persistence seed + the replay-test state hash)
       defs/                     # content rows: units, bodies, factions, aiProfiles, layers, ships, terrains,
         ...                     #   structures, decks, accessories, visual, items (ItemRef spine; BASE_KIT in units.ts) — data only
       combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier,
