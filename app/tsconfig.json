@@ -9,6 +9,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,

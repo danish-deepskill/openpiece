@@ -63,6 +63,8 @@ ballpiece/
   docs/references/grand_voyage.html  # reference ONLY (behavior spec); not built upon
   app/
     index.html  package.json  tsconfig.json  vite.config.ts
+    data/                       # EXTERNAL content rows (JSON) — terrains, structures (pillar-1 pilot);
+                                #   shape-checked at load by core/rows.ts, edits need no code change
     src/                        # SIM folders (ai/combat/core/defs/ecs/world) are Phaser-free —
       main.ts                   #   enforced by test/architecture.test.ts (headless-server ready)
       config/
@@ -73,6 +75,7 @@ ballpiece/
         Rng.ts                  # seeded mulberry32 streams (worldgen/ai/combat) — sim determinism
         math.ts                 # clamp, dist, norm, segDist, angleDiff, smoothFactor, cosmetic rand
         Registry.ts             # typed content registries (+ parent inheritance, boot validators)
+        rows.ts                 # external-row shape check (RowReader/parseRows): JSON → typed defs, fail-loud
         Pool.ts                 # generic object pool (presentation churn)
       ecs/
         World.ts                # entity store + NARROWED queries (world.with<K>(...) proves components)

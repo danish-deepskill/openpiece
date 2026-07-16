@@ -40,9 +40,12 @@ export const SIM_DT = 1 / 60;
 export const FOOT_SPEED = 165;
 export const BOAT_SPEED = 225;
 
-/** Terrain modifiers: a unit's move speed on that ground, as a fraction of normal (see TileGrid.speedMul). */
-export const SHALLOW_MOVE_MULT = 0.5; // wading coastal shallows
-export const SAND_MOVE_MULT = 0.75; // trudging across sand/desert — heavier going than grass
+/** Movement-STATE modifiers (fractions of normal speed). Ground-terrain paces are NOT here anymore — they
+ *  live on each terrain row in data/terrains.json (speedMul — knobs live on defs); these constants cover
+ *  the states a BODY is in, independent of which ground def sits underneath. */
+export const SHALLOW_MOVE_MULT = 0.5; // a SWIMMER over any non-deep water cell (TileGrid.swimSpeedMul) —
+//                                       deliberately equal to the shallowWater row's wade pace today, but a
+//                                       SEPARATE knob: retune the walker's wade in data/terrains.json
 export const LEDGE_MOVE_MULT = 0.5; // balancing atop a LOW WALL (stone wall / ship rail) you jumped onto — a slow perch
 export const AIM_MOVE_MULT = 0.5; // ADS-walking while AIMING a ranged weapon (RMB): you can advance while covering, but at half pace
 export const SWIM_MOVE_MULT = 0.5; // swimming deep water — SAME pace as a shallow wade (no speed change across the water)

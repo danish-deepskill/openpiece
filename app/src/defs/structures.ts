@@ -1,4 +1,6 @@
 import { Registry, type Def } from '../core/Registry';
+import { parseRows, type RowReader } from '../core/rows';
+import structureRows from '../../data/structures.json';
 
 /**
  * BUILT THINGS as content — walls, doors, trees, stone… and later windmills, cannons, masts. Structures are
@@ -54,17 +56,27 @@ export const Structures = new Registry<StructureDef>('Structures', (s) => {
   return null;
 });
 
-Structures.registerAll([
-  // building wall — TALL (roofed): blocks even a jumper, and vision; replaces its ground visually
-  { id: 'structure.wall', name: 'Wall', size: { w: 1, h: 1 }, blocksFoot: true, blocksAir: true, opaque: true, color: 0x5a4a30, minimap: 0x2e2618, bake: 'wall' },
-  // doorway — blocks while closed (tall, part of the building shell); DoorSystem opens it; AI plans through
-  { id: 'structure.door', name: 'Door', size: { w: 1, h: 1 }, blocksFoot: true, blocksAir: true, door: true, color: 0xb98a5a, minimap: 0x8a6a3a, bake: 'door' },
-  // freestanding stone — a LOW wall: jump it or perch on it; no door mechanic, see-through (waist height)
-  { id: 'structure.stoneWall', name: 'Stone Wall', size: { w: 1, h: 1 }, blocksFoot: true, blocksAir: false, color: 0x8a8781, minimap: 0x6b6b6b, bake: 'stoneWall' },
-  // tree — a LOW blocker (vault the grove / perch); no base color (the trunk stands on visible grass),
-  // crown baked above actors via the overlay pass
-  { id: 'structure.tree', name: 'Tree', size: { w: 1, h: 1 }, blocksFoot: true, blocksAir: false, minimap: 0x2f5a2f, bake: 'tree', overlay: 'treeCrown' },
-  // windmill — the first MULTI-TILE structure (the reason built things are entities, not tiles): one entity,
-  // SIX occupied cells; a TALL roofed landmark (no jumping through the mill) with its blade sweep above actors
-  { id: 'structure.windmill', name: 'Windmill', size: { w: 3, h: 2 }, blocksFoot: true, blocksAir: true, opaque: true, color: 0x7d7668, minimap: 0x6b5f4e, bake: 'windmill', overlay: 'windmillBlades' },
-]);
+/** JSON row → StructureDef, shape-proven field by field (core/rows). Rows live EXTERNALLY in
+ *  data/structures.json — the pillar-1 pilot's second family, chosen because it exercises a NESTED object
+ *  field (size). Per-row rationale (JSON carries no comments): wall = TALL roofed shell, blocks vision ·
+ *  door = blocks while closed, DoorSystem opens, AI plans through · stoneWall = LOW freestanding (jump or
+ *  perch, see-through) · tree = LOW blocker on visible grass, crown overlaid above actors · windmill = the
+ *  first MULTI-TILE structure (one entity, six occupied cells, blades overlaid above actors). */
+const parseStructure = (r: RowReader): StructureDef => {
+  const size = r.obj('size');
+  return {
+    id: r.str('id'),
+    name: r.str('name'),
+    size: { w: size.num('w'), h: size.num('h') },
+    blocksFoot: r.bool('blocksFoot'),
+    blocksAir: r.bool('blocksAir'),
+    opaque: r.optBool('opaque'),
+    door: r.optBool('door'),
+    color: r.optColor('color'),
+    minimap: r.optColor('minimap'),
+    bake: r.optStr('bake'),
+    overlay: r.optStr('overlay'),
+  };
+};
+
+Structures.registerAll(parseRows('Structures', structureRows, parseStructure));

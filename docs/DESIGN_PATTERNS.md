@@ -87,7 +87,7 @@ Registries validate id grammar at boot.
 | Folder | Responsibility | Boundary |
 |---|---|---|
 | `core/` | Registry, EventBus, Rng, math, GameState, Pool | **SIM** (imports nothing above) |
-| `defs/` | content rows (units, factions, profiles, layers, accessories…) | **SIM** (plain data; no bundler assets) |
+| `defs/` | content rows (units, factions, profiles, layers, accessories…) | **SIM** (plain data; no bundler ASSET imports — external data-JSON parsed via `core/rows` is the one blessed import (pillar 1); images/audio stay presentation-side) |
 | `ecs/` | World, components, Spawner | **SIM** |
 | `combat/` | GAS-lite primitives + engines (Stat, Modifier, TagSet, Ability, swing, equip) | **SIM** |
 | `ai/` | Brain contract, FSM, brains, perception | **SIM** |

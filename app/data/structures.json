@@ -1,0 +1,56 @@
+[
+  {
+    "id": "structure.wall",
+    "name": "Wall",
+    "size": { "w": 1, "h": 1 },
+    "blocksFoot": true,
+    "blocksAir": true,
+    "opaque": true,
+    "color": "#5a4a30",
+    "minimap": "#2e2618",
+    "bake": "wall"
+  },
+  {
+    "id": "structure.door",
+    "name": "Door",
+    "size": { "w": 1, "h": 1 },
+    "blocksFoot": true,
+    "blocksAir": true,
+    "door": true,
+    "color": "#b98a5a",
+    "minimap": "#8a6a3a",
+    "bake": "door"
+  },
+  {
+    "id": "structure.stoneWall",
+    "name": "Stone Wall",
+    "size": { "w": 1, "h": 1 },
+    "blocksFoot": true,
+    "blocksAir": false,
+    "color": "#8a8781",
+    "minimap": "#6b6b6b",
+    "bake": "stoneWall"
+  },
+  {
+    "id": "structure.tree",
+    "name": "Tree",
+    "size": { "w": 1, "h": 1 },
+    "blocksFoot": true,
+    "blocksAir": false,
+    "minimap": "#2f5a2f",
+    "bake": "tree",
+    "overlay": "treeCrown"
+  },
+  {
+    "id": "structure.windmill",
+    "name": "Windmill",
+    "size": { "w": 3, "h": 2 },
+    "blocksFoot": true,
+    "blocksAir": true,
+    "opaque": true,
+    "color": "#7d7668",
+    "minimap": "#6b5f4e",
+    "bake": "windmill",
+    "overlay": "windmillBlades"
+  }
+]

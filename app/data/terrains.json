@@ -1,0 +1,71 @@
+[
+  {
+    "id": "terrain.water",
+    "name": "Deep Water",
+    "ordinal": 0,
+    "blocksFoot": false,
+    "blocksAir": false,
+    "boatPassable": true,
+    "speedMul": 1,
+    "water": "deep",
+    "aiFootAvoid": true,
+    "color": "#16456b"
+  },
+  {
+    "id": "terrain.grass",
+    "name": "Grass",
+    "ordinal": 1,
+    "blocksFoot": false,
+    "blocksAir": false,
+    "boatPassable": false,
+    "speedMul": 1,
+    "color": "#4f8a45",
+    "checker": "#4a8240",
+    "minimap": "#3f7340"
+  },
+  {
+    "id": "terrain.sand",
+    "name": "Sand",
+    "ordinal": 2,
+    "blocksFoot": false,
+    "blocksAir": false,
+    "boatPassable": false,
+    "speedMul": 0.75,
+    "color": "#d9bd82",
+    "minimap": "#d9bd82",
+    "bake": "sandFoam"
+  },
+  {
+    "id": "terrain.dock",
+    "name": "Dock",
+    "ordinal": 3,
+    "blocksFoot": false,
+    "blocksAir": false,
+    "boatPassable": true,
+    "speedMul": 1,
+    "color": "#a9824e",
+    "minimap": "#a9824e"
+  },
+  {
+    "id": "terrain.floor",
+    "name": "Floor",
+    "ordinal": 5,
+    "blocksFoot": false,
+    "blocksAir": false,
+    "boatPassable": false,
+    "speedMul": 1,
+    "color": "#b98a5a",
+    "minimap": "#8a6a3a"
+  },
+  {
+    "id": "terrain.shallowWater",
+    "name": "Shallow Water",
+    "ordinal": 7,
+    "blocksFoot": false,
+    "blocksAir": false,
+    "boatPassable": true,
+    "speedMul": 0.5,
+    "water": "shallow",
+    "color": "#2e7ea3"
+  }
+]

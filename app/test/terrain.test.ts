@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SAND_MOVE_MULT, SHALLOW_MOVE_MULT, SWIM_MOVE_MULT } from '../src/config/constants';
+import { SWIM_MOVE_MULT } from '../src/config/constants';
 import { TERRAIN, Terrains, terrainByOrdinal } from '../src/defs/terrains';
 import { terrainBakes } from '../src/draw/terrainBakes';
 import { TileGrid } from '../src/world/TileGrid';
@@ -40,8 +40,11 @@ describe('Terrains registry', () => {
     expect(terrainByOrdinal(TERRAIN.water).water).toBe('deep');
     expect(terrainByOrdinal(TERRAIN.shallowWater).water).toBe('shallow');
     expect(TileGrid.swimSpeedMul(TERRAIN.water)).toBe(SWIM_MOVE_MULT);
-    expect(TileGrid.speedMul(TERRAIN.shallowWater)).toBe(SHALLOW_MOVE_MULT);
-    expect(TileGrid.speedMul(TERRAIN.sand)).toBe(SAND_MOVE_MULT);
+    // ground paces pin the DATA rows (data/terrains.json speedMul — knobs live on defs). Deliberately NOT
+    // pinned equal to SHALLOW_MOVE_MULT anymore: that constant is the SWIMMER-over-shallows knob
+    // (TileGrid.swimSpeedMul); the walker's wade pace is the terrain row's own field.
+    expect(TileGrid.speedMul(TERRAIN.shallowWater)).toBe(0.5); // shallowWater.speedMul — the wade
+    expect(TileGrid.speedMul(TERRAIN.sand)).toBe(0.75); // sand.speedMul — the trudge
   });
 
   it('AI pathability: deep water plans-around for foot (physically enterable → swim, but AI stays ashore)', () => {
