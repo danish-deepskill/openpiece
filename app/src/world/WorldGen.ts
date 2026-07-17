@@ -17,6 +17,9 @@ export interface LevelLayout {
   grid: TileGrid;
   playerSpawn: { x: number; y: number };
   boatSpawn: { x: number; y: number };
+  /** The sailing fleet berthed at the home NORTH dock (hull id + world px) — placement is worldgen's job
+   *  (it knows the shore geometry); the scene just instantiates rows. */
+  fleet: { hull: string; x: number; y: number }[];
   pickups: PickupSpawn[];
   structures: StructureSpawn[];
   enemies: EnemySpawn[];
@@ -205,6 +208,16 @@ export function generateLevel(rng: Rng): LevelLayout {
     dockTiles.push({ tx: x, ty: ENEMY.cy });
     if (grid.tiles[ENEMY.cy + 1]) grid.tiles[ENEMY.cy + 1][x] = TERRAIN.dock;
   }
+  // NORTH dock (home): a 2-wide ribbon from the north beach (row ~15, walk-on) out past the shallows into
+  // deep water (tip row 9) — the FLEET berth: the SLOOP anchors off its end (the wind-reading rig; the
+  // rowboat at the east dock is oars and can't demo points of sail). Recorded in dockTiles so groves keep
+  // clear, same as the east landings.
+  for (let y = HOME.cy - 18; y <= HOME.cy - 12; y++) {
+    if (y < 0) continue;
+    grid.tiles[y][HOME.cx] = TERRAIN.dock;
+    dockTiles.push({ tx: HOME.cx, ty: y });
+    grid.tiles[y][HOME.cx + 1] = TERRAIN.dock;
+  }
 
   // structure records + a generation-time occupancy scratch (one claim per cell — see GenCtx)
   const structures: StructureSpawn[] = [];
@@ -303,15 +316,17 @@ export function generateLevel(rng: Rng): LevelLayout {
     for (let d = 8; d >= 4 && solidPx(sx, sy); d--) { sy = px(HOME.cy + d); }
     enemies.push({ x: sx, y: sy, boss: false, unit: 'unit.marineOfficer' });
   }
-  // LUFFY — a hostile D-tier rubber brawler (Gomu fruit + straw hat), posted at the TOP-RIGHT (NE) of the HOME
-  // island (the old Brute's spot), clear of the NW house cluster and the east dock; a duel target to feel the
-  // ai.luffy rush/charge + fruit-ability rotation. Placed deterministically, nudged toward the hub if the NE
-  // corner lands on stone/a house.
+  // the NE DUEL SPOT — normally LUFFY (a hostile D-tier rubber brawler: Gomu fruit + straw hat, the
+  // ai.luffy rush/charge duel target), posted at the TOP-RIGHT of the HOME island (the old Brute's spot),
+  // clear of the NW house cluster and the east dock. Placed deterministically, nudged toward the hub if the
+  // NE corner lands on stone/a house.
+  // TEST (developer request 2026-07): spawn a plain Bandit here instead — a simple dagger rusher, e.g. to
+  // watch the new plank-chase without Gomu rockets in the mix. Flip back to 'unit.luffy' when done.
   {
     let bx = px(HOME.cx + 7);
     let by = px(HOME.cy - 7); // north-east, inside the r=13 isle (~10 tiles from center)
     for (let d = 7; d >= 4 && solidPx(bx, by); d--) { bx = px(HOME.cx + d); by = px(HOME.cy - d); }
-    enemies.push({ x: bx, y: by, boss: false, unit: 'unit.luffy' });
+    enemies.push({ x: bx, y: by, boss: false, unit: 'unit.bandit' });
   }
 
   // tree groves — placed LAST so they can dodge every spawn/dock/door and the wall band (kept off the ring
@@ -332,6 +347,11 @@ export function generateLevel(rng: Rng): LevelLayout {
     grid,
     playerSpawn: { x: px(HOME.cx - 7), y: px(HOME.cy) }, // west side of the island (near the loot houses)
     boatSpawn: { x: px(HOME.cx + 18), y: px(HOME.cy) }, // out past the dock/shallows in deep water — the walkable sloop is large (r≈56), so keep its whole hull clear of the beach or it runs aground and can't sail
+    // the north-dock fleet: the anchor keeps ≥ the hull's r (sloop 72px) clear of the dock ribbon, the
+    // shallow ring (ends ~row 13 at this column), and the map edge — grounded = can't sail
+    fleet: [
+      { hull: 'ship.sloop', x: px(HOME.cx - 4), y: px(HOME.cy - 19) }, // west of the dock tip
+    ],
     pickups,
     structures,
     enemies,

@@ -19,6 +19,7 @@ import { MeleeSystem } from '../src/systems/MeleeSystem';
 import { MovementSystem } from '../src/systems/MovementSystem';
 import { ProjectileSystem } from '../src/systems/ProjectileSystem';
 import { ShipSystem } from '../src/systems/ShipSystem';
+import { WindSystem } from '../src/systems/WindSystem';
 import { SquadSystem } from '../src/systems/SquadSystem';
 import { StrikeResolver } from '../src/systems/StrikeResolver';
 import { SwimSystem } from '../src/systems/SwimSystem';
@@ -53,7 +54,10 @@ function buildSim(masterSeed: number) {
   const strikes = new StrikeResolver(damage, combatRng);
   const effects = new EffectSystem(world);
   const abilities = new AbilitySystem(world, effects, strikes, combatRng);
-  const ships = new ShipSystem(world, collision);
+  // wind seeded from the SAME master mint as every other stream (canon review: a fixed literal here left
+  // advancing weather outside the replay proof — the harness must cover the whole canonical tick)
+  const wind = new WindSystem(streamSeed(masterSeed, 'wind'));
+  const ships = new ShipSystem(world, collision, wind);
   const hulls = new HullCollisionSystem(world);
   const squads = new SquadSystem(world, query);
   const spawner = new Spawner(world, worldgenRng);
@@ -63,7 +67,7 @@ function buildSim(masterSeed: number) {
   for (const pk of level.pickups) spawner.spawnPickup(pk.item, pk.x, pk.y);
   const isle = { id: 2, name: 'Isle Raiders' };
   for (const s of level.enemies) spawner.spawnUnit(s.unit, s.x, s.y, s.boss ? undefined : { ...isle });
-  spawner.spawnShip('ship.sloop', level.boatSpawn.x, level.boatSpawn.y, 'straw_hat');
+  spawner.spawnShip('ship.rowboat', level.boatSpawn.x, level.boatSpawn.y, 'straw_hat');
   const ctx: AIContext = { world, query, rng: aiRng, abilities, pathfinder };
   const director = new GameDirector(world, level);
   const doors = new DoorSystem(world);
@@ -78,6 +82,7 @@ function buildSim(masterSeed: number) {
   director.setState('play'); // stepSim's play branch is gated on this; headless has no start screen
   const step = (): void => {
     // WorldScene.stepSim's play-branch order, verbatim — keep in sync when the scene reorders systems
+    wind.update(SIM); // environment FIRST (the scene steps weather before any intent reads it)
     doors.update();
     // (InputSystem slot — omitted: headless, zero player intent)
     squads.update();

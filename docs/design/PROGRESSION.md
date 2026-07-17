@@ -1,5 +1,7 @@
 # Progression, Classes & Character (Design)
 
+> **Stage:** capture — vision capture — the progression pass will judge it
+
 Fully **non-linear**: grow by doing. No global level gate; you invest in any mix and **cannot max everything**.
 
 ## Three point categories

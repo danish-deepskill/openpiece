@@ -1,5 +1,7 @@
 # Economy, Activities & Mounts (Design)
 
+> **Stage:** capture — vision capture — the living-economy pass will judge it
+
 Progression beyond combat: gather → craft → upgrade → trade. Each activity raises its own **talent** (cap 500)
 and feeds non-linear growth. A merchant playstyle is a genuine path.
 

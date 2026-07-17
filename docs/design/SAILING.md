@@ -1,5 +1,7 @@
 # Sailing — the movement & impact model (Design)
 
+> **Stage:** building — designed 2026-07; momentum+wind slice in tree, sail states/anchor/field next
+
 > The MOVEMENT half of the naval vision — how a ship sails, turns, stops, and crashes. The combat/ownership
 > half (classes, parts, cannons, modes, theft) is `NAVAL.md`; the walkable deck is
 > `features/big-walkable-ship.md`. STATUS: design ahead of code, on purpose. What's implemented today is the
@@ -29,6 +31,12 @@ Two specific reasons the current feel reads cheap (developer report):
 1. **WIND** — a world-frame vector (direction + strength) drifting on a seeded Rng stream (deterministic,
    replicable, multiplayer-safe). Environment state hangs off the FRAME (a lower-deck frame has no wind).
    Storms later spike it via the event director (`EVENTS.md`).
+   **Units verdict (2026-07):** strength is a dimensionless multiplier of one reference constant
+   (`WIND_REF` px/s) — 100% = a fresh breeze, NOT a cap; Calm Belts are 0, storms >1, both as field
+   modifiers. Player-facing wind is NEVER a raw number (the genre agrees: Sailwind/Sea of Thieves/VibeSail
+   all show wind diegetically only) — you read streaks, canvas, and luffing; Beaufort-style NAMED BANDS
+   ("fresh breeze from the east") arrive as navigator knowledge with the skill ladder below. Numbers
+   (% + px/s) live in the debug overlay only.
 2. **POINTS OF SAIL** — `sailCurve` on the hull def: a speed multiplier by angle-off-wind, with a NO-GO zone
    dead upwind (sails luff, thrust ≈ 0). This single data field IS "different ships, different mechanics":
    - square rig (Galleon): wide no-go (~70°/side), monstrous on a broad reach;
@@ -48,6 +56,18 @@ Two specific reasons the current feel reads cheap (developer report):
 
 KEPT from the current implementation (already right): **steerage** — rudder authority scales with water flow
 (`minTurnFrac + flow`), and hard turns bleed speed (`turnBrake`). These survive the rework unchanged.
+
+**The CE/CLR-LITE upgrade path (named + judged 2026-07, build on its trigger — part-HP dismasting or crew
+trim):** today wind force is torque-free (windage pushes, never turns; FALL-OFF is an explicit rule). The
+real model — sail force at a Center of Effort vs resistance at a Center of Lateral Resistance, the offset
+a torque — explains weather helm, trim-steering, and dismasting drama. But the FULL force sim is the wrong
+fit here (judged): real boats balance CE/CLR *by trimming*, and trim is rejected for the pilot — an
+un-counteractable standing torque is friction, not depth. Build the LITE form instead: one derived
+`helmBias` scalar (per-mast-tile canvas × position vs the hull balance point → a SMALL, CLAMPED standing
+yaw entering the yaw target exactly like fallOff — which becomes its special case). Keeps the emergents
+that matter (dismasting shifts the bias automatically from live 'M' data — lose the foremast and she
+pulls upwind mid-fight; uneven canvas reads in the helm), stays authorable (clamp = max standing helm,
+rudder trivially overcomes it), and stays a scalar the AI can read. The shape of realism, as data.
 
 ## Emergent maneuvers — deliberately NO dedicated code
 
@@ -175,4 +195,26 @@ AI the sim is deterministic and fully queryable, so the "deep" parts are arithme
 3. **Cannons + part HP**: projectile system + deck structures with HP (needs slice-3 structures; unlocks
    disable-vs-sink and capture gameplay).
 4. **Crewed sailing**: preparation steps become jobs (capstan, sails, lookout) — the naval-sim pillar
-   (DEEP_SIMULATION); nothing above needs redesign for it.
+   (DEEP_SIMULATION); nothing above needs redesign for it. **Refined shape (judged 2026-07 — the
+   order/labor split):**
+   - **The wheel issues ORDERS, the mast tile owns LABOR.** W/S at the helm = "make sail!"; a crewman
+     paths to the mast station ('M' — already deck data) and hoists there; `hoistT` is the solo-crew job
+     duration, divided by crew size/skill. The capstan (anchor) and lookout follow the same shape.
+   - **No crew? You are the crew.** Single-mast hulls hoist from the wheel (arm's reach — the solo sloop
+     stays playable). A MULTI-mast hull with nobody to order requires leaving the helm and working each
+     mast by hand (E at the tile) — soloing a caravel should feel like too much ship for one pair of
+     hands. Derived from mast count, not a flag. (The Sea of Thieves proof: sloop solos, galleon demands
+     a crew — station-running IS the crew pressure.)
+   - **One verb (the Moat):** hoisting at a mast is the same interaction the AI crew uses — possess a
+     crewman and you do his job with his hands; no player-special path.
+   - **TRIM is crew SKILL, never a pilot control** (judged 2026-07, VibeSail/Sailwind manual sheeting
+     REJECTED for the helm): the `sailCurve` polar is the 100%-ideally-trimmed truth; crew competence
+     scales delivered thrust toward it (a green crew sails at ~0.8 of the polar, a veteran crew at 1.0;
+     an un-crewed multi-master below that). Depth lands in the crew sheet, not on another key — and the
+     AI keeps an enumerable action set instead of a sheeting controller.
+5. **Greater ships → masts as DATA** — the data half LANDED early (2026-07, pulled forward for the
+   ship-building future): masts ARE deck-grid 'M' tiles, one sail hangs per mast (the galleon sails as a
+   two-master today), and mast count/placement is pure deck authoring. REMAINING on triggers: the mast
+   tile as a solid post (walkable today), per-MAST sail kinds for mixed rigs (with the part palette),
+   dismasting (#3's part HP), and sail JOBS at the mast stations (#4). Hoist pace already scales per hull
+   (`hoistT` — becomes the solo-crew job duration when #4 lands).

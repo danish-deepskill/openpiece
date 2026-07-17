@@ -1,7 +1,9 @@
-# Ballpiece — The Moat, Deep Simulation & the Road to ballpiece.io
+# Openpiece — The Moat, Deep Simulation & the Road to openpiece.io
+
+> **Stage:** capture — the long-horizon vision; passes carve designs out of it
 
 > The load-bearing vision + every architecture/tech conclusion from the design conversation, in one place.
-> This is the *why* behind the foundation: what "deep simulation" actually means for ballpiece, how the world
+> This is the *why* behind the foundation: what "deep simulation" actually means for openpiece, how the world
 > is shaped, how it stays performant, and how it becomes multiplayer. Ahead of the code, on purpose.
 > Companions: `REFERENCES.md` (game ideas, tier-listed) · `../references/ARCHITECTURE_PATTERNS.md` (the educational
 > engineering resources — chunk streaming, persistence, ECS, netcode, …) · `../ARCHITECTURE.md` /
@@ -57,7 +59,7 @@ We kept saying "deep complex simulation." It's three separable things:
 3. **Deep simulation** = **the world runs itself whether you watch or not.** The hard, distinctive one — and the
    thing that drives every tech/platform decision below.
 
-"Deep simulation" for ballpiece = **the world is a living system of autonomous agents, not a backdrop of spawned
+"Deep simulation" for openpiece = **the world is a living system of autonomous agents, not a backdrop of spawned
 fodder.**
 
 ### What that looks like (the living sea)
@@ -74,11 +76,11 @@ fodder.**
 
 ---
 
-## 4. The simulation spectrum — and ballpiece's target
+## 4. The simulation spectrum — and openpiece's target
 
 | Level | Example | The world… |
 |---|---|---|
-| **Shallow** | Arcane Odyssey; ballpiece *today* | backdrop; NPCs are fodder; factions are labels |
+| **Shallow** | Arcane Odyssey; openpiece *today* | backdrop; NPCs are fodder; factions are labels |
 | **Medium** | **Kenshi** ← **TARGET** | lives independently; factions war, economy shifts, doesn't revolve around you |
 | **Deep** | RimWorld / Dwarf Fortress ← north star | every agent micro-simmed + generated history + ecology |
 
@@ -145,7 +147,7 @@ abstracts the rest); JS/Phaser won't reach DOTS's tens-of-thousands. Source cour
 ## 7. Tech decisions (the whole thread, settled)
 
 ### Engine — stay Phaser
-Engine ≠ depth (Qud/RimWorld are Unity; DF is C++). Depth is ballpiece's own systems. Phaser gives scenes/
+Engine ≠ depth (Qud/RimWorld are Unity; DF is C++). Depth is openpiece's own systems. Phaser gives scenes/
 camera/input/assets for free and is **better** for scale than raw canvas because `Phaser.AUTO` (WebGL) **batches
 sprites**. Rendering is never the bottleneck (DF/RW are visually trivial). **Do not plan an engine switch** — a
 mid-project switch is a full rewrite and the #1 way ambitious projects die.
@@ -157,7 +159,7 @@ Plus **viewport culling** in `RenderSystem`/`AccessorySystem` (cost scales to th
 The current object-ECS is right for now but **won't** reach RimWorld-scale — the typed-array migration is the
 known, Phaser-independent path when counts climb.
 
-### Multiplayer — server-authoritative, sharded (ballpiece.io)
+### Multiplayer — server-authoritative, sharded (openpiece.io)
 The deep sim runs on the **server**, not the browser — so the browser's memory/threading limits never gate it.
 - **Each tile/region = a zone/shard** (a Colyseus room / server process). Sailing across a boundary is an
   **invisible handoff**, not an embark.
@@ -171,12 +173,12 @@ The deep sim runs on the **server**, not the browser — so the browser's memory
 Latency only hurts the **fast action layer** (combat/movement); the **deep sim is slow → latency-immune** (a few
 hundred ms is invisible for factions/economy). Hide action latency with **client-side prediction** (predict your
 own moves — feels instant), **interpolation** (others rendered slightly in the past), **lag compensation**
-(server rewinds to validate your hits). Ballpiece's **engine-agnostic TS sim runs on both client and server**, so
+(server rewinds to validate your hits). Openpiece's **engine-agnostic TS sim runs on both client and server**, so
 the client predicts with the *same* code the server authoritatively runs — cleaner than moomoo (which reimplements
 the client sim). A local single-player build always feels more instant for your own actions; server games *hide*
 the gap, never fully erase it for cross-player interaction.
 
-### Recommended stack for ballpiece.io
+### Recommended stack for openpiece.io
 - **Client:** Phaser + TS → **Cloudflare Pages** (free CDN).
 - **Game server:** Node + TS + **Colyseus** (authoritative rooms = zones) → **Fly.io** (start) → **Hetzner**
   (scale; cheap bandwidth).
@@ -193,9 +195,9 @@ the gap, never fully erase it for cross-player interaction.
 Deepwoken/Arcane Odyssey/Starscape are all **Roblox** — which hands you multiplayer/auth/persistence/hosting +
 a **built-in audience** for free (why small teams reached millions). **But** Roblox is locked-in, takes a big
 rev-cut, isn't browser/.io, and — decisively — **Luau + Roblox's engine cannot carry a deeper-than-DF
-simulation.** ballpiece wants **both** ".io / own it" **and** "deep sim," and those two together **rule Roblox
+simulation.** openpiece wants **both** ".io / own it" **and** "deep sim," and those two together **rule Roblox
 out**. Web is the lane: full ownership, browser reach, and a sim you control (JS/WASM) — at the cost of building
-the infra + audience yourself. (If ballpiece were "Arcane Odyssey but shallower," Roblox would be the faster,
+the infra + audience yourself. (If openpiece were "Arcane Odyssey but shallower," Roblox would be the faster,
 audience-rich path — but the deep-sim soul is the deciding factor.)
 
 ---
@@ -243,7 +245,7 @@ Moat / faction / zone foundation instead of being a bespoke subsystem.
   step, not a rewrite.
 - **Pick the deep axes early** — rival crews (Nemesis), faction war, bounty, economy — and abstract the rest.
 
-**One-line summary:** ballpiece is a **living, deeply-simulated One Piece sea** you rise through from villager to
+**One-line summary:** openpiece is a **living, deeply-simulated One Piece sea** you rise through from villager to
 Yonko — built on the **Moat** (possess anyone, command everyone), shaped as a **seamless island world**, made
-affordable by **tiered simulation**, and destined for **ballpiece.io** as a **server-authoritative** game whose
+affordable by **tiered simulation**, and destined for **openpiece.io** as a **server-authoritative** game whose
 depth lives in engine-agnostic systems, not the renderer.

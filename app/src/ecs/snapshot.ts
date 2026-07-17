@@ -9,7 +9,7 @@ import type { World } from './World';
 /**
  * World ↔ plain-JSON snapshots — the seed of the persistence pillar (ARCHITECTURE_SCALE §11 #2) and the
  * state-hash for the same-seed replay invariant (test/invariants.test.ts). Rules, per the Scribe lessons
- * the atlas confirmed (rimworld-simple/16 + ballpiece-comparison.md):
+ * the atlas confirmed (rimworld-simple/16 + openpiece-comparison.md):
  *  - Defs are NEVER saved — only ids (`bb.profile` → profileId; every ContentId field is already an id).
  *  - Cross-entity refs are ids at rest already (architecture test enforces it) — they serialize as-is and
  *    re-resolve through world.byId after restore, so restore needs no fixup pass TODAY. If a live-ref

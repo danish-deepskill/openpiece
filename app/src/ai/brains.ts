@@ -10,7 +10,7 @@ import { facesTarget, heavyHeading, isHeavy, steerFacing } from './steering';
 import { angleDiff, dist, norm, smoothFactor } from '../core/math';
 import { events } from '../core/EventBus';
 import { combatStance, type AIProfileDef } from '../defs/aiProfiles';
-import { deckCellAtLocal, deckOf, deckToWorld, gangplankCell, gangplankOutward, worldToDeck, type DeckGrid, type ShipPose } from '../defs/decks';
+import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, nearestGangplank, worldToDeck, type DeckGrid, type ShipPose } from '../defs/decks';
 import { hullBlocksWorldPoint } from '../world/deckCollision';
 import { Bodies } from '../defs/bodies';
 import { Races } from '../defs/races';
@@ -280,7 +280,9 @@ export function frameLeg(e: Entity, world: World, ax: number, ay: number, goalSh
   const ship = world.byId(myShipId ?? goalShipId!); // ! : the equality test above proves one side is a ship
   if (!ship?.ship || !ship.transform) return { x: ax, y: ay, plan: e.onDeck === undefined };
   const grid = deckOf(ship.ship.hull, ShipHulls.get(ship.ship.hull).deck);
-  const gp = gangplankCell(grid);
+  // NEAREST door (plural-gangplank aware): a two-door hull routes each walker to the closer broadside
+  const pLocal = e.onDeck ? { lx: e.onDeck.lx, ly: e.onDeck.ly } : worldToDeck(ship.transform, e.transform!.x, e.transform!.y); // ! : every frameLeg caller is a steering WALKER — transform is its query guarantee
+  const gp = nearestGangplank(grid, pLocal.lx, pLocal.ly);
   if (!gp) return { x: ax, y: ay, plan: e.onDeck === undefined }; // a doorless hull — no route exists; steer honestly at the goal
   const [ox, oy] = gangplankOutward(grid, gp);
   const outer = deckToWorld(ship.transform, gp.lx + ox * grid.tilePx, gp.ly + oy * grid.tilePx); // the lane MOUTH: one tile out from the door

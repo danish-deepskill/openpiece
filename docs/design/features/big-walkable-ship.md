@@ -1,5 +1,7 @@
 # Walkable Ships (Design)
 
+> **Stage:** building — steps 1-4 shipped; step 5 (crew) awaits the crew pass
+
 Referenced by `NAVAL.md` ("Player on deck = entities parented to the ship frame"). **Design only — not built.**
 Ships today are a rigid pod: you board → you're teleported to a fixed seat slot and glued there. This pillar
 makes a ship a **moving walkable platform** — you stand at a real spot on the deck, walk around, and *choose* to
@@ -40,7 +42,7 @@ cross-boundary query (pathing, line-of-sight, collision, rendering) must transfo
 "live moving frame + walkable" combination is exactly what the big vehicle MODS (Vehicle Framework, SOS2) add,
 and it's why they're large and complex.
 
-**What this means for ballpiece — the honest fork:**
+**What this means for openpiece — the honest fork:**
 - **(A) LIVE local-space parenting** (the rest of this doc): deck actors have live local positions; world =
   ship∘local recomputed every frame; you walk the deck WHILE it sails the ocean. This is what our fantasy wants
   (continuous sail-and-walk), and it's the HARDER path — the mod-tier one RimWorld avoided. Cost: per-frame
@@ -118,7 +120,7 @@ combat later). Data-driven per the canon: a new deck layout = a new `deck` array
   - Cons: authoring each hull's deck grid; a small tile system running per-ship.
   - **RimWorld refinement (later, if ships become BUILDABLE):** RimWorld doesn't author a fixed grid per hull —
     the deck is FLOOD-FILLED from a root (the engine/keel) over "deck" tiles, so a player-BUILT ship is any shape
-    the tiles form, bounded by a footprint radius, cached O(1) via a substructure grid (§reference). For ballpiece
+    the tiles form, bounded by a footprint radius, cached O(1) via a substructure grid (§reference). For openpiece
     NOW, hulls are fixed templates → a static per-hull `deck` array is simpler and enough. Adopt the flood-fill
     root model IF/WHEN players build/modify ships tile-by-tile; the fixed array is a clean subset of it.
   - **Bounds-packing (perf):** store the deck as a few `CellRect`s (rectangles), not every cell — cheap rotation,

@@ -20,11 +20,12 @@ const DEFS: DebugFlagDef[] = [
   { key: 'combat.god', label: 'God mode (invincible + free abilities)', group: 'Combat', default: false },
   { key: 'world.collision', label: 'Collision truth: solids + unit bodies (green=foot, blue=swim) + hull blocks', group: 'World', default: false },
   { key: 'world.frames', label: 'Movement frame (world/deck) readout', group: 'World', default: false },
+  { key: 'world.wind', label: 'Sailing: wind arrow + ship readouts + manual wind control', group: 'World', default: false },
   { key: 'perf.hud', label: 'FPS + entity count', group: 'Perf', default: false },
   { key: 'view.zoomOut', label: 'Zoom out 2× (see off-screen shooters)', group: 'View', default: false },
 ];
 
-const STORAGE = 'ballpiece.debug';
+const STORAGE = 'openpiece.debug';
 
 /**
  * Central, persisted registry of debug-view flags. The DOM panel (ui/debugPanel) toggles them; the canvas
@@ -32,7 +33,7 @@ const STORAGE = 'ballpiece.debug';
  */
 class DebugFlags {
   readonly defs = DEFS;
-  private state: Record<string, boolean> = {};
+  private state: Record<string, boolean | number> = {};
 
   constructor() {
     for (const d of DEFS) this.state[d.key] = d.default;
@@ -55,6 +56,18 @@ class DebugFlags {
 
   toggle(key: string): void {
     this.set(key, !this.on(key));
+  }
+
+  /** Numeric debug knob (sliders in the panel — e.g. the manual wind override). Persisted like flags;
+   *  ad-hoc keys are legal (they don't render as generic rows and setAll/any ignore them). */
+  value(key: string): number | undefined {
+    const v = this.state[key];
+    return typeof v === 'number' ? v : undefined;
+  }
+
+  setValue(key: string, val: number): void {
+    this.state[key] = val;
+    this.save();
   }
 
   setAll(val: boolean): void {

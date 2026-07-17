@@ -13,12 +13,15 @@ import { TILE } from '../config/constants';
  */
 
 /** A deck cell kind. `deck`/`helm`/`cannon` are walkable (stations are walkable deck you stand ON); `rail` walls
- *  the edge; `hole` is a gap (falls through to a lower deck later — blocks for now). Extend by adding a GLYPH. */
-export type DeckTile = 'deck' | 'rail' | 'helm' | 'cannon' | 'hole' | 'gangplank';
+ *  the edge; `hole` is a gap (falls through to a lower deck later — blocks for now); `mast` is where a sail
+ *  hangs (drawShipRig draws one rig PER mast cell — multi-masted ships are pure deck data, and the future
+ *  ship-building palette places 'M' parts). Walkable for now; becoming a solid post + a per-mast damage
+ *  target is the SAILING.md step-5 remainder. Extend by adding a GLYPH. */
+export type DeckTile = 'deck' | 'rail' | 'helm' | 'cannon' | 'hole' | 'gangplank' | 'mast';
 
-/** Char → tile. '.' = plain deck (the common case). 'G' = GANGPLANK: the ONE walkable seam in the rail where a
- *  world-space walker steps ON/OFF the ship (boarding = walking across it). Everywhere else the hull is solid from
- *  outside; the gangplank is the door. Unknown glyph → boot error. */
+/** Char → tile. '.' = plain deck (the common case). 'G' = GANGPLANK: a walkable seam in the rail where a
+ *  world-space walker steps ON/OFF the ship (boarding = walking across it) — a hull may carry several
+ *  (port + starboard doors). Everywhere else the hull is solid from outside. Unknown glyph → boot error. */
 const GLYPH: Record<string, DeckTile> = {
   '.': 'deck',
   '#': 'rail',
@@ -26,6 +29,7 @@ const GLYPH: Record<string, DeckTile> = {
   C: 'cannon',
   O: 'hole',
   G: 'gangplank',
+  M: 'mast',
 };
 
 /** SPACE (and any ragged-row padding past a row's end) = OFF-HULL: no cell at all — open sea. This is how a deck
@@ -94,7 +98,7 @@ export function parseDeck(rows: readonly string[], tilePx = DECK_TILE_PX): DeckG
 /** True if a tile kind is walkable (you can stand on it). Stations (helm/cannon) + the gangplank ARE walkable
  *  deck; rail/hole block. The one authority for "can an on-deck actor occupy this cell" — deck collision reads it. */
 export function deckWalkable(tile: DeckTile): boolean {
-  return tile === 'deck' || tile === 'helm' || tile === 'cannon' || tile === 'gangplank';
+  return tile === 'deck' || tile === 'helm' || tile === 'cannon' || tile === 'gangplank' || tile === 'mast';
 }
 
 /** The tile kind at a grid coord, or `undefined` if off-grid OR an off-hull (empty) cell — either way "open sea".
@@ -138,9 +142,32 @@ export function deckHullError(grid: DeckGrid): string | null {
   return null;
 }
 
-/** The gangplank cell (the one board/leave seam), or undefined if the hull has none. */
+/** The FIRST gangplank — a convenience for single-door hulls (the rowboat; most tests). Multi-door callers
+ *  must use gangplankCells/nearestGangplank — "the" door is ambiguous on a two-door hull. */
 export function gangplankCell(grid: DeckGrid): DeckCell | undefined {
   return grid.cells.find((c) => c.tile === 'gangplank');
+}
+
+/** Every gangplank cell — a hull may carry SEVERAL doors (the sloop boards from either broadside; the
+ *  developer's authoring). Each is a full door: its own lane, its own outward. */
+export function gangplankCells(grid: DeckGrid): DeckCell[] {
+  return grid.cells.filter((c) => c.tile === 'gangplank');
+}
+
+/** The door NEAREST a deck-local point — the one a walker at (lx,ly) would naturally use. Replaces the old
+ *  single-gangplank lookup: with plural doors, "the" gangplank is always relative to who's asking. */
+export function nearestGangplank(grid: DeckGrid, lx: number, ly: number): DeckCell | undefined {
+  let best: DeckCell | undefined;
+  let bestD = Infinity;
+  for (const c of grid.cells) {
+    if (c.tile !== 'gangplank') continue;
+    const d = (c.lx - lx) * (c.lx - lx) + (c.ly - ly) * (c.ly - ly);
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  return best;
 }
 
 /** Parsed-deck cache keyed by the hull's id — the grid is immutable (defs are), so parse ONCE, not per frame.

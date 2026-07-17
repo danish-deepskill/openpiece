@@ -1,5 +1,7 @@
 # Ships & Naval Combat (Design)
 
+> **Stage:** designed — ship classes as axes + the upgrade law (ledger); combat half awaits builds
+
 Ships are first-class entities (and, architecturally, **composite actors** — a hull with part components).
 The MOVEMENT half — wind, points of sail, momentum, anchor states, grounding/ramming/projectile impacts —
 is designed in `SAILING.md` (the sailing model this combat layer stands on).

@@ -1,4 +1,4 @@
-import { deckCellAtLocal, deckOf, deckToWorld, deckWalkable, gangplankCell, gangplankOutward, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
+import { deckCellAtLocal, deckOf, deckToWorld, deckWalkable, gangplankOutward, nearestGangplank, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
 import { deckCanOccupy, hullBlocksOutside, hullWoodClearance } from '../world/deckCollision';
 import { enterDeck, inFrameCooldown } from '../world/frames';
@@ -42,16 +42,18 @@ export class HullCollisionSystem {
         // half on the plank, half outside (the developer's spec: the frame follows the floor edge, both ways) —
         // with PERCH-AS-NEEDED covering the overhang for the first steps until the body fully fits (the old
         // strict fit kept you world-framed until a full radius onto the board).
-        if (this.inGangplankLane(grid, local.lx, local.ly)) {
-          const gp = gangplankCell(grid)!;
-          // inward is RELATIVE (walker velocity MINUS the hull's own drift): the door line belongs to the
+        const laneGp = this.laneDoor(grid, local.lx, local.ly);
+        if (laneGp) {
+          const gp = laneGp;
+          // inward is RELATIVE (walker velocity MINUS the hull's own motion): the door line belongs to the
           // SHIP, so a reversing hull sliding its plank under an IDLE walker crosses the same line — gating
           // on the walker's intent alone left him world-framed across the whole board, flipping only at the
-          // INNER straddle via the interior land-on fallback (the report). Linear drift only: the turn
-          // sweep (ω×r) isn't tracked as state (pilot() writes angle directly), and a turning hull sweeps
-          // the plank SIDEWAYS out of the lane rather than through the door line.
-          const svx = Math.cos(st.angle) * ship.ship!.speed;
-          const svy = Math.sin(st.angle) * ship.ship!.speed;
+          // INNER straddle via the interior land-on fallback (the report). Reads the TRUE momentum vector
+          // (sailing: velocity lags heading), so a hull drifting sideways through a turn counts too. Still
+          // linear-only: the turn sweep (ω×r) isn't tracked as state (pilot() writes angle directly), and a
+          // turning hull sweeps the plank SIDEWAYS out of the lane rather than through the door line.
+          const svx = ship.ship!.vx;
+          const svy = ship.ship!.vy;
           if (
             deckCellAtLocal(grid, local.lx, local.ly)?.tile === 'gangplank' &&
             this.movingInward(e.mover!.vx - svx, e.mover!.vy - svy, st.angle, grid, gp)
@@ -109,21 +111,25 @@ export class HullCollisionSystem {
     return rvx * (ox * cos - oy * sin) + rvy * (ox * sin + oy * cos) < 0;
   }
 
-  /** Is the LOCAL point inside the gangplank LANE — the open corridor through the door? The lane spans the
-   *  gangplank cell and extends ONE tile OUTWARD (toward the sea, the side that faces off-grid), across the full
-   *  tile width. A walker whose center is here is crossing the door and must not be pushed (its radius overlaps the
-   *  flanking rails, but the door is open). Derived from the gangplank cell's outward direction — data, not hardcoded. */
-  private inGangplankLane(grid: DeckGrid, lx: number, ly: number): boolean {
-    const g = gangplankCell(grid);
-    if (!g) return false;
+  /** WHICH door's LANE (the open corridor through a gangplank) contains the LOCAL point — undefined if none.
+   *  A lane spans its gangplank cell extended ONE tile OUTWARD (toward the sea), across the full tile width.
+   *  A walker whose center is in a lane is crossing THAT door and must not be pushed (its radius overlaps the
+   *  flanking rails, but the door is open). Plural-door aware: each gangplank owns its own lane + outward. */
+  private laneDoor(grid: DeckGrid, lx: number, ly: number): DeckCell | undefined {
     const t = grid.tilePx;
-    const [ox, oy] = gangplankOutward(grid, g); // the ONE authority for "which way is out" (shared with the walk-off)
-    // lane box: the gangplank cell, extended one tile in the outward direction. Center it between the two.
-    const cxCenter = g.lx + (ox * t) / 2;
-    const cyCenter = g.ly + (oy * t) / 2;
-    const halfAlong = ox !== 0 ? t : t / 2; // 2 tiles deep along the outward axis, 1 tile wide across it
-    const halfAcross = ox !== 0 ? t / 2 : t;
-    return Math.abs(lx - cxCenter) <= halfAlong && Math.abs(ly - cyCenter) <= halfAcross;
+    // iterate cells directly (nearestGangplank's allocation-free idiom) — gangplankCells() builds a fresh
+    // array, and this runs per near-hull walker per tick (ecs-hot-loop rule)
+    for (const g of grid.cells) {
+      if (g.tile !== 'gangplank') continue;
+      const [ox, oy] = gangplankOutward(grid, g); // the ONE authority for "which way is out" (shared with the walk-off)
+      // lane box: the gangplank cell, extended one tile in the outward direction. Center it between the two.
+      const cxCenter = g.lx + (ox * t) / 2;
+      const cyCenter = g.ly + (oy * t) / 2;
+      const halfAlong = ox !== 0 ? t : t / 2; // 2 tiles deep along the outward axis, 1 tile wide across it
+      const halfAcross = ox !== 0 ? t / 2 : t;
+      if (Math.abs(lx - cxCenter) <= halfAlong && Math.abs(ly - cyCenter) <= halfAcross) return g;
+    }
+    return undefined;
   }
 
   /** MINIMAL ejection — the hull is a WALL you BUMP, not a magnet that flings you. Search the NEAREST clear spot

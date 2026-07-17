@@ -1,11 +1,13 @@
-# Ballpiece — Ideas from Reference Games, Tier-Listed by Worth
+# Openpiece — Ideas from Reference Games, Tier-Listed by Worth
+
+> **Stage:** meta — idea tier list — scores worth, not designs
 
 > Every reference game we've drawn on offers *ideas*. This doc tier-lists the **ideas** (not the games) by **how
-> worth-stealing they are for ballpiece** — a One Piece-inspired action-RPG aiming at a *living, deeply-simulated
+> worth-stealing they are for openpiece** — a One Piece-inspired action-RPG aiming at a *living, deeply-simulated
 > sea* you rise through from F-tier villager to Yonko, on a **deep skill-based combat moat**. Each idea cites its
 > **source game(s)** and a **status**. Design capture, ahead of the code. Companion: `DEEP_SIMULATION.md`.
 
-**Tiers** = worth/fit for ballpiece (S = defining · A = major systems · B = strong enhancers · C = niche/far-future),
+**Tiers** = worth/fit for openpiece (S = defining · A = major systems · B = strong enhancers · C = niche/far-future),
 ordered most→least worth *within* each tier.
 **Status:** ✅ done · 🌱 seeded in code · 🔨 to build · 🧊 far-future / situational.
 
@@ -35,7 +37,7 @@ ordered most→least worth *within* each tier.
 
 ---
 
-## S — defining ideas (the soul of ballpiece; steal first)
+## S — defining ideas (the soul of openpiece; steal first)
 
 1. **Multi-scale command loop** — strategy map ↔ tactical battle ↔ *personally fight as one unit*.
    *(Mount & Blade)* — this **is** the "be-the-Yonko" core fun. 🔨
@@ -44,7 +46,7 @@ ordered most→least worth *within* each tier.
    **held block** braces but can **guard-break** (→ stun), and **feints** are mind-games with no rhythm.
    *(Deepwoken, via Sekiro)* — the heart of combat depth. 🌱 (stamina/stun seed) 🔨
 3. **Control-as-component / possess any unit (the Moat)** — the player isn't special; control moves onto any actor.
-   *(ballpiece + Mount & Blade)* — the enabler for everything above; Vision pillar #2. 🌱
+   *(openpiece + Mount & Blade)* — the enabler for everything above; Vision pillar #2. 🌱
 4. **A living world that ignores you** — autonomous factions war, towns rise/fall, the world doesn't revolve
    around the player. *(Kenshi)* — the deep-sim *soul*; the target tier. 🌱 (factions) 🔨
 5. **Nemesis rivals** — rival crews/captains that *remember you*, hold grudges, get promoted, return scarred.
@@ -93,7 +95,7 @@ ordered most→least worth *within* each tier.
 22. **Generated world history seeds content** — generate the seas' history → islands/relics/rivalries fall out of it
     instead of hand-authoring. *(Dwarf Fortress / Caves of Qud)* — a content multiplier. 🔨
 23. **Server-authoritative thin client** — deep sim on the server, browser renders a slice. *(moomoo.io)* — the
-    ballpiece.io architecture. 🔨
+    openpiece.io architecture. 🔨
 24. **Stealth assassination / backstab** — crouch to sneak, big damage from behind; positional play. *(Deepwoken)* 🔨
 25. **Reactive-object systems** — fire/water/logia/haki/electricity interacting by rule, not special-case. *(Caves
     of Qud)* 🔨
@@ -102,7 +104,7 @@ ordered most→least worth *within* each tier.
 27. **Devil-fruit world scarcity** — a fruit someone else eats is *gone from the world* until they die (the canon
     rule, simulated). *(One Piece, sim'd)* 🔨
 28. **Armor durability + carry weight** — armor breaks → no protection; overweight slows you. *(Deepwoken)* —
-    (ballpiece already has body `mass`). 🌱 🔨
+    (openpiece already has body `mass`). 🌱 🔨
 29. **Naval depth** — ship building, parts, ship-to-ship combat, exploration vs battle modes. *(Arcane Odyssey)* —
     Vision #6 / `NAVAL.md`. 🌱
 30. **Stamina discipline (regen-delay)** — stamina *depletes* to act and gates offense; regen pauses after any spend
@@ -120,7 +122,7 @@ ordered most→least worth *within* each tier.
 33. **Per-agent micro-sim at DF fidelity** — individual moods/relationships/body-part injuries for *every* unit.
     *(Dwarf Fortress)* — the extreme; **abstract instead** unless it's a chosen deep axis. 🧊
 34. **Friendly-fire *reduction*, not immunity** — an "ally check" that softens FF instead of a hard on/off.
-    *(Deepwoken)* — a nuance vs ballpiece's current binary `canHarm`; interesting for crew/ally play. 🧊
+    *(Deepwoken)* — a nuance vs openpiece's current binary `canHarm`; interesting for crew/ally play. 🧊
 35. **Fluids / temperature / geology physics** — simulated environment systems. *(DF / Qud)* 🧊
 36. **Deterministic tick** — reproducible sim (helps replay/anti-cheat/lockstep). *(Factorio)* — nice for MP later. 🧊
 37. **Time-dilation at hotspots** — slow the clock when one battle exceeds a node's budget. *(EVE)* — only at
@@ -141,7 +143,7 @@ combo counter, `GameDirector`, `SquadSystem`, `Npc.recruit`, power tiers, sailin
 - **Combat is the moat (Vision #1).** The Deepwoken/Sekiro cluster (#2, #8, #14, #20, #21) is where skill
   expression lives — parry/feint mind-games + readable telegraphs are what separate "deep" from "spammy."
 - **Engine ≠ depth** — Qud/RimWorld are Unity; DF/Factorio custom C++. Depth is *your* systems → Phaser is fine.
-- **Turn-based vs real-time is the great perf divider** — ballpiece is real-time → the **tiered-tick** idea (#10)
+- **Turn-based vs real-time is the great perf divider** — openpiece is real-time → the **tiered-tick** idea (#10)
   is mandatory, not optional.
 - **Don't simulate everything** — Nemesis (one deep axis) beat DF (all axes) on value-per-effort. Pick a few S/A
   ideas deep; abstract the C-tier.

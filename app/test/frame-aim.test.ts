@@ -15,6 +15,7 @@ import { EffectSystem } from '../src/systems/EffectSystem';
 import { HullCollisionSystem } from '../src/systems/HullCollisionSystem';
 import { MovementSystem } from '../src/systems/MovementSystem';
 import { ShipSystem } from '../src/systems/ShipSystem';
+import { WindSystem } from '../src/systems/WindSystem';
 import type { StrikeResolver } from '../src/systems/StrikeResolver';
 import { Collision } from '../src/world/Collision';
 import { Pathfinder } from '../src/world/Pathfinder';
@@ -37,7 +38,7 @@ function harness(seed = 11): { world: World; ships: ShipSystem; move: MovementSy
   const collision = new Collision(g);
   const abilities = new AbilitySystem(world, new EffectSystem(world), {} as StrikeResolver, new Rng(7)); // strikes stubbed: the assertion is the SWING starting, contact never resolves here
   const ctx: AIContext = { world, query: new SpatialQuery(world), rng: new Rng(seed), abilities, pathfinder: new Pathfinder(g) };
-  return { world, ships: new ShipSystem(world, collision), move: new MovementSystem(world, collision), ctx };
+  return { world, ships: new ShipSystem(world, collision, new WindSystem(1)), move: new MovementSystem(world, collision), ctx };
 }
 
 function rider(world: World, faction: FactionId, shipId: number, lx: number, ly: number, angle = 0): Entity {
@@ -59,9 +60,9 @@ it('a bandit keeps ATTACKING a seated pilot while the ship SAILS (same-deck aim 
   const { world, ships, move, ctx } = harness();
   const ship = world.create({
     transform: { x: 500, y: 500, angle: 0, r: 56 },
-    ship: { hull: 'ship.sloop', mode: 'exploration', anchored: false, speed: 0, throttle: 0 },
+    ship: { hull: 'ship.rowboat', mode: 'exploration', sail: 'furled', anchor: 'up', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
   });
-  const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+  const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
   const helm = helmSpot(grid);
   const pilot = rider(world, 'straw_hat', ship.id, helm.lx, helm.ly); // seated at the wheel, standing still
   // the bandit stands one body AHEAD of the pilot along the ship's motion (+x): pre-fix the perceived point
@@ -104,9 +105,9 @@ it('a roam spot picked ASHORE dies on BOARDING — a world anchor must not survi
   const hulls = new HullCollisionSystem(world);
   const ship = world.create({
     transform: { x: 500, y: 500, angle: 0, r: 56 },
-    ship: { hull: 'ship.sloop', mode: 'exploration', anchored: false, speed: 0, throttle: 0 },
+    ship: { hull: 'ship.rowboat', mode: 'exploration', sail: 'furled', anchor: 'up', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
   });
-  const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+  const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
   const gp = gangplankCell(grid)!;
   const leader = rider(world, 'straw_hat', ship.id, gp.lx + grid.tilePx, gp.ly);
   const f = rider(world, 'straw_hat', ship.id, gp.lx + grid.tilePx + 24, gp.ly); // in the band, on the door row
@@ -127,7 +128,7 @@ it('a roam spot picked ASHORE dies on BOARDING — a world anchor must not survi
   };
   f.ai.bb.roamX = f.transform!.x; // the boarded-mid-cycle state: a "pause in place" spot picked ASHORE —
   f.ai.bb.roamY = f.transform!.y; // world px, roamShipId deliberately unset (the pre-boarding anchor shape)
-  ship.ship!.throttle = 1;
+  ship.ship!.sail = 'full'; // canvas set — the ship holds pace with nobody at the wheel (a SHIP fact)
   ship.ship!.speed = 120;
   for (let i = 0; i < 240; i++) {
     actorBrain.think(f, ctx, SIM);
@@ -152,9 +153,9 @@ it('an idle FOLLOWER rides a sailing deck — the roam anchor must not treadmill
     const hulls = new HullCollisionSystem(world);
     const ship = world.create({
       transform: { x: 500, y: 500, angle: 0, r: 56 },
-      ship: { hull: 'ship.sloop', mode: 'exploration', anchored: false, speed: 0, throttle: 0 },
+      ship: { hull: 'ship.rowboat', mode: 'exploration', sail: 'furled', anchor: 'up', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
     });
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!; // the sloop's door faces WEST — the stern side while sailing east
     // leader one tile INSIDE the door, follower between him and the door (ON the plank row): the geometry
     // where the pre-fix aft-slide crossed the board's outer end before the >90px heel could catch it
@@ -175,8 +176,8 @@ it('an idle FOLLOWER rides a sailing deck — the roam anchor must not treadmill
         lostT: 0,
       },
     };
-    ship.ship!.throttle = 1; // held at full sail (non-zero throttle keeps the coast-drag off)
-    ship.ship!.speed = 120; // faster than his 95px/s walk — the pre-fix treadmill outruns him for sure
+    ship.ship!.sail = 'full'; // canvas set: the oar hull holds ~150px/s with no pilot
+    ship.ship!.speed = 120; // starts faster than his 95px/s walk — the pre-fix treadmill outruns him for sure
     for (let i = 0; i < 480; i++) {
       actorBrain.think(f, ctx, SIM);
       move.update(SIM);
@@ -188,6 +189,6 @@ it('an idle FOLLOWER rides a sailing deck — the roam anchor must not treadmill
       const dl = Math.hypot(f.onDeck!.lx - leader.onDeck!.lx, f.onDeck!.ly - leader.onDeck!.ly);
       expect(dl, `seed ${seed}, tick ${i}: drifted from the leader`).toBeLessThan(130);
     }
-    expect(ship.ship!.speed).toBe(120); // sanity: the ship really sailed the whole run (grounding would defang the test)
+    expect(ship.ship!.speed).toBeGreaterThan(100); // sanity: still under way (full-oar ramp lifts 120 to ~150; grounding = 0 would defang the test)
   }
 });

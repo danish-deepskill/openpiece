@@ -1,10 +1,10 @@
-# Ballpiece — Edge-Case & Robustness Checklist
+# Openpiece — Edge-Case & Robustness Checklist
 
-> The bugs that bite when you build/test each system — a QA + code-review checklist, **adapted to ballpiece's
+> The bugs that bite when you build/test each system — a QA + code-review checklist, **adapted to openpiece's
 > ECS + custom `Collision`** (NOT Phaser Arcade Physics). Use it as: (1) an audit of systems you have, (2) a
 > landmine map before building roadmap systems, (3) a standing review list (the cross-cutting section).
 >
-> Status: ✅ ballpiece already handles this · 🔨 watch for it when you build this system · ⚙️ adapt to our custom
+> Status: ✅ openpiece already handles this · 🔨 watch for it when you build this system · ⚙️ adapt to our custom
 > collision/ECS (the source list assumes Arcade Physics). Source: an edge-case checklist for a TS/Phaser sandbox.
 
 ---
@@ -23,7 +23,7 @@
 
 ---
 
-## Systems ballpiece HAS (audit these)
+## Systems openpiece HAS (audit these)
 
 ### Health ✅ (mostly handled)
 - Clamp both ends (never <0, never >max); heal can't overheal; damage can't wrap negative into a heal.
@@ -117,6 +117,39 @@
 - One item active per slot (new selection deselects prior). ✅
 - Behavior gates on being equipped (fruit power only in fruit stance); aim/spawn direction correct per tool. ✅
 - UI reflects the active item + updates on swap; guard equipping nothing/missing.
+
+### Sailing / wind ⚙️ 🔨 (momentum + points of sail live; sail states/anchor/field next — `SAILING.md` + `SAILING_RESEARCH.md`)
+- **The in-irons softlock LADDER**: dead upwind → thrust 0 → |v| → 0 → rudder flow 0, and `minTurnFrac` is 0
+  — a ship with NO escape hatch never turns again. Today's hatch is curve-unscaled REVERSE; the next drop
+  sets `reverseFrac 0` on sail rigs — every change here must RE-PROVE an escape exists per hull (oars back
+  out; rigs need anchor/sail-state/minTurnFrac data). Test the ladder, not the happy path. ⚙️ (sailing.test.ts
+  covers today's hatch)
+- **Aground kills the PAIR**: ran-aground must zero `speed` AND `vx/vy` together — killing one re-accelerates
+  into the wall next tick (thrust integrator and momentum are one fact at a wall). ✅ (ShipSystem)
+- **World-edge = aground**: the bounds clamp zeroes ships at the map edge (tests learned it the hard way —
+  start positions matter). When the chunked sea lands, this rule must be RE-DECIDED explicitly (no edge /
+  wrap / soft barrier), not inherited silently. ⚙️
+- **Every thrust source flows through `vx/vy`** — the boarding door's relative-velocity gate and future ram
+  damage read the momentum vector; a current/tow/impulse that writes position directly is invisible to both. ⚙️
+- **The apparent-wind double-count trap**: `sailCurve` is a TRUE-wind polar (apparent effects baked in, its
+  real-world convention). Apparent wind may enter ONLY via the strength term — never both a curve-index
+  change AND a correction. Assert the downwind self-limit (can't outrun your own wind). AND the term must be
+  CLAMPED at the true strength: un-clamped, the ship's own motion inflates it across the wind and the
+  double-count sneaks in through the MAGNITUDE door (close-hauled matched a beam reach — caught by the
+  developer's point-of-sail audit, 2026-07). ✅ (ShipSystem clamp + sailing.test polar-shape test)
+- **The zero-wind self-sustain trap**: the apparent term reads |wind − shipVel|, so at strength 0 a moving
+  sail hull feels its own bow-wind — it decays to a stop ONLY while `maxSpeed < WIND_REF`; at/above it the
+  feedback self-sustains (a hull motoring through a Calm Belt on nothing). Boot validator enforces it
+  (ships.ts); any future WIND_REF retune must re-check the fastest sail hull. ✅ (validator)
+- **`windAt` must be PURE** in (x, y, simTime, seed) when the field lands: no per-call rng draws, no
+  stepped state — the same-seed replay test must include a sailing run, and the ledger tier must sample the
+  SAME function (X4's tier-divergence is the recorded failure mode). 🔨
+- **Sail/anchor states are SHIP facts, not pilot facts**: pilot walks away, possession swaps, or the pilot
+  dies mid-weighing → states hold or continue; a frame handoff must never reset them. 🔨
+- **Anchored holds against ANY thrust** — a storm spike must not silently drag an anchored hull; the
+  dropped-at-speed pivot clamps its angular rate (dt-scaled), never a one-tick swing. 🔨
+- **driftEase doubles as coast-drag** (documented conflation): "coasts too far" and "turns too sharp" are
+  the SAME knob until a separate waterDrag splits them — read feel reports through that lens. ⚙️
 
 ---
 

@@ -86,7 +86,7 @@ describe('BodyCollisionSystem is FRAME-AWARE (deck bodies are solid to each othe
   function makeShip(world: World, angle = 0): Entity {
     return world.create({
       transform: { x: 500, y: 500, angle, r: 56 },
-      ship: { hull: 'ship.sloop', mode: 'exploration', anchored: true, speed: 0, throttle: 0 },
+      ship: { hull: 'ship.rowboat', mode: 'exploration', sail: 'furled', anchor: 'dropped', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
     });
   }
 
@@ -107,7 +107,7 @@ describe('BodyCollisionSystem is FRAME-AWARE (deck bodies are solid to each othe
   it('a deck push PRESSES against the rail, never clips a rider into it (the deck grid resolves the shove)', () => {
     const world = new World();
     const ship = makeShip(world);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const rail = grid.cells.find((c) => c.cx === 2 && c.cy === 3)!; // south rail amidships
     // pinned flush against the rail's wall line, with a heavy body overlapping from the north: the shove
     // wants him INTO the rail — the deck grid must clamp it exactly like a world wall would ashore
@@ -141,7 +141,7 @@ describe('BodyCollisionSystem is FRAME-AWARE (deck bodies are solid to each othe
   it('a CROSS-frame pair is skipped: a world walker at the door does not shove a rider (and vice versa)', () => {
     const world = new World();
     const ship = makeShip(world);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!;
     const aboard = rider(world, ship, gp.lx, gp.ly, 1); // standing on the plank, deck-framed
     const w = deckToWorld(ship.transform!, gp.lx - 8, gp.ly);

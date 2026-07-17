@@ -1,7 +1,13 @@
 /** World + tile geometry (tile units unless noted). */
 export const TILE = 32;
-export const MAPW = 86;
-export const MAPH = 54;
+/** Chunk edge (tiles) for the FUTURE seamless world (SEAMLESS_WORLD.md — the Factorio-convention 32).
+ *  Nothing chunks yet; the constant exists so the world SIZE stays divisible by it (the developer's call:
+ *  keep today's map dissectable into square chunks with zero re-authoring when streaming lands). */
+export const CHUNK_TILES = 32;
+/** SQUARE world (1:1), 3×3 future chunks. Was 86×54 (a screen-shaped rectangle); the extra southern rows
+ *  are open sea — sailing room. Islands (HOME/ENEMY below) kept their exact positions. */
+export const MAPW = 96;
+export const MAPH = 96;
 export const WORLD_W = MAPW * TILE;
 export const WORLD_H = MAPH * TILE;
 
@@ -36,9 +42,17 @@ export const Depth = {
  *  are frame-rate independent — the prerequisite for replay/server ticks. 1/60 = today's tuned feel exactly. */
 export const SIM_DT = 1 / 60;
 
-/** Movement speeds (px/s). */
-export const FOOT_SPEED = 165;
-export const BOAT_SPEED = 225;
+// (No global movement speeds here: walk speed lives on BODY defs (defs/bodies — humanoid 61 px/s baseline,
+// hero = 2.0 tiles/s) × race.speedMul × state multipliers, and ship speed on ShipHullDef.maxSpeed. The old
+// FOOT_SPEED/BOAT_SPEED constants sat here dead after that migration and MISLED a speed audit — deleted.)
+
+/** Wind speed reference (px/s at strength 1.0). Strength is a dimensionless MULTIPLIER of this — 100% is a
+ *  fresh breeze, not a cap (Calm Belt 0, storms >1 via future field modifiers); this one constant owns the
+ *  absolute scale so retuning "how fast is wind" never touches the field, the curves, or the hulls. It must
+ *  outrun every sail hull's maxSpeed (ships defs validator enforces it): the apparent-wind term reads
+ *  |wind − shipVel|, so a hull faster than the reference would push itself on its own bow-wind in a dead
+ *  calm — perpetual motion the moment a Calm Belt zeroes the field. */
+export const WIND_REF = 208; // rides the 2026-07 ×0.8 world re-tempo WITH the hulls (was 260) — the ratios are the feel
 
 /** Movement-STATE modifiers (fractions of normal speed). Ground-terrain paces are NOT here anymore — they
  *  live on each terrain row in data/terrains.json (speedMul — knobs live on defs); these constants cover

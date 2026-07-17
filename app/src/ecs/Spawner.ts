@@ -165,7 +165,7 @@ export class Spawner {
       transform: { x, y, angle: 0, r: d.r },
       health: { hp: d.hp, maxHp: d.hp, dead: false, hitFlash: 0, iframes: 0 },
       faction: { id: faction },
-      ship: { hull: hullId, mode: 'exploration', anchored, speed: 0, throttle: 0 },
+      ship: { hull: hullId, mode: 'exploration', sail: 'furled', anchor: anchored ? 'dropped' : 'up', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
       render: { draw: 'ship', baseColor: d.color, bob: 0, rotateToAngle: true, depthBias: -4 },
     });
   }

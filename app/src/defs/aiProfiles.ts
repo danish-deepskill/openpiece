@@ -154,7 +154,7 @@ const BASE: Omit<AIProfileDef, 'id' | 'name' | 'approach' | 'sight' | 'preferred
   laneSpread: 70,
   wanderTurn: 5,
   wanderTether: 120,
-  wanderSpeed: 30,
+  wanderSpeed: 24, // rides the 2026-07 ×0.8 locomotion re-base (an amble must stay slower than the new walk)
   dashMax: 130,
   chargeMax: 220,
   chargeDur: 0.7,

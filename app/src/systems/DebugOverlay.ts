@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { visionOf } from '../ai/perception';
-import { GAME_W, TILE } from '../config/constants';
+import { GAME_W, TILE, WIND_REF } from '../config/constants';
+import { angleDiff } from '../core/math';
 import { Debug } from '../core/Debug';
 import { events } from '../core/EventBus';
 import { Abilities, abilityRange } from '../combat/Ability';
@@ -11,6 +12,7 @@ import { swingGeomOf, swingPose } from '../combat/swing';
 import { deckOf, deckToWorld, type ShipPose } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
 import type { World } from '../ecs/World';
+import type { WindSystem } from './WindSystem';
 import { hullDebugMasks } from '../world/deckCollision';
 import { Q_NE, Q_NW, Q_SE, Q_SW, type MoveCtx } from '../world/GridCollider';
 import { TileGrid } from '../world/TileGrid';
@@ -37,11 +39,15 @@ export class DebugOverlay {
   private used = 0;
   /** Recent instantaneous AoEs (Gomu Rocket landing) held ~0.5s so they're visible, not a one-frame flash. */
   private aoes: { x: number; y: number; radius: number; until: number }[] = [];
+  /** Per-walker MEASURED-speed samples for the frames readout (last frame-local position + smoothed px/s).
+   *  Presentation-side only; `frame` (shipId or −1 for world) resets the sample across frame hops. */
+  private readonly walkSpd = new Map<number, { x: number; y: number; at: number; frame: number; v: number }>();
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly world: World,
     private readonly grid: TileGrid,
+    private readonly wind: WindSystem,
   ) {
     this.gfx = scene.add.graphics().setDepth(DEPTH).setVisible(false);
     events.on('debug:aoe', ({ x, y, radius }) => {
@@ -104,6 +110,12 @@ export class DebugOverlay {
       if (god) me.tags.add('state.godMode');
       else me.tags.remove('state.godMode');
     }
+    // MANUAL WIND (the panel's sliders under world.wind) — the god-mode pattern: the UI owns the knobs,
+    // this pass writes the sim fact. Synced BEFORE the any()-early-return, so closing the panel or the
+    // flag always clears a stale override (the wind returns to its field).
+    this.wind.override = Debug.on('world.wind') && Debug.on('wind.override')
+      ? { dir: ((Debug.value('wind.dir') ?? 0) * Math.PI) / 180, strength: (Debug.value('wind.strength') ?? 85) / 100 }
+      : undefined;
 
     const any = Debug.any();
     this.gfx.setVisible(any);
@@ -397,10 +409,91 @@ export class DebugOverlay {
         const cd = cdv > 0 ? ` cd:${cdv.toFixed(2)}` : '';
         const perch = m.onLedge ? ' PERCH' : '';
         const air = m.layer === 'air' ? ' AIR' : '';
+        // TRUE speed (tiles per SIM second), MEASURED from displacement rather than read off the stat —
+        // mover.vx/vy hold the pre-multiplier INTENT, so a stat readout showed 2.5t/s while perched/wading
+        // (the developer's report). Displacement captures every real modifier (terrain, perch, aim, slow,
+        // Geppo) and even a blocked walker (reads 0). The denominator is SIM time (wind.time — the sim
+        // clock this overlay already holds), NOT wall time: under lag the fixed-step loop time-dilates the
+        // whole world, and a wall-clock read showed that dilation (2.5 → 1.2) — true, but noise here; this
+        // readout audits MULTIPLIERS, and perf.hud owns frame health (the developer's call). FRAME-AWARE:
+        // deck riders measure in DECK coords, so the ship carrying you isn't counted as walking; a frame
+        // hop resets the sample instead of spiking.
+        const simNow = this.wind.time;
+        const fx = c.onDeck ? c.onDeck.lx : t.x;
+        const fy = c.onDeck ? c.onDeck.ly : t.y;
+        const frameKey = c.onDeck ? c.onDeck.shipId : -1;
+        const rec = this.walkSpd.get(c.id);
+        let v = rec && rec.frame === frameKey ? rec.v : 0;
+        if (rec && rec.frame === frameKey) {
+          const sdt = Math.min(0.25, simNow - rec.at);
+          if (sdt > 0.001) v += (Math.hypot(fx - rec.x, fy - rec.y) / sdt - v) * 0.25; // light EMA: steady digits
+        }
+        this.walkSpd.set(c.id, { x: fx, y: fy, at: simNow, frame: frameKey, v });
+        const spd = v > 3 ? `  ${(v / TILE).toFixed(1)}t/s` : '';
         const txt = c.onDeck
-          ? `DECK ship#${c.onDeck.shipId} local(${c.onDeck.lx.toFixed(0)},${c.onDeck.ly.toFixed(0)})${air}${perch}${cd}`
-          : `WORLD (${t.x.toFixed(0)},${t.y.toFixed(0)}) ${m.mode}${air}${perch}${cd}`;
+          ? `DECK ship#${c.onDeck.shipId} local(${c.onDeck.lx.toFixed(0)},${c.onDeck.ly.toFixed(0)})${air}${perch}${cd}${spd}`
+          : `WORLD (${t.x.toFixed(0)},${t.y.toFixed(0)}) ${m.mode}${air}${perch}${cd}${spd}`;
         this.label(t.x, t.y + t.r + 14, txt, c.onDeck ? '#7fd7ff' : '#a8e6a1');
+      }
+    }
+
+    // WIND readout (sailing phase 1) — the world wind as a screen-pinned arrow (top-center, under the DEBUG
+    // hint): it points where the wind BLOWS TOWARD; length + label scale with strength. Drawn in world
+    // coords at the camera's live view (the shared gfx scrolls), so no extra scroll-locked objects needed.
+    // Debug-only until sail states land (the developer's call — the HUD stays untouched).
+    if (Debug.on('world.wind')) {
+      const v = this.scene.cameras.main.worldView;
+      const zoom = this.scene.cameras.main.zoom;
+      const cx = v.centerX;
+      const cy = v.y + 56 / zoom;
+      const len = (14 + 22 * this.wind.strength) / zoom;
+      const dx = Math.cos(this.wind.dir);
+      const dy = Math.sin(this.wind.dir);
+      g.lineStyle(3 / zoom, 0x9fd8ff, 0.95);
+      g.lineBetween(cx - dx * len, cy - dy * len, cx + dx * len, cy + dy * len);
+      const hx = cx + dx * len;
+      const hy = cy + dy * len;
+      g.fillStyle(0x9fd8ff, 0.95);
+      g.fillTriangle(hx + (dx * 9) / zoom, hy + (dy * 9) / zoom, hx - (dy * 5) / zoom, hy + (dx * 5) / zoom, hx + (dy * 5) / zoom, hy - (dx * 5) / zoom);
+      const deg = Math.round((((this.wind.dir * 180) / Math.PI) % 360 + 360) % 360);
+      // both units on purpose: % is the sim's truth (a multiplier of WIND_REF — 100% = reference, not max),
+      // tiles/s is the absolute read (the ONE debug speed unit — the developer's call) for comparing against
+      // hull speeds. Player-facing wind gets NEITHER number (diegetic reads + navigator bands — SAILING.md).
+      const wts = ((this.wind.strength * WIND_REF) / TILE).toFixed(1);
+      this.label(cx, cy + 14 / zoom, `wind ${deg}°  ${Math.round(this.wind.strength * 100)}% (${wts}t/s)`, '#9fd8ff');
+      // PER-SHIP sailing readout — the numbers the momentum feel is tuned by: true speed vs the hull's
+      // rating, and the DRIFT angle (velocity vs bow — the disagreement IS the carve; a car reads 0°).
+      // Two lines at the hull make it visible: white tick = where the BOW points, cyan arrow = where the
+      // MASS is actually going, scaled by speed.
+      for (const s of this.world.with('ship', 'transform')) {
+        const st = s.transform!;
+        const sh = s.ship!;
+        const spd = Math.hypot(sh.vx, sh.vy);
+        const hull = ShipHulls.get(sh.hull);
+        const max = hull.maxSpeed;
+        // POINT OF SAIL by the same angle the thrust math reads (bow vs the wind's SOURCE) — named bands
+        // matching the playtest card, so "why this speed?" answers itself at a glance. Sail rigs only.
+        const off = Math.abs(angleDiff(st.angle, this.wind.dir + Math.PI)) * (180 / Math.PI);
+        const pos = hull.rig === 'sail'
+          ? `  ${off < 20 ? 'IN IRONS' : off < 52 ? 'close-hauled' : off < 78 ? 'close reach' : off < 102 ? 'beam reach' : off < 150 ? 'broad reach' : 'running'} ${Math.round(off)}°`
+          : '';
+        if (spd > 1) {
+          g.lineStyle(2, 0xffffff, 0.7); // bow tick
+          g.lineBetween(st.x, st.y, st.x + Math.cos(st.angle) * st.r, st.y + Math.sin(st.angle) * st.r);
+          g.lineStyle(3, 0x35e0c0, 0.9); // velocity arrow — where the mass is really going
+          g.lineBetween(st.x, st.y, st.x + (sh.vx / spd) * (st.r * 0.4 + spd * 0.4), st.y + (sh.vy / spd) * (st.r * 0.4 + spd * 0.4));
+        }
+        let drift = ((Math.atan2(sh.vy, sh.vx) - st.angle) % (Math.PI * 2)) * (180 / Math.PI);
+        if (drift > 180) drift -= 360;
+        if (drift < -180) drift += 360;
+        const driftTxt = spd > 1 ? `  drift ${Math.round(Math.abs(drift))}°` : '';
+        // yaw = the ROTATION rate (deg/s, signed: + = swinging to starboard) — the number to read when a
+        // turn feels too fast; its ceiling is the hull's turnRate (×authority from waterflow)
+        const yawTxt = Math.abs(sh.yaw) > 0.02 ? `  yaw ${sh.yaw > 0 ? '+' : ''}${Math.round(sh.yaw * (180 / Math.PI))}°/s` : '';
+        const anchorTxt = sh.anchor === 'up' ? '' : `  ⚓${sh.anchor}`;
+        const lashTxt = sh.lash ? '  ⊗lashed' : '';
+        // tiles/s — the ONE debug speed unit (walkers + wind match), actual/rated
+        this.label(st.x, st.y + st.r + 12, `${sh.sail}  spd ${(spd / TILE).toFixed(1)}/${(max / TILE).toFixed(1)}t/s${pos}${driftTxt}${yawTxt}${anchorTxt}${lashTxt}`, '#35e0c0');
       }
     }
 

@@ -38,7 +38,8 @@ export const Races = new Registry<RaceDef>('Races', (rc) => {
 });
 
 // Multipliers are ×1 for baseline humans; the non-1 races reproduce the old per-unit figures as bonuses on
-// the body.humanoid baseline (r11/reach34/speed76/mass1) — a migration, not a rebalance.
+// the body.humanoid baseline (r11/reach34/speed61/mass1) — a migration, not a rebalance. (The mult FRACTIONS
+// still read as old-prototype px pairs, e.g. 80/76 — they're ratios, so the 2026-07 speed re-base didn't touch them.)
 Races.registerAll([
   // the reference species — all ×1, so a humanoid-body human resolves to exactly the body baseline
   { id: 'race.human', name: 'Human', sizeMul: 1, reachMul: 1, speedMul: 1, massMul: 1 },

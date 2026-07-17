@@ -1,4 +1,6 @@
-# Ballpiece — The Gym (offline AI tuning pipeline)
+# Openpiece — The Gym (offline AI tuning pipeline)
+
+> **Stage:** designed — offline tuning harness design; build gated on the intent pipeline
 
 > Design capture, ahead of the code — the OFFLINE tooling that produces the tuned weight tables
 > `AI_FOUNDATION.md` §6 consumes. Companions: `AI_FOUNDATION.md` (the decision engine these weights drive;

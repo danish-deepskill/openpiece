@@ -1,4 +1,6 @@
-# Ballpiece — Vision (Design)
+# Openpiece — Vision (Design)
+
+> **Stage:** meta — the north star every pass is judged against; intentionally ahead of the code
 
 > These design docs capture the **target vision**. They are intentionally ahead of the code. Nothing here is
 > "build now" — the job is a foundation that can absorb all of it as **content + small systems**, never rewrites.
@@ -46,7 +48,7 @@ direct-control action combat, a living faction world, sailing the seas between m
 - `ai/AI_INTELLIGENCE.md` — the INT axis: one AI stack where INT 1–10 gates perception, knowledge, decision,
   execution, and command; the information economy; counter-play; offline-only ML.
 - `DEEP_SIMULATION.md` — the Moat, the living sea, world structure, the multi-scale runtime, the road to
-  ballpiece.io. `REFERENCES.md` — ideas from reference games, tier-listed.
+  openpiece.io. `REFERENCES.md` — ideas from reference games, tier-listed.
 - `features/` — per-feature design notes (movement frames + the transition rulebook, the walkable ship).
 
 **Status:** vision capture, with completed design passes marked above. Combat foundation was the agreed

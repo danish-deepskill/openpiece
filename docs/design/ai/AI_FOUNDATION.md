@@ -1,4 +1,6 @@
-# Ballpiece — AI Foundation (the decision engine)
+# Openpiece — AI Foundation (the decision engine)
+
+> **Stage:** designed — intent pipeline + executor recursion; code is still FSM
 
 > Design capture, ahead of the code — the ARCHITECTURE that executes `AI_INTELLIGENCE.md` (the INT axis: what
 > intelligence *is* here; its §10 names this doc's pipeline as the build-first prerequisite). Companions:

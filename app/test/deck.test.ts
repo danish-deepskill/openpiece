@@ -101,8 +101,8 @@ describe('every ship hull has a valid deck', () => {
   });
 
   it('deckOf caches — the same hull returns the identical parsed grid object', () => {
-    const a = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
-    const b = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const a = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
+    const b = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     expect(a).toBe(b); // same reference → parsed once
   });
 });
@@ -130,7 +130,7 @@ describe('deck ↔ world transform (local-space parenting)', () => {
   });
 
   it('click→tile: a world point over a deck cell resolves back to that cell', () => {
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const pose = { x: 500, y: 200, angle: 0.4 };
     const helm = helmSpot(grid);
     const helmWorld = deckToWorld(pose, helm.lx, helm.ly); // where the helm tile is in the world
@@ -141,7 +141,7 @@ describe('deck ↔ world transform (local-space parenting)', () => {
 });
 
 describe('deck collision (walking the deck)', () => {
-  const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck); // 6×4, rail ring around a 4×2 interior
+  const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck); // 6×4, rail ring around a 4×2 interior
 
   it('a small body can stand on a walkable interior cell', () => {
     const c = grid.cells.find((cell) => deckWalkable(cell.tile))!;

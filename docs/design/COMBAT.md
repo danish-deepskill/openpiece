@@ -1,5 +1,7 @@
 # Combat (Design)
 
+> **Stage:** designed — stamina/posture/parry direction (ledger)
+
 Combat is the moat. Your identity comes from **four layers** stacked on a shared attribute/ability engine,
 tuned by Combat Potentials and expressed through skill (movement, timing, mode switching).
 

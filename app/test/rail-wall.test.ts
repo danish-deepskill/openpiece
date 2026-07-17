@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Rng } from '../src/core/Rng';
 import { deckCellAtLocal, deckOf, deckToWorld, gangplankCell, gangplankOutward, worldToDeck } from '../src/defs/decks';
 import { TERRAIN } from '../src/defs/terrains';
 import { ShipHulls } from '../src/defs/ships';
@@ -11,6 +12,7 @@ import { TileGrid } from '../src/world/TileGrid';
 import { HullCollisionSystem } from '../src/systems/HullCollisionSystem';
 import { MovementSystem } from '../src/systems/MovementSystem';
 import { ShipSystem } from '../src/systems/ShipSystem';
+import { WindSystem } from '../src/systems/WindSystem';
 
 /**
  * THE RAIL IS A WALL TO FEET (the "walked onto the rail without jumping" report): a rail cell's open
@@ -27,13 +29,13 @@ function sea(tile = 0 /* deep water */) {
   g.tiles = Array.from({ length: 40 }, () => Array.from({ length: 40 }, () => tile));
   const world = new World();
   const collision = new Collision(g);
-  return { world, move: new MovementSystem(world, collision), hulls: new HullCollisionSystem(world), ships: new ShipSystem(world, collision) };
+  return { world, move: new MovementSystem(world, collision), hulls: new HullCollisionSystem(world), ships: new ShipSystem(world, collision, new WindSystem(1)) };
 }
 
 function makeShip(world: World): Entity {
   return world.create({
     transform: { x: 500, y: 500, angle: 0, r: 56 },
-    ship: { hull: 'ship.sloop', mode: 'exploration', anchored: true, speed: 0, throttle: 0 },
+    ship: { hull: 'ship.rowboat', mode: 'exploration', sail: 'furled', anchor: 'dropped', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
   });
 }
 
@@ -50,7 +52,7 @@ describe('the rail walls a grounded walker (hullWall)', () => {
     // (mode 'foot'), not a swimmer — swimmers are ALLOWED through the strip (hugging the drawn wood).
     const { world, move, hulls, ships } = sea(TERRAIN.shallowWater);
     const ship = makeShip(world);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!;
     // in the lane, near the door line — the exact spot the pre-fix wader slid from into the flank rail's strip
     const start = deckToWorld(ship.transform!, gp.lx - 12, gp.ly);
@@ -71,7 +73,7 @@ describe('the rail walls a grounded walker (hullWall)', () => {
   it('a wood-WEDGED walker can still free itself but cannot TRAVERSE the gunwale', () => {
     const { world, move, hulls, ships } = sea(TERRAIN.shallowWater); // dockside shallows — a WADER (swimmers may ride the strip by design)
     const ship = makeShip(world);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!;
     const spot = deckToWorld(ship.transform!, gp.lx - 6, gp.ly - 12); // wedged into the north flank's wood tip
     const a = actor(world, spot.x, spot.y);
@@ -109,7 +111,7 @@ describe('the rail walls a grounded walker (hullWall)', () => {
     // The escape rule: blocked-under-your-truth ⇒ steps that strictly gain clearance are always allowed.
     const { world, move, hulls, ships } = sea(TERRAIN.shallowWater);
     const ship = makeShip(world);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     // body center 6px south of the hull's south edge — overlapping the rail WALL band by 5px (blocked for a
     // walker) but clear of the drawn wood: the exact "can't move around the rail" dockside pin
     const pin = deckToWorld(ship.transform!, 0, (grid.rows * grid.tilePx) / 2 + 6);
@@ -131,7 +133,7 @@ describe('the rail walls a grounded walker (hullWall)', () => {
     // you a SWIMMER — and the swimmer wood-hug slid half your hitbox onto the flanking rail with no jump.
     const { world, move, hulls, ships } = sea(); // DEEP water everywhere — the failing context
     const ship = makeShip(world);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!;
     const start = deckToWorld(ship.transform!, gp.lx, gp.ly); // standing ON the plank board
     const a = actor(world, start.x, start.y);
@@ -148,7 +150,7 @@ describe('the rail walls a grounded walker (hullWall)', () => {
   });
 
   it('ONE hull truth: a rail is a FULL-TILE block to every mode (the simple-collision overhaul)', () => {
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const rail = grid.cells.find((c) => c.cx === 2 && c.cy === 3)!; // south rail amidships
     expect(hullBlocksOutside(grid, rail.lx, rail.ly + 12, 11)).toBe(true); // anywhere in the cell blocks anyone
     expect(hullBlocksOutside(grid, rail.lx, rail.ly + 16 + 12, 11)).toBe(false); // a radius past the cell line — open sea
@@ -168,7 +170,7 @@ describe('the rail walls a grounded walker (hullWall)', () => {
     for (const [ux, uy] of DIRS) {
       const { world, move, hulls, ships } = sea(TERRAIN.shallowWater);
       const ship = makeShip(world);
-      const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+      const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
       const gp = gangplankCell(grid)!;
       const [ox, oy] = gangplankOutward(grid, gp);
       // the straddle: center 1px inside the board's outer end line, nudged 5px off the lane centerline
@@ -200,7 +202,7 @@ describe('the rail walls a grounded walker (hullWall)', () => {
     // developer's call; a swimmer's EDGE may hug the open half here like anywhere else).
     const { world, move, hulls, ships } = sea(); // DEEP water — the exact failing context
     const ship = makeShip(world);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!;
     const start = deckToWorld(ship.transform!, gp.lx - grid.tilePx, gp.ly); // the lane mouth
     const a = actor(world, start.x, start.y);

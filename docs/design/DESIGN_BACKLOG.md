@@ -1,5 +1,7 @@
 # The Moat Map — systems that still need REAL design
 
+> **Stage:** meta — THE queue of design passes + the already-designed ledger (the kanban view)
+
 **What this doc is.** The queue of DESIGN PASSES. A vision capture (a feature list + engine preview, like
 `PROGRESSION.md`/`EVENTS.md`/`ECONOMY_ACTIVITIES.md` today) is NOT a design; a design pass turns it into
 judged mechanics with trade-offs and knobs — what `SAILING.md` did to NAVAL's movement half (2026-07), what
@@ -24,7 +26,8 @@ must answer, my current LEANS (marked — not canon until a pass lands them), an
 Already-designed ledger (passes DONE, don't re-open casually): sailing model + skill bands (`SAILING.md`),
 ship classes as axes + upgrade law (`NAVAL.md`), seamless chunked sea (`WORLD.md` + `ARCHITECTURE_SCALE §5`),
 movement frames + transition rulebook (`features/movement-frames.md`), pathfinding stack (`PATHFINDING.md`),
-AI INT ladder (`ai/AI_INTELLIGENCE.md`), combat stamina/posture/parry direction (`COMBAT.md`).
+AI INT ladder (`ai/AI_INTELLIGENCE.md`), combat stamina/posture/parry direction (`COMBAT.md`),
+time/calendar/day-night substrate (#18 → `TIME.md`, evidence `docs/research/TIME_RESEARCH.md`).
 
 ---
 
@@ -198,7 +201,7 @@ timers); division/fleet order grammar; delegation UI; when does the game "end"?
 **Pass when:** deep-sim era — LAST of the big passes; everything above feeds it.
 
 ## 13. Multiplayer gameplay design (before netcode work, after PlayerIntent)
-**Moat:** ballpiece.io — the same sim, server-authoritative. The STACK is settled (`DEEP_SIMULATION §7`);
+**Moat:** openpiece.io — the same sim, server-authoritative. The STACK is settled (`DEEP_SIMULATION §7`);
 the GAMEPLAY design isn't.
 **Hard questions:** possession rules among players (who may possess what — the Moat meets other humans);
 crew sharing; sharding by sea region (reuses sim-LOD); economy/persistence in a shared world; PvP consent
@@ -315,6 +318,11 @@ on you (the Moat: an enemy captain intimidates YOUR crew's morale, #2).
 knowledge-economy hooks (#9) can wait for their own pass.
 
 ## 18. Time, calendar & day/night — the substrate half a dozen points assume
+**DONE — `TIME.md` (2026-07-16 pass; evidence `docs/research/TIME_RESEARCH.md`).** Verdict: always-flowing
+compressed time, one shared never-dilating rate; 24 real min/day (1 s = 1 game min — THE feel knob); tick
+IS the clock; night acts through the sim (AI `nightSight`), never the screen; schedule SHAPE fixed
+(priority-stack first-match + window-return for evaluate-don't-tick) for #1 to build; skip = self-
+dehydration, deferred to #1's fatigue. Leans below kept for history; the doc's verdicts supersede.
 **Moat:** not itself a moat, but the SUBSTRATE most moats quietly stand on — and getting it wrong (or
 leaving it implicit) forces every dependent system to invent its own ad-hoc clock. Enumerate it once, early.
 Already depended-on: watch rotations & fatigue (#1–2), heat cooling "where you're not seen" over DAYS (#6),
@@ -439,3 +447,51 @@ fight.
 **Pass when:** SOON — it's small, the art exists, and it's the natural next combat-content pass after the
 foundation pillar; also the shared substrate NAVAL cannons (SAILING impacts phase) and #16 (elemental
 shots) both need, so designing it before those saves a refork.
+
+## 20. SAILING 2.0 — currents + the structured sea (the umbrella pass; sailing 1.0 shipped 2026-07)
+**Moat:** in One Piece canon the water moves MORE than the air: Grand Line navigation IS currents (Reverse
+Mountain's mountain-climbing river, the Knock-Up Stream, Aqua Laguna, why a Log Pose outranks any map). A
+sea where only wind pushes is half a sea — and currents are an information moat (chart knowledge, navigator
+readings, "the strait pulls east at flood tide") that ordinary sailing games never build. Today water flow
+exists ONLY as visuals (crest shimmer, wind streaks); no sim force. Wind reached the hull in 2026-07
+(windage/leeway/fall-off) — the water itself still pushes nothing: not ships, not swimmers, not flotsam.
+**Scope (the 2.0 umbrella — one ARCHITECTURAL pass, several content tracks):** the core move is making both
+fields POSITION-STRUCTURED — `currentAt(x, y, t)` lands beside `windAt` gaining its regional octaves in the
+same stroke, which unlocks the whole S-tier of the 2026-07 peer tier-list as one family: **wind shadow**
+(islands + ships blocking wind — the weather gauge becomes real naval positioning), **wind funneling**
+(channels between islands — chartable geography), **spatial gusts** (pressure patches to hunt), and
+**currents/tides** (below). Satellites that RIDE 2.0 but keep their own homes: squalls/fronts (events
+director), fog (a perception-system modifier), dead reckoning + Log Pose navigation (the navigator
+knowledge pass, with crew), sailing audio (the audio pass), navigator commentary-as-coaching (knowledge
+economy). Swimmer-sweep stays its own later pass (lethality/tone).
+**Hard questions:** field shape (`currentAt(x, y, t)` — the evaluated-field twin of `windAt`; what makes it
+POSITION-structured from day one where wind went global-first?); who reads it (hulls certainly; swimmers —
+does a current sweep a Devil Fruit user to their death, the canonical terror of the sea?; drifting ships,
+loot, message bottles); how it composes with windage in the velocity math (two shoves, one drift readout —
+can the debug label attribute them?); navigation knowledge (does the navigator read SET AND DRIFT like wind
+bands? are current CHARTS tradable items — the knowledge-is-power moat); tides (a clock-driven modulation —
+ties #18 TIME's calendar; Aqua Laguna as a scheduled spike event); interaction with the chunked sea (#14 —
+currents that span chunks must come from the field, not chunk state, or streaming tears them); Calm Belt
+semantics (dead wind but ALIVE water? or dead both — what makes it crossable-but-scary); whether hazard
+currents (whirlpools, the Knock-Up Stream) are field features or event-director spawns (lean: multiplied
+onto the field's potential, the curl-noise rule the wind already recorded).
+**Leans (peer-reviewed 2026-07 — a planner's review sharpened four of these):** the architecture answer is
+already proven — a second pure field beside `windAt`, one more velocity term where windage lands,
+evaluated-not-ticked so ledger/replay/forecast hold by construction; regional octaves are what the position
+args were reserved for. Start global-zero + a few authored regional features (a strait, a gyre) rather than
+noise — currents are GEOGRAPHY, not weather (elevate this maxim into SAILING.md when the pass lands).
+- **ATTRIBUTION IS DESIGNED FIRST, not last** (the review's crux, accepted): drift already conflates carve +
+  leeway; a third unexplained shove reads as "my boat just does something." Two separate visual tells from
+  day one (wind streaks vs current-lines, different hue/depth) so players learn the CAUSES before the names
+  — the canvas-belly lesson again; debug decomposes the drift number by source.
+- **Swimmer-sweep is its OWN pass** (accepted): breath/drowning already exist, so "current touches swimmers"
+  means "current can kill crew" — lethality/tone-testing, not physics. Base pass = field + hulls + flotsam.
+- **Calm Belt = DEAD BOTH** (accepted; canon agrees — it's the CALM belt): its content is oars + Sea-King
+  fear, not flow. "Alive water" was lore texture with no player decision behind it — cut.
+- **Current-dominated irons recovery** (the review's addition, adopted): a stalled ship in a strong current
+  is SWEPT, not just blown — one more term in the fall-off/windage seam, free mechanically, and it teaches
+  "making leeway vs being set," the navigator's set-and-drift language.
+**Pass when:** a CONTENT need wants a current (a ferry strait, a whirlpool encounter, the first Grand
+Line-shaped region) — the field is deliberately chunk-independent, so #14 is NOT a real dependency (the
+review caught the false bundling: both merely smelled like "big world"). An authored strait between today's
+two islands could ship on the current architecture.

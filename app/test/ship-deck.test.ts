@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { Rng } from '../src/core/Rng';
 import { deckCellAtLocal, deckOf, deckToWorld, gangplankCell, helmSpot, worldToDeck } from '../src/defs/decks';
 import { ShipHulls } from '../src/defs/ships';
 import { deckCanOccupy, hullBlocksWorldPoint } from '../src/world/deckCollision';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
 import { ShipSystem } from '../src/systems/ShipSystem';
+import { WindSystem } from '../src/systems/WindSystem';
 import { HullCollisionSystem } from '../src/systems/HullCollisionSystem';
 import { MovementSystem } from '../src/systems/MovementSystem';
 import { enterDeck } from '../src/world/frames';
@@ -24,7 +26,7 @@ function seaSystem(): { world: World; ships: ShipSystem; move: MovementSystem } 
   g.tiles = Array.from({ length: 40 }, () => Array.from({ length: 40 }, () => 0 /* TERRAIN.water */));
   const world = new World();
   const collision = new Collision(g);
-  return { world, ships: new ShipSystem(world, collision), move: new MovementSystem(world, collision) };
+  return { world, ships: new ShipSystem(world, collision, new WindSystem(1)), move: new MovementSystem(world, collision) };
 }
 
 /** Drive an on-deck actor with a world-space velocity intent for N ticks (the new path: set mover.vx/vy → MovementSystem
@@ -41,7 +43,7 @@ function walkDeckIntent(move: MovementSystem, e: Entity, vx: number, vy: number,
 function makeShip(world: World, x: number, y: number, angle = 0): Entity {
   return world.create({
     transform: { x, y, angle, r: 56 },
-    ship: { hull: 'ship.sloop', mode: 'exploration', anchored: false, speed: 0, throttle: 0 },
+    ship: { hull: 'ship.rowboat', mode: 'exploration', sail: 'furled', anchor: 'up', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
   });
 }
 function makeActor(world: World, x: number, y: number): Entity {
@@ -55,6 +57,7 @@ describe('on-deck parenting (ShipSystem)', () => {
   it('an on-deck actor is placed at its LOCAL spot in world space each tick', () => {
     const { world, ships } = seaSystem();
     const ship = makeShip(world, 1000, 1000, 0); // heading 0 (+x)
+    ship.ship!.anchor = 'dropped'; // hooked: windage would drift the hull and smear the exact-position asserts
     const a = makeActor(world, 0, 0);
     a.onDeck = { shipId: ship.id, lx: 30, ly: -10 }; // a spot forward-and-left on the deck
     ships.update(0.1);
@@ -66,6 +69,7 @@ describe('on-deck parenting (ShipSystem)', () => {
   it('the actor RIDES the deck through a heading change (its world pos rotates with the ship)', () => {
     const { world, ships } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
+    ship.ship!.anchor = 'dropped'; // hooked: windage would drift the hull and smear the exact-position asserts
     const a = makeActor(world, 0, 0);
     a.onDeck = { shipId: ship.id, lx: 40, ly: 0 }; // stood at the bow (forward)
     ships.update(0.05);
@@ -96,7 +100,7 @@ describe('on-deck parenting (ShipSystem)', () => {
     // draining breath and drown them standing on dry planks (the exact bug a raw onDeck write once caused).
     const { world } = seaSystem();
     const ship = makeShip(world, 700, 700, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const spot = grid.cells.find((c) => c.tile === 'deck')!;
     const a = makeActor(world, 660, 700);
     a.mover!.mode = 'swim'; // boarded straight out of the water
@@ -123,7 +127,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     const { world, ships, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0); // heading 0
     const a = makeActor(world, 0, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const helm = helmSpot(grid);
     // start one tile east of the helm, then walk WEST (−x world) onto the helm
     a.onDeck = { shipId: ship.id, lx: helm.lx + grid.tilePx, ly: helm.ly };
@@ -136,7 +140,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     const { world, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
     const a = makeActor(world, 0, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const helm = helmSpot(grid);
     a.onDeck = { shipId: ship.id, lx: helm.lx, ly: helm.ly };
     walkDeckIntent(move, a, 0, -100, 80); // shove NORTH toward the port rail, hard
@@ -144,24 +148,25 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     expect(deckCanOccupy(grid, a.onDeck!.lx, a.onDeck!.ly, a.transform!.r, false)).toBe(true); // on a valid deck cell
   });
 
-  it('TAKING the wheel seats you AT it (the whole tile is the station trigger; the wheel is its center)', () => {
+  it('TAKING the wheel seats you ABAFT it (station pull to the helm tile, standing behind the wheel)', () => {
     const { world, ships } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const helm = helmSpot(grid);
     const a = makeActor(world, 0, 0);
     a.onDeck = { shipId: ship.id, lx: helm.lx + 10, ly: helm.ly - 6 }; // on the helm tile, but beside the wheel
     ships.seatAtHelm(a);
-    expect(a.onDeck!.lx).toBeCloseTo(helm.lx, 6);
+    expect(a.onDeck!.lx).toBeCloseTo(helm.lx - 10, 6); // abaft the wheel — the station stays VISIBLE past the body
     expect(a.onDeck!.ly).toBeCloseTo(helm.ly, 6);
+    expect(ships.atHelm(a)).toBe(true); // still on the helm TILE — the wheel grant holds
   });
 
   it('hands on the wheel: the PILOT faces the BOW, live through the turn (not the frozen pre-wheel aim)', () => {
     const { world, ships } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
-    ship.ship!.speed = 100; // moving → the rudder has authority
+    ship.ship!.vx = 100; // moving (true velocity) → the rudder has authority
     const a = makeActor(world, 0, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const helm = helmSpot(grid);
     a.onDeck = { shipId: ship.id, lx: helm.lx, ly: helm.ly };
     a.transform!.angle = 2.5; // was aiming somewhere else entirely when taking the wheel
@@ -172,21 +177,25 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
   it('a pilot ON the helm steers the ship (heading changes)', () => {
     const { world, ships } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
-    ship.ship!.speed = 100; // moving, so the rudder has authority
+    ship.ship!.speed = 100; // moving, so the rudder has authority…
+    ship.ship!.vx = 100; // …and rudder flow reads the TRUE velocity now (sailing momentum), not the throttle integrator
     const a = makeActor(world, 0, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const helm = helmSpot(grid);
     a.onDeck = { shipId: ship.id, lx: helm.lx, ly: helm.ly };
     expect(ships.atHelm(a)).toBe(true);
     const a0 = ship.transform!.angle;
-    for (let i = 0; i < 10; i++) ships.pilot(a, 0, 1, 0.05); // steer right
+    for (let i = 0; i < 10; i++) {
+      ships.pilot(a, 0, 1, 0.05); // helm hard over (writes the rudder echo)…
+      ships.update(0.05); // …and the HULL answers it here (yaw lives in the integrate step now)
+    }
     expect(ship.transform!.angle).toBeGreaterThan(a0); // the ship turned
   });
 
   it('walking the deck is FULL speed (not slowed by the sea under the hull — the deck-slow regression)', () => {
     const { world, move } = seaSystem(); // all-water grid → the tile under the hull is deep Water
     const ship = makeShip(world, 500, 500, 0); // heading 0, so deck-local +x == world +x
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const helm = helmSpot(grid);
     const a = makeActor(world, 0, 0); // speed 100
     a.onDeck = { shipId: ship.id, lx: helm.lx, ly: helm.ly };
@@ -201,7 +210,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
   it('PERCHED on the rail (onDeck), you can walk INWARD off it onto the deck (not stuck)', () => {
     const { world, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const rail = grid.cells.find((c) => c.tile === 'rail')!; // some rail cell
     const a = makeActor(world, 0, 0);
     a.mover!.onLedge = true; // perched (as if just landed on the rail)
@@ -218,7 +227,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     // AND — pushing off the deck edge — exits the deck frame entirely, flying out to world space (the leap-off).
     const { world, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const helm = helmSpot(grid);
 
     const foot = makeActor(world, 0, 0);
@@ -240,7 +249,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
   it('WALK-OFF: the deck frame HOLDS across the plank; the handoff fires only at the board\'s outer END', () => {
     const { world, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0); // heading 0
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!; // sloop gangplank faces WEST (−x is off-grid)
     const a = makeActor(world, 0, 0);
     a.onDeck = { shipId: ship.id, lx: gp.lx, ly: gp.ly }; // stood on the gangplank CELL CENTER
@@ -259,7 +268,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     // leading-edge lookahead — as close to the door line as the airborne clamp allows).
     const { world, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!; // faces WEST — outward is −x
     const a = makeActor(world, 0, 0);
     a.mover!.layer = 'air'; // mid-jump the whole way
@@ -283,7 +292,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
   it('WALK-OFF does NOT fire while pushing INWARD on the gangplank (you keep walking the deck)', () => {
     const { world, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!;
     const a = makeActor(world, 0, 0);
     a.onDeck = { shipId: ship.id, lx: gp.lx, ly: gp.ly };
@@ -296,7 +305,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     const { world, move } = seaSystem();
     const hulls = new HullCollisionSystem(world);
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!;
     const a = makeActor(world, 0, 0);
     enterDeck(a, ship.id, gp.lx, gp.ly); // just boarded → frameCd is running
@@ -312,7 +321,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     const { world, ships, move } = seaSystem();
     const hulls = new HullCollisionSystem(world);
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!; // sloop's door faces WEST (outward −x)
     const start = deckToWorld(ship.transform!, gp.lx - grid.tilePx, gp.ly); // in the lane, outside the plank
     const a = makeActor(world, start.x, start.y);
@@ -336,7 +345,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     const { world } = seaSystem();
     const hulls = new HullCollisionSystem(world);
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!;
     const w = deckToWorld(ship.transform!, gp.lx, gp.ly);
     const a = makeActor(world, w.x, w.y); // parked on the plank, no intent
@@ -355,12 +364,12 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     const { world, ships, move } = seaSystem();
     const hulls = new HullCollisionSystem(world);
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!; // sloop's door faces WEST (outward −x)
     const start = deckToWorld(ship.transform!, gp.lx - grid.tilePx / 2 - 2, gp.ly); // 2px outside the board's end line
     const a = makeActor(world, start.x, start.y); // IDLE — never presses a key
-    ship.ship!.throttle = -1; // held in reverse (non-zero throttle keeps the coast-drag/stop-snap off)
-    ship.ship!.speed = -40; // backing WEST — the plank sweeps under the walker: relatively INWARD
+    ship.ship!.back = 1; // held backing (S at furled) — the oar hull reverses at reverseFrac
+    ship.ship!.speed = -37.5; // backing WEST at the rowboat's reverse pace — the plank sweeps under the walker: relatively INWARD
     for (let i = 0; i < 300 && !a.onDeck; i++) {
       move.update(1 / 60);
       ships.update(1 / 60);
@@ -379,7 +388,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     // deck has no depenetration. Perch-as-needed: grounded rules reject the spot → you grab the rail instead.
     const { world, ships, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const spot = grid.cells.find((c) => c.cx === 2 && c.cy === 2)!; // '.' interior beside the south rail
     const a = makeActor(world, 0, 0);
     a.onDeck = { shipId: ship.id, lx: spot.lx, ly: spot.ly + 12 }; // ly 28: center on the interior, body over the rail (r=8 spans 20..36, rail row starts at 32)
@@ -425,7 +434,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     const { world, ships, move } = seaSystem();
     const hulls = new HullCollisionSystem(world);
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const spot = grid.cells.find((c) => c.cx === 2 && c.cy === 2)!; // '.' interior beside the south rail
     const w = deckToWorld(ship.transform!, spot.lx, spot.ly + 12); // center on the interior, body over the rail
     const a = makeActor(world, w.x, w.y); // just landed here as a WORLD walker (leap-on path)
@@ -444,7 +453,7 @@ describe('walking the deck + positional piloting (ShipSystem, step 3)', () => {
     // still overlapped the wood), and with pushOut lane-exempt nothing ever freed it: a permanent freeze.
     const { world, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!;
     const spot = deckToWorld(ship.transform!, gp.lx - 6, gp.ly - 12); // nudged into the north flanking rail
     const a = makeActor(world, spot.x, spot.y);
@@ -463,7 +472,7 @@ describe('land-on-deck boarding (HullCollisionSystem — jump/Geppo over the rai
     const { world, ships } = seaSystem();
     const hulls = new HullCollisionSystem(world);
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const interior = grid.cells.find((c) => c.tile === 'deck')!; // a walkable interior cell
     // place a WORLD walker exactly over that interior cell in world space (as if it just LANDED there from a jump)
     const w = deckToWorld(ship.transform!, interior.lx, interior.ly);
@@ -477,7 +486,7 @@ describe('land-on-deck boarding (HullCollisionSystem — jump/Geppo over the rai
     const { world, ships } = seaSystem();
     const hulls = new HullCollisionSystem(world);
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const interior = grid.cells.find((c) => c.tile === 'deck')!;
     const w = deckToWorld(ship.transform!, interior.lx, interior.ly);
     const a = makeActor(world, w.x, w.y);
@@ -489,7 +498,7 @@ describe('land-on-deck boarding (HullCollisionSystem — jump/Geppo over the rai
   it('AIRBORNE LEAVE: a Geppo/jump off the deck edge exits the deck frame (flies out to world space)', () => {
     const { world, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0); // heading 0
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     // stand on an OUTER deck cell nearest the bow rail, airborne, and push toward the rail/off the edge
     const east = grid.cells.filter((c) => c.tile === 'deck').reduce((a, b) => (b.lx > a.lx ? b : a));
     const a = makeActor(world, 0, 0);
@@ -511,7 +520,7 @@ describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () =
   function perchSetup(r = 8): { world: World; ships: ShipSystem; move: MovementSystem; ship: Entity; a: Entity; rail: { lx: number; ly: number } } {
     const { world, ships, move } = seaSystem();
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const rail = grid.cells.find((c) => c.cx === 2 && c.cy === 3)!;
     const a = makeActor(world, 0, 0);
     a.transform!.r = r;
@@ -562,7 +571,7 @@ describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () =
     const { world, ships, move, a } = perchSetup(11);
     const hulls = new HullCollisionSystem(world);
     const ship = world.first('ship')!;
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     a.mover!.frameCd = 0;
     let px = a.transform!.x;
     let py = a.transform!.y;
@@ -596,7 +605,7 @@ describe('leaving the ship is CONTINUOUS (no teleport, no invisible wall)', () =
     const { world } = seaSystem();
     const hulls = new HullCollisionSystem(world);
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const interior = grid.cells.find((c) => c.tile === 'deck')!;
     const w = deckToWorld(ship.transform!, interior.lx, interior.ly);
     const a = makeActor(world, w.x, w.y); // just LANDED here (grounded, center over the deck)
@@ -616,9 +625,9 @@ describe('the hull is a true WALL to a world walker (MovementSystem move-block, 
     const move = new MovementSystem(world, new Collision(g));
     const ship = world.create({
       transform: { x: 500, y: 500, angle: 0, r: 56 },
-      ship: { hull: 'ship.sloop', mode: 'exploration', anchored: true, speed: 0, throttle: 0 },
+      ship: { hull: 'ship.rowboat', mode: 'exploration', sail: 'furled', anchor: 'dropped', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
     });
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     // start WEST of the ship, out in open water, walking EAST into the port rail
     const a = makeActor(world, 500 - grid.cols * grid.tilePx, 500);
     a.mover!.vx = 200; // drive east toward the hull

@@ -1,5 +1,7 @@
 # Open World & Ocean Zones (Design)
 
+> **Stage:** designed — zones + seamless chunked sea decision (ledger); chunk build deferred
+
 Open world: travel anywhere across the One Piece seas — many islands, connected by sailable ocean divided
 into **zones** that gate content, set hazards, and reward exploration.
 

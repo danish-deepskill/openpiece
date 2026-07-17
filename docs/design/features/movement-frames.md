@@ -1,5 +1,7 @@
 # Movement Frames — the reference-frame foundation
 
+> **Stage:** shipped — built; rulebook re-synced to the straddle model 2026-07
+
 **Status: BUILT.** The architectural fix behind "the deck should feel like land."
 
 **Unification landed:** ALL locomotion — world AND deck frame — now lives in ONE system (`MovementSystem`), one

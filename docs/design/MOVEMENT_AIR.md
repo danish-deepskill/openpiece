@@ -1,5 +1,7 @@
 # Air Movement & Aerial Combat (Design)
 
+> **Stage:** shipped — jump/Geppo built + playtested
+
 Vertical play — **jump → Geppo → aerial combat** — built on a **two-layer** model, not a continuous height.
 This doc is the captured design; **not yet implemented.** Build when the air pillar is committed to.
 

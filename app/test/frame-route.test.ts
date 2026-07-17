@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Rng } from '../src/core/Rng';
 import { frameLeg } from '../src/ai/brains';
 import { deckOf, deckToWorld, gangplankCell, gangplankOutward, helmSpot } from '../src/defs/decks';
 import { ShipHulls } from '../src/defs/ships';
@@ -9,6 +10,7 @@ import { TileGrid } from '../src/world/TileGrid';
 import { HullCollisionSystem } from '../src/systems/HullCollisionSystem';
 import { MovementSystem } from '../src/systems/MovementSystem';
 import { ShipSystem } from '../src/systems/ShipSystem';
+import { WindSystem } from '../src/systems/WindSystem';
 
 /**
  * PATHFINDING Layer 2 slice 1 — frame-aware steering through the gangplank DOOR (ai/brains.frameLeg).
@@ -24,13 +26,13 @@ function seaWorld(): { world: World; ships: ShipSystem; move: MovementSystem; hu
   g.tiles = Array.from({ length: 40 }, () => Array.from({ length: 40 }, () => 0 /* TERRAIN.water */));
   const world = new World();
   const collision = new Collision(g);
-  return { world, ships: new ShipSystem(world, collision), move: new MovementSystem(world, collision), hulls: new HullCollisionSystem(world) };
+  return { world, ships: new ShipSystem(world, collision, new WindSystem(1)), move: new MovementSystem(world, collision), hulls: new HullCollisionSystem(world) };
 }
 
 function makeShip(world: World, x: number, y: number, angle = 0): Entity {
   return world.create({
     transform: { x, y, angle, r: 56 },
-    ship: { hull: 'ship.sloop', mode: 'exploration', anchored: true, speed: 0, throttle: 0 },
+    ship: { hull: 'ship.rowboat', mode: 'exploration', sail: 'furled', anchor: 'dropped', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
   });
 }
 
@@ -43,7 +45,7 @@ function makeActor(world: World, x: number, y: number): Entity {
 
 /** The sloop's door geometry for a ship at `pose` — the plank cell center + the lane MOUTH one tile out. */
 function doorOf(ship: Entity): { door: { x: number; y: number }; mouth: { x: number; y: number }; tilePx: number } {
-  const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+  const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
   const gp = gangplankCell(grid)!;
   const [ox, oy] = gangplankOutward(grid, gp);
   return {
@@ -103,7 +105,7 @@ describe('frameLeg — the cross-frame leg resolver (slice 1)', () => {
   it('DECK → WORLD: aboard, a world goal redirects to our own door; ON the plank it pushes OUTWARD', () => {
     const { world } = seaWorld();
     const ship = makeShip(world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const gp = gangplankCell(grid)!;
     const { door, mouth } = doorOf(ship);
     const helm = helmSpot(grid);
@@ -139,7 +141,7 @@ describe('the steering contract DELIVERS bodies through the door (end-to-end phy
   it('a world chaser hunting a foe ABOARD walks the lane and BOARDS (enemies no longer stop at the plank)', () => {
     const sys = seaWorld();
     const ship = makeShip(sys.world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const helm = helmSpot(grid);
     const foe = makeActor(sys.world, 0, 0);
     foe.onDeck = { shipId: ship.id, lx: helm.lx, ly: helm.ly }; // the quarry stands at the helm
@@ -159,7 +161,7 @@ describe('the steering contract DELIVERS bodies through the door (end-to-end phy
     // not this slice's contract. Axis-aligned and near-side approaches board fully (the tests above/below).
     const sys = seaWorld();
     const ship = makeShip(sys.world, 500, 500, 0.6); // rotated — the diagonal-docking geometry
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const helm = helmSpot(grid);
     const foe = makeActor(sys.world, 0, 0);
     foe.onDeck = { shipId: ship.id, lx: helm.lx, ly: helm.ly };
@@ -174,7 +176,7 @@ describe('the steering contract DELIVERS bodies through the door (end-to-end phy
   it('an aboard follower heeling to a leader ASHORE walks off through the door (deck → world)', () => {
     const sys = seaWorld();
     const ship = makeShip(sys.world, 500, 500, 0);
-    const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+    const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
     const helm = helmSpot(grid);
     const follower = makeActor(sys.world, 0, 0);
     follower.onDeck = { shipId: ship.id, lx: helm.lx, ly: helm.ly };

@@ -257,11 +257,47 @@ export interface MeleeSwing {
 export interface Ship {
   hull: ContentId;
   mode: 'exploration' | 'battle';
-  anchored: boolean;
-  speed: number; // current forward speed along heading
-  /** Pilot input this tick (-1..1); 0 when uncrewed/coasting. Water drag + the stop-snap apply ONLY while
-   *  coasting — under sail, `accel` is the NET force (otherwise drag silently caps speed below maxSpeed). */
-  throttle: number;
+  /** SAIL STATE (SAILING.md piece #3 — replaces throttle-as-gas-pedal): the SET canvas. A SHIP fact, not a
+   *  pilot fact (EDGE_CASES: survives possession swaps and frame handoffs — walking off the helm does not
+   *  strike the sails). W/S at the wheel STEP it; thrust ramps toward SAIL_AMOUNT[sail]×rig terms at accel.
+   *  'quarter' = the docking/battle crawl (the deferred reefed rung, added on the developer's playtest call):
+   *  just enough way for rudder authority, slow enough to park by. */
+  sail: 'furled' | 'quarter' | 'half' | 'full';
+  /** THE REAL ANCHOR (piece #5 — replaces the decorative bool): up | dropped | weighing. Dropped = hard
+   *  brake, and dropped AT SPEED pivots (the anchor-turn); weighing = hauling it up over anchorT, thrust
+   *  suppressed until 'up'. NAVAL's theft rule reads this state later ("unanchored ships can be stolen"). */
+  anchor: 'up' | 'dropped' | 'weighing';
+  /** LASHED WHEEL (the real-sailor practice): true = the rudder is TIED at its current deflection — no
+   *  self-centering, no midships when hands leave. A SHIP fact (walk away and she holds the turn — the
+   *  point: solo station work on multi-mast hulls). Steering input unties it; R at the wheel toggles. */
+  lash: boolean;
+  /** The pilot's STANDING helm order this tick (−1..1; 0 = midships). pilot() writes it, update() winds
+   *  the rudder toward it at RUDDER_SLEW and CONSUMES it back to 0 — so an absent pilot means "midships"
+   *  automatically, with no stale order steering a ghost helm. One authority winds the wheel; the old
+   *  write-rudder-directly shape had pilot and the decay fighting over it every tick. */
+  helmOrder: number;
+  anchorT: number; // weighing countdown (s); meaningful only while anchor === 'weighing'
+  /** BACKING order this tick (0..1): S held with sails FURLED — written by pilot(), read by update()'s
+   *  thrust, then CONSUMED to 0 (the helmOrder contract: an absent hand means "way off", never a ghost
+   *  throttle). Oar hulls back at reverseFrac; sail rigs carry reverseFrac 0 — their in-irons escape is
+   *  bare steerage (minTurnFrac) + falling off the wind. */
+  back: number;
+  /** RUDDER input echo (-1..1): written by the pilot each tick, SELF-CENTERS when hands leave the wheel.
+   *  Drawn deflected at the stern (instant visual acknowledgment) while the hull answers late via yaw —
+   *  the input/response gap IS the feel of mass. */
+  rudder: number;
+  /** Current yaw rate (rad/s): eases toward rudder×turnRate×authority at the hull's helmEase — the ship
+   *  ANSWERS the helm instead of being steered like a car, and keeps swinging a beat after centering. */
+  yaw: number;
+  /** THRUST integrator (px/s along the heading) — ramps toward the sail-state target at hull accel; NOT the
+   *  actual motion: the hull's true velocity is vx/vy, which EASES toward heading×thrust at the hull's
+   *  driftEase (SAILING.md momentum — a ship is not a go-kart on rails). */
+  speed: number;
+  /** TRUE hull velocity (world px/s) — the momentum vector. Lags the heading through turns (the carve/
+   *  sideways-catch feel), read by everything that needs the hull's REAL motion (the boarding door's
+   *  relative-velocity gate, future ram damage = relative momentum). */
+  vx: number;
+  vy: number;
 }
 
 /** Marks an entity standing ON a ship's deck (docs/design/features/big-walkable-ship.md — local-space parenting).

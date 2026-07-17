@@ -10,8 +10,15 @@ import { rollProgress } from './rollAnim';
 /** The procedurally-drawn weapon kinds — 'sprite' visuals render via WeaponSpriteSystem instead. */
 type ProceduralWeaponVisual = Exclude<WeaponVisual, { kind: 'sprite' }>;
 
+/** Per-frame world context handed to every draw (RenderSystem builds it once a frame). Today: the wind —
+ *  sails trim to it visually. Draws that don't care simply omit the param. */
+export interface DrawEnv {
+  windDir: number; // rad, the direction the wind BLOWS TOWARD (world frame)
+  windStrength: number; // multiplier of WIND_REF (1 = the reference breeze)
+}
+
 /** A procedural draw function: paint the entity into its Graphics in LOCAL space (presentation-owned). */
-export type DrawFn = (g: Phaser.GameObjects.Graphics, e: Entity) => void;
+export type DrawFn = (g: Phaser.GameObjects.Graphics, e: Entity, env?: DrawEnv) => void;
 
 const OUTLINE = 0x4d4a45; // charcoal gray (lighter than near-black), 1px solid on body + hands
 const HP_BAR_COLOR = 0x5ec85e; // green; health reads the same for everyone — friend/foe is the NAME color, not the bar

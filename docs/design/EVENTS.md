@@ -1,5 +1,7 @@
 # Events, Factions & Reputation (Design)
 
+> **Stage:** capture — vision capture — the event-director pass will judge it
+
 The world is alive: faction-driven encounters that **activate by proximity** and **randomize** over time —
 not pre-placed static quests. Every event rewards XP, items, money, and **reputation** shifts.
 

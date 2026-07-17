@@ -1,5 +1,7 @@
 # Power Tiers — Reference
 
+> **Stage:** designed — the 27-band power scale — built into combat stats/nameplates
+
 The single power scale, weakest `F-` → strongest `SSS+`. Every letter (F E D C B A S SS SSS) has three
 bands: `-`, base, `+` — 27 bands total. Tier is the dial that drives combat stats, nameplate color, and
 (per the tables below) **bounty minimum** and **sea region**.

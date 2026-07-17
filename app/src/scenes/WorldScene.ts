@@ -35,6 +35,7 @@ import { NameplateSystem } from '../systems/NameplateSystem';
 import { StunIndicator } from '../systems/StunIndicator';
 import { RenderSystem } from '../systems/RenderSystem';
 import { WeaponSpriteSystem } from '../systems/WeaponSpriteSystem';
+import { WindSystem } from '../systems/WindSystem';
 import { ProjectileRenderer } from '../systems/ProjectileRenderer';
 import { ShipSystem } from '../systems/ShipSystem';
 import { HullCollisionSystem } from '../systems/HullCollisionSystem';
@@ -74,6 +75,7 @@ export class WorldScene extends Phaser.Scene {
   private abilitySys!: AbilitySystem;
   private effectSys!: EffectSystem;
   private shipSys!: ShipSystem;
+  private windSys!: WindSystem;
   private hullSys!: HullCollisionSystem;
   private squadSys!: SquadSystem;
   private doorSys!: DoorSystem;
@@ -104,9 +106,11 @@ export class WorldScene extends Phaser.Scene {
     const worldgenRng = new Rng(streamSeed(masterSeed, 'worldgen'));
     const aiRng = new Rng(streamSeed(masterSeed, 'ai'));
     const combatRng = new Rng(streamSeed(masterSeed, 'combat'));
+    const windSeed = streamSeed(masterSeed, 'wind'); // weather is its own seed: the wind is a PURE FIELD of (seed, pos, t) — no draws to shift
+    const wind = new WindSystem(windSeed); // created BEFORE the sea renderer — the streaks stream the live wind
     const level = generateLevel(worldgenRng);
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
-    this.sea = new SeaRenderer(this, level.grid); // animated wave-crest overlay on the (baked) deep water
+    this.sea = new SeaRenderer(this, level.grid, wind); // animated wave crests + WIND STREAKS (the sea is the wind indicator)
     TerrainRenderer.bake(this, level.grid);
 
     const world = new World();
@@ -125,7 +129,7 @@ export class WorldScene extends Phaser.Scene {
     const strikes = new StrikeResolver(damage, combatRng);
     const effects = new EffectSystem(world);
     const abilities = new AbilitySystem(world, effects, strikes, combatRng);
-    const ships = new ShipSystem(world, collision);
+    const ships = new ShipSystem(world, collision, wind); // sail rigs read curve × apparent-strength from the wind field
     const hulls = new HullCollisionSystem(world); // boarding handoffs (gangplank / leap-on) + embedded-in-hull eject fallback
     const squads = new SquadSystem(world, query);
     const spawner = new Spawner(world, worldgenRng);
@@ -155,7 +159,10 @@ export class WorldScene extends Phaser.Scene {
       spawner.spawnUnit(s.unit, s.x, s.y, inGang ? isle : undefined);
     }
     // an anchored Sloop off the home dock — walk aboard via the gangplank, E on the wheel to steer
-    spawner.spawnShip('ship.sloop', level.boatSpawn.x, level.boatSpawn.y, 'straw_hat');
+    spawner.spawnShip('ship.rowboat', level.boatSpawn.x, level.boatSpawn.y, 'straw_hat');
+    // the sailing FLEET at the home north dock — placement is worldgen's call (it knows the shore); the
+    // scene just instantiates the rows (content is data, even for spawns)
+    for (const f of level.fleet) spawner.spawnShip(f.hull, f.x, f.y, 'straw_hat');
 
     const ctx: AIContext = { world, query, rng: aiRng, abilities, pathfinder };
 
@@ -163,6 +170,7 @@ export class WorldScene extends Phaser.Scene {
     this.abilitySys = abilities;
     this.effectSys = effects;
     this.shipSys = ships;
+    this.windSys = wind;
     this.hullSys = hulls;
     this.squadSys = squads;
     this.meleeSys = new MeleeSystem(world, strikes);
@@ -170,7 +178,7 @@ export class WorldScene extends Phaser.Scene {
     this.combatantSys = new CombatantSystem(world);
     this.doorSys = new DoorSystem(world);
     this.doorRenderer = new DoorRenderer(this, world);
-    this.debug = new DebugOverlay(this, world, level.grid);
+    this.debug = new DebugOverlay(this, world, level.grid, wind);
     this.dialogueSys = new DialogueSystem();
     this.interactionSys = new InteractionSystem(world, this.dialogueSys);
     this.inspectSys = new InspectSystem(this, world, query);
@@ -179,7 +187,7 @@ export class WorldScene extends Phaser.Scene {
     this.moveSys = new MovementSystem(world, collision);
     this.swimSys = new SwimSystem(world, damage);
     this.bodySys = new BodyCollisionSystem(world, query, collision);
-    this.renderSys = new RenderSystem(this, world, level.grid);
+    this.renderSys = new RenderSystem(this, world, level.grid, wind);
     this.weaponSpriteSys = new WeaponSpriteSystem(this, world, this.renderSys);
     this.projectileRenderer = new ProjectileRenderer(this, world);
     this.nameplateSys = new NameplateSystem(this, world);
@@ -267,6 +275,7 @@ export class WorldScene extends Phaser.Scene {
    *  server loop: everything it calls must stay constructible without Phaser (DESIGN_PATTERNS §5). */
   private stepSim(dt: number): void {
     if (this.director.state === 'play') {
+      this.windSys.update(dt); // ENVIRONMENT first: the wind every hull reads this tick is settled before anything samples it
       this.doorSys.update(); // open/close doors from current positions before AI + movement read the grid
       this.inputSys.update(dt); // player intent + ability presses (consumes taps latched by sample())
       this.squadSys.update(); // assign focus + attack tokens before brains run

@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { Rng } from '../src/core/Rng';
 import { deckCellAtLocal, deckOf, deckToWorld, gangplankCell, gangplankOutward, worldToDeck } from '../src/defs/decks';
 import { TERRAIN } from '../src/defs/terrains';
 import { ShipHulls } from '../src/defs/ships';
@@ -7,6 +8,7 @@ import { Collision } from '../src/world/Collision';
 import { TileGrid } from '../src/world/TileGrid';
 import { MovementSystem } from '../src/systems/MovementSystem';
 import { ShipSystem } from '../src/systems/ShipSystem';
+import { WindSystem } from '../src/systems/WindSystem';
 import { HullCollisionSystem } from '../src/systems/HullCollisionSystem';
 
 /**
@@ -18,7 +20,7 @@ import { HullCollisionSystem } from '../src/systems/HullCollisionSystem';
  * CENTER never stands inside a rail cell. A failure prints its exact combo — the repro comes for free.
  */
 it('no start spot, push direction, or water depth around the door puts a center inside a rail cell', () => {
-  const grid = deckOf('ship.sloop', ShipHulls.get('ship.sloop').deck);
+  const grid = deckOf('ship.rowboat', ShipHulls.get('ship.rowboat').deck);
   const gp = gangplankCell(grid)!;
   const [ox, oy] = gangplankOutward(grid, gp);
   const t = grid.tilePx;
@@ -41,11 +43,11 @@ it('no start spot, push direction, or water depth around the door puts a center 
         const world = new World();
         const collision = new Collision(g);
         const move = new MovementSystem(world, collision);
-        const ships = new ShipSystem(world, collision);
+        const ships = new ShipSystem(world, collision, new WindSystem(1));
         const hulls = new HullCollisionSystem(world);
         const ship = world.create({
           transform: { x: 500, y: 500, angle: 0, r: 56 },
-          ship: { hull: 'ship.sloop', mode: 'exploration', anchored: true, speed: 0, throttle: 0 },
+          ship: { hull: 'ship.rowboat', mode: 'exploration', sail: 'furled', anchor: 'dropped', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
         });
         const s = deckToWorld(ship.transform!, slx, sly);
         const a = world.create({

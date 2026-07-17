@@ -54,6 +54,8 @@ export class InputSystem {
   private mouseDX = 0; // mouselook delta accumulated from pointermove events, consumed once per update()
   private rmbHeldT = 0; // how long RMB has been held (s) — a quick tap (< RMB_TAP_MAX) is the bash, a hold aims
   private rmbPrev = false; // RMB down last sim step — to detect the release edge (fire the bash on a quick tap)
+  private helmFwdPrev = 0; // W/S axis last sim step at the wheel — sail-state steps are EDGES, backing is the hold
+  private helmTurnPrev = 0; // A/D axis last sim step at the wheel — a FRESH grab (edge) unties the lash, a hold doesn't
   get shiftLocked(): boolean { return this.shiftLock; }
   /** Edge-taps latched per RENDER frame (sample()) and consumed by exactly one sim step (tap()) — under the
    *  fixed timestep a frame can run 0 sim steps, and Phaser clears JustDown on keyup, so polling JustDown
@@ -142,11 +144,12 @@ export class InputSystem {
       } else if (e.onDeck && this.ships.atHelm(e)) {
         e.onDeck.piloting = !e.onDeck.piloting; // take or release the wheel
         if (e.onDeck.piloting) this.ships.seatAtHelm(e); // grabbing the wheel stands you AT it, not beside it
-        // taking the wheel WEIGHS ANCHOR; releasing drops it — the anchor follows the helm now that boarding is
-        // walking (the old board/disembark verbs owned this flag before they were removed)
-        const ship = this.world.byId(e.onDeck.shipId);
-        if (ship?.ship) ship.ship.anchored = !e.onDeck.piloting;
-        events.emit('notify', { msg: e.onDeck.piloting ? 'Took the wheel — WASD to steer, E to release.' : 'Released the wheel.' });
+        // NO auto-anything with the anchor (the developer's call, reversing an earlier QoL shortcut):
+        // weighing is a DELIBERATE step — the preparation ritual (weigh → set canvas → gain steerage) IS
+        // the sailing loop, and it becomes a crew capstan JOB later. Releasing doesn't auto-drop either —
+        // "unanchored ships can be stolen" (NAVAL theft rule): parking carelessly is a strategic mistake.
+        // Forgetting the hook teaches itself: stepSail nudges you when the canvas fills against a set anchor.
+        events.emit('notify', { msg: e.onDeck.piloting ? 'Took the wheel — A/D steer, W/S set sail, hold S to back, SPACE anchor, R lash, E release.' : 'Released the wheel.' });
       } else {
         this.interactions.interact(e);
       }
@@ -160,11 +163,29 @@ export class InputSystem {
     if (e.onDeck?.piloting) {
       const fwd = (this.down('W') || this.down('UP') ? 1 : 0) - (this.down('S') || this.down('DOWN') ? 1 : 0);
       const turn = (this.down('D') || this.down('RIGHT') ? 1 : 0) - (this.down('A') || this.down('LEFT') ? 1 : 0);
+      // W/S EDGES step the sail state (set canvas, hands-off cruising); the S HOLD below furled becomes
+      // backing inside pilot(). Edge-detect here on the held axis — W/S aren't tap-latched keys.
+      if (fwd > 0 && this.helmFwdPrev <= 0) this.ships.stepSail(e, 1);
+      if (fwd < 0 && this.helmFwdPrev >= 0) this.ships.stepSail(e, -1);
+      this.helmFwdPrev = fwd;
+      // SPACE at the wheel = the anchor (the handbrake — drop at speed for the anchor-turn). Piloting
+      // early-returns before the jump handler, so SPACE is unambiguous while hands are on the wheel.
+      if (this.tap('SPACE')) this.ships.toggleAnchor(e);
+      // R at the wheel = LASH (tie the rudder where it stands — the walk-away helm). Consumed here while
+      // piloting, so the off-wheel stance toggle below never sees it (the SPACE/anchor pattern).
+      if (this.tap('R')) this.ships.toggleLash(e);
+      // a FRESH grab of the wheel (steering EDGE: released → pressed) unties a lash. The edge, not the
+      // hold — you lash WHILE holding the turn (R during A/D must stick; the developer's report), and
+      // only reaching for the spokes anew says "I'm steering again".
+      if (turn !== 0 && this.helmTurnPrev === 0) this.ships.unlash(e);
+      this.helmTurnPrev = turn;
       this.ships.pilot(e, fwd, turn, dt);
       m.vx = 0;
       m.vy = 0;
       return;
     }
+    this.helmFwdPrev = 0; // off the wheel: the next take starts with a clean edge state
+    this.helmTurnPrev = 0;
 
     // (stamina regen + combo decay are ticked for ALL combatants in AbilitySystem.tick — not here)
 

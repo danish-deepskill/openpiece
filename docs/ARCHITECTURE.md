@@ -1,4 +1,4 @@
-# Ballpiece — Architecture (fresh build)
+# Openpiece — Architecture (fresh build)
 
 **This is a clean rebuild, not a port.** The old `grand_voyage.html` is kept **only as a behavioral
 reference** (what the game does — mechanics, feel, content). None of its code structure carries over; we
@@ -57,7 +57,7 @@ Everything under `app/` so repo root stays clean.
 ## 4. Folder structure
 
 ```
-ballpiece/
+openpiece/
   docs/ARCHITECTURE.md          # this file
   docs/DESIGN_PATTERNS.md       # the coding-standards canon (SOLID/naming/boundary rules) — PRs review against it
   docs/references/grand_voyage.html  # reference ONLY (behavior spec); not built upon
@@ -113,6 +113,7 @@ ballpiece/
         StrikeResolver.ts       # (service) a confirmed hit -> damage/combo/stun; Damage.ts applies it
         BodyCollisionSystem.ts  # body-vs-body shove (mass-weighted)
         CombatantSystem.ts      # stamina delayed-regen, combo decay, hitstun
+        WindSystem.ts           # the weather clock over the pure wind FIELD windAt(x,y,t) — stepped FIRST (environment before intent)
         EffectSystem.ts / SquadSystem.ts / ShipSystem.ts / HullCollisionSystem.ts / DoorSystem.ts / DialogueSystem.ts
         InteractionSystem.ts    # generic verb engine (talk/take/…; ship boarding is WALKING, not a verb)
         GameDirector.ts         # game state, objectives, death cleanup, possession

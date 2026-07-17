@@ -1,4 +1,6 @@
-# Ballpiece — AI Intelligence (the INT axis)
+# Openpiece — AI Intelligence (the INT axis)
+
+> **Stage:** designed — INT ladder + knowledge economy (ledger)
 
 > Design capture, ahead of the code. Companions: `AI_FOUNDATION.md` (the decision-engine ARCHITECTURE that
 > executes this axis — the pipeline, executor recursion, command scopes, the gym, build phases),

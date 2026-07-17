@@ -1,10 +1,11 @@
 import type Phaser from 'phaser';
 import { GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL } from '../config/constants';
-import { draws, type DrawFn } from '../draw/actorDraws';
-import { drawShip } from '../draw/shipDraws';
+import { draws, type DrawEnv, type DrawFn } from '../draw/actorDraws';
+import { drawShip, drawShipRig } from '../draw/shipDraws';
 import { ShipHulls } from '../defs/ships';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
+import type { WindSystem } from './WindSystem';
 import type { TileGrid } from '../world/TileGrid';
 
 const WADE_ALPHA = 0.5; // partly submerged — shared by a shallow wade AND surface swimming (same look at the surface)
@@ -29,6 +30,11 @@ const JUMP_FADE = 0.3;
 /** Depth bias added to an airborne actor so it draws ABOVE grounded ones (it's nearer the camera). Large enough
  *  to clear any y-sort gap; airborne actors still sort among themselves by their own y. */
 const AIR_DEPTH_LIFT = 100000;
+
+/** Depth lift for a ship's RIGGING overlay (sail/spars/flag — drawShipRig): above every grounded walker on
+ *  deck (the boom hangs over their heads), below AIR_DEPTH_LIFT — so a Geppo flyer passes OVER the rigging
+ *  while a deck jump stays under the boom. */
+const RIG_DEPTH_LIFT = 50000;
 
 const GOD_AURA_COLOR = 0xffe66e; // warm gold — reads as "divine/charged", distinct from the green HP / blue stamina bars
 
@@ -55,6 +61,7 @@ const DRAWS: Record<string, DrawFn> = { ...draws, ship: drawShip };
  */
 export class RenderSystem {
   private readonly gfxById = new Map<number, Phaser.GameObjects.Graphics>();
+  private readonly rigById = new Map<number, Phaser.GameObjects.Graphics>(); // per-ship OVERHEAD rigging overlay
   private readonly imgById = new Map<number, Phaser.GameObjects.Image>(); // sprite-render entities (Render.sprite)
   /** Computed per-entity FINAL alpha this frame (wade/iframe-blink AND the jump-peak fade) — worn layers read it
    *  so a hat/blade fades EXACTLY with the body, including at the top of a jump. Must be the body's real alpha. */
@@ -73,6 +80,7 @@ export class RenderSystem {
     private readonly scene: Phaser.Scene,
     private readonly world: World,
     private readonly grid: TileGrid,
+    private readonly wind: WindSystem, // draws that trim to the weather (sails) read it via DrawEnv
   ) {}
 
   /** The y a unit's layers (body, accessories, weapon) sort by. Normally its own transform.y — but an ON-DECK
@@ -96,6 +104,7 @@ export class RenderSystem {
 
   update(dt: number): void {
     const now = this.scene.time.now;
+    const env: DrawEnv = { windDir: this.wind.dir, windStrength: this.wind.strength };
     const seen = new Set<number>();
     for (const e of this.world.with('transform', 'render')) {
       seen.add(e.id);
@@ -189,7 +198,21 @@ export class RenderSystem {
       // Moat: glow whoever you're driving). Drawn FIRST → the body paints over its center. Circle is
       // rotation-invariant, so gfx's aim-rotation doesn't skew it.
       if (e.tags?.has('state.godMode')) drawGodAura(gfx, t.r, now);
-      DRAWS[rd.draw]?.(gfx, e);
+      DRAWS[rd.draw]?.(gfx, e, env);
+      // SHIPS get a second Graphics for the OVERHEAD rigging (sail/spars/flag): same pose as the hull,
+      // depth-lifted past every walker on deck — you walk UNDER the boom, it never paints beneath you
+      if (rd.draw === 'ship') {
+        let rig = this.rigById.get(e.id);
+        if (!rig) {
+          rig = this.scene.add.graphics();
+          this.rigById.set(e.id, rig);
+        }
+        rig.setPosition(t.x, t.y);
+        rig.setRotation(rd.rotateToAngle ? t.angle : 0);
+        rig.setDepth(depth + RIG_DEPTH_LIFT);
+        rig.clear();
+        drawShipRig(rig, e, env);
+      }
     }
     // orphan sweep: destroy gfx/img for entities that despawned since last frame (sim only calls world.destroy)
     for (const [id, gfx] of this.gfxById) {
@@ -210,6 +233,12 @@ export class RenderSystem {
         this.scaleById.delete(id);
         this.liftById.delete(id);
         this.perchById.delete(id);
+      }
+    }
+    for (const [id, rig] of this.rigById) {
+      if (!seen.has(id)) {
+        rig.destroy();
+        this.rigById.delete(id);
       }
     }
   }

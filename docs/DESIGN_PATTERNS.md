@@ -1,4 +1,4 @@
-# Ballpiece — Design Patterns & Coding Standards (the canon)
+# Openpiece — Design Patterns & Coding Standards (the canon)
 
 > The house rules for **architecture, patterns, naming, and structure** — grounded in a full 6-dimension audit
 > (types, coupling, naming, determinism, DRY, conventions) of the real codebase. Everything here is either
@@ -131,8 +131,9 @@ data. Data-only rows live in `defs/`. (Abilities/Effects rows move to `defs/` wi
 - **Uniform `update(dt)`** (or `update()` for per-frame stateless passes). No `tick()` aliases.
 - **The canonical tick** (WorldScene, fixed-timestep): accumulate render delta; step the sim at `SIM_DT` inside
   `while (acc >= SIM_DT)`; presentation updates once per render frame after. Sim order (each dependency stated
-  as an inline comment in code): doors → input-intent → squads → ai → movement → body-collision → ships → melee
-  → abilities → combatant → effects → director. Reordering requires updating the comment chain.
+  as an inline comment in code): wind (environment first — sails/streaks read this tick's weather) → doors →
+  input-intent → squads → ai → movement → body-collision → ships → melee → abilities → combatant → effects →
+  director. Reordering requires updating the comment chain.
 - **Sim never calls presentation.** FX go through typed events (`events.emit('fx:burst', …)`); FxSystem
   subscribes. HUD state goes through the registry (`publish()`), one write per frame.
 - Services (`Damage`, `StrikeResolver`) are injected, not stepped; singletons are allowed only for stateless

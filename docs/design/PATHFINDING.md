@@ -1,5 +1,7 @@
 # Pathfinding & Movement Planning — the overhaul architecture
 
+> **Stage:** building — layer 2 slice 1 shipped; layer 0 has a recorded trigger
+
 **Status: DESIGNED (2026-07). Layer 2 slice 1 (gangplank portal) SHIPPED 2026-07 — `frameLeg` in
 `ai/brains.ts` redirects a cross-frame steering goal leg-by-leg through the door (live anchors off the
 ship's pose; transitions stay physics), behind the one `routeTo` chokepoint. Other layers fire on their
