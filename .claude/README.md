@@ -1,4 +1,4 @@
-# Ballpiece — Claude Code workspace guide (for humans)
+# Openpiece — Claude Code workspace guide (for humans)
 
 What's in `.claude/`, what runs automatically, and how to use it. The agent-facing context is `CLAUDE.md` +
 `docs/`; this file is for you.

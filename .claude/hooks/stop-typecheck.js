@@ -27,13 +27,13 @@ process.stdin.on('end', () => {
   if (evt.stop_hook_active) process.exit(0);
 
   const sid = String(evt.session_id || 'default').replace(/[^A-Za-z0-9-]/g, '');
-  const marker = path.join(os.tmpdir(), `ballpiece-edited-ts-${sid}.txt`);
+  const marker = path.join(os.tmpdir(), `openpiece-edited-ts-${sid}.txt`);
 
   // Opportunistic litter control: sessions killed without a Stop orphan their markers forever (%TEMP% is
   // never purged on Windows). Sweeping must never affect this hook's outcome.
   try {
     for (const f of fs.readdirSync(os.tmpdir())) {
-      if (!/^ballpiece-edited-ts-.*\.txt$/.test(f)) continue;
+      if (!/^openpiece-edited-ts-.*\.txt$/.test(f)) continue;
       const full = path.join(os.tmpdir(), f);
       if (full === marker) continue;
       if (Date.now() - fs.statSync(full).mtimeMs > 7 * 24 * 3600 * 1000) fs.unlinkSync(full);

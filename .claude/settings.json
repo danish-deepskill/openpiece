@@ -18,6 +18,11 @@
             "type": "command",
             "command": "node .claude/hooks/stop-typecheck.js",
             "timeout": 300
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/stop-design-stage.js",
+            "timeout": 30
           }
         ]
       }

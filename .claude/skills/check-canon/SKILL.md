@@ -1,6 +1,6 @@
 ---
 name: check-canon
-description: Review the working diff against ballpiece's canon — the DESIGN_PATTERNS §12 checklist and EDGE_CASES cross-cutting bug classes. Use before committing nontrivial app/src changes, or when asked whether a change follows the canon.
+description: Review the working diff against openpiece's canon — the DESIGN_PATTERNS §12 checklist and EDGE_CASES cross-cutting bug classes. Use before committing nontrivial app/src changes, or when asked whether a change follows the canon.
 ---
 
 The rubric is the project's own docs, not generic standards: `docs/DESIGN_PATTERNS.md` (§12 is the per-diff

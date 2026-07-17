@@ -13,9 +13,13 @@ process.stdin.on('end', () => {
   try {
     const evt = JSON.parse(raw || '{}');
     const fp = evt.tool_input && evt.tool_input.file_path;
+    const sid = String(evt.session_id || 'default').replace(/[^A-Za-z0-9-]/g, '');
     if (typeof fp === 'string' && /\.tsx?$/i.test(fp)) {
-      const sid = String(evt.session_id || 'default').replace(/[^A-Za-z0-9-]/g, '');
-      fs.appendFileSync(path.join(os.tmpdir(), `ballpiece-edited-ts-${sid}.txt`), fp + '\n');
+      fs.appendFileSync(path.join(os.tmpdir(), `openpiece-edited-ts-${sid}.txt`), fp + '\n');
+    }
+    // design docs get a stage-header check at Stop (stop-design-stage.js) — same batch-once-per-turn shape
+    if (typeof fp === 'string' && /docs[\\/]design[\\/].*\.md$/i.test(fp)) {
+      fs.appendFileSync(path.join(os.tmpdir(), `openpiece-edited-design-${sid}.txt`), fp + '\n');
     }
   } catch (_) { /* malformed payload — skip; never fail an edit over bookkeeping */ }
   process.exit(0);

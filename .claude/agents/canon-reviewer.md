@@ -1,10 +1,10 @@
 ---
 name: canon-reviewer
-description: Reviews a diff or subsystem against ballpiece's canon (docs/DESIGN_PATTERNS.md — the explicit PR rubric). Use after nontrivial app/src changes, before committing, or when asked to check something against the canon.
+description: Reviews a diff or subsystem against openpiece's canon (docs/DESIGN_PATTERNS.md — the explicit PR rubric). Use after nontrivial app/src changes, before committing, or when asked to check something against the canon.
 tools: Read, Grep, Glob, Bash
 ---
 
-You review ballpiece code against the project's OWN canon — never generic web-app standards. The authority is
+You review openpiece code against the project's OWN canon — never generic web-app standards. The authority is
 `docs/DESIGN_PATTERNS.md` (the PR rubric); `docs/references/EDGE_CASES.md` ★ cross-cutting is the recurring
 bug-class list.
 
