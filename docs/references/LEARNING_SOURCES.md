@@ -1,7 +1,7 @@
-# Ballpiece — Verified Learning-Source Map
+# Openpiece — Verified Learning-Source Map
 
 > **The problem this solves:** thousands of proven, professional game-systems resources exist — but scattered.
-> This is the curated map: for each ballpiece subsystem, *start here, in this order*. **Full research detail**
+> This is the curated map: for each openpiece subsystem, *start here, in this order*. **Full research detail**
 > (per-source credibility evidence, verbatim quotes, dates, staleness warnings, dead-link corrections) lives
 > in the library volumes: `library/README.md`. Companion docs: `ARCHITECTURE_PATTERNS.md` (the concepts by
 > theme — this doc is where to *learn* them), `rimworld-simple/` (the RimWorld deep-dive),
@@ -17,7 +17,7 @@
 
 ## The path (what a senior would hand a junior, in order)
 
-1. **Game Programming Patterns** — architecture vocabulary (skim; ballpiece already implements most)
+1. **Game Programming Patterns** — architecture vocabulary (skim; openpiece already implements most)
 2. **Mike Acton, "Data-Oriented Design and C++"** — the data-oriented mindset
 3. **Tim Ford, "Overwatch Gameplay Architecture and Netcode"** — shipped ECS + server-authoritative determinism
 4. The **AI chain**: Behavior Tree Starter Kit chapter → Orkin's F.E.A.R. paper → Evans' Sims 3 talk → Game AI Pro as reference shelf
@@ -31,7 +31,7 @@
 
 ### ECS / performance
 - ✅✅ **Game Programming Patterns** (Robert Nystrom, ex-EA) — entire book free at gameprogrammingpatterns.com.
-  The chapters map 1:1 onto ballpiece: Component, Data Locality + Object Pool (`core/Pool.ts`), Game Loop
+  The chapters map 1:1 onto openpiece: Component, Data Locality + Object Pool (`core/Pool.ts`), Game Loop
   (`SIM_DT` accumulator), Event Queue (`EventBus`), Spatial Partition, **Type Object (= Defs/Registries)**.
 - ✅✅ **"Data-Oriented Design and C++"** — Mike Acton, CppCon 2014, free on CppCon's YouTube. The philosophy
   under every cache-friendly ECS; Acton was Insomniac's engine director and later architected Unity DOTS —
@@ -60,17 +60,17 @@
 - ✅ **AI and Games** (Dr. Tommy Thompson — PhD, 50+ peer-reviewed publications) — the ongoing case-study
   channel/site for how shipped games do AI. Subscription material.
 
-### Determinism & multiplayer (ballpiece.io)
+### Determinism & multiplayer (openpiece.io)
 - ✅✅ **"1500 Archers on a 28.8"** (Bettner & Terrano, Ensemble, 2001, free at gamedeveloper.com) — the
   foundational deterministic command-stream postmortem: same sim everywhere, transmit only commands,
-  checksums double as desync detection + anti-cheat. **Caveat:** it teaches P2P *lockstep*; ballpiece is
+  checksums double as desync detection + anti-cheat. **Caveat:** it teaches P2P *lockstep*; openpiece is
   server-authoritative — the determinism discipline transfers, the topology does not.
 - ✅✅ **"Overwatch Gameplay Architecture and Netcode"** (Tim Ford, GDC 2017; Vault free tier + official GDC
   YouTube) — the corrective to the caveat above: server authority + client prediction *leveraging*
   determinism, in a shipped ECS (~46 systems / 103 component types / fixed 16ms frames). The single most
-  ballpiece-shaped talk in existence.
+  openpiece-shaped talk in existence.
 - ✅ **Gaffer On Games — "Fix Your Timestep!"** (Glenn Fiedler) — the canonical article for the exact
-  accumulator + interpolation loop ballpiece already runs; read to know *why* it's right. The rest of the
+  accumulator + interpolation loop openpiece already runs; read to know *why* it's right. The rest of the
   site (snapshot interpolation, networked physics series) is the next netcode reading — not yet
   adversarially verified, see gaps.
 
@@ -84,7 +84,7 @@
 - ✅✅ **Veloren** (gitlab.com/veloren/veloren, GPL-3, active through 2026) — multiplayer voxel RPG in Rust,
   DF-inspired, with its own architecture book (book.veloren.net: ECS chapter is substantive; worldgen
   chapter is a WIP stub — the 2-1 vote caveat). Its **rtsim** (persistent NPC lives in unloaded chunks,
-  profession-based economy) is working code for exactly ballpiece's sim-LOD problem.
+  profession-based economy) is working code for exactly openpiece's sim-LOD problem.
 - ✅ **Dwarf Fortress wiki's developer-interview index** — ~80 curated Tarn Adams interviews/talks
   (2008–2025), the one-stop archive on the deep-sim north star.
 - ✅ **DESOSA Cataclysm: DDA chapter** (TU Delft) — academic architecture analysis of the open-source deep

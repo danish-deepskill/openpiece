@@ -8,9 +8,9 @@
   of the Wild, Dwarf Fortress and Minecraft"* (README verbatim). GPL-3.0+, volunteer-driven, 18k+ commits,
   active through 2026. Architecture: server-authoritative client/server split (`veloren-voxygen` client,
   `veloren-server-cli` headless server, separate auth server) — i.e., **a working headless-sim + thin-client
-  stack in the open**, the ballpiece.io shape.
+  stack in the open**, the openpiece.io shape.
 - **Design philosophy (verbatim):** systems should be *"simple, self-correcting, rugged"* with *"complex and
-  interesting behaviour [emerging] through the interaction between systems"* — ballpiece's emergence bet,
+  interesting behaviour [emerging] through the interaction between systems"* — openpiece's emergence bet,
   stated as project policy.
 - **The book:** <https://book.veloren.net/> — *"the primary source of documentation… describe[s] the inner
   workings of both the game and the engine."* Substantive ECS chapter (3.2.3: cache coherency, SoA, specs);
@@ -19,7 +19,7 @@
   Treat the book as strong for ECS/architecture, thin for worldgen (use their dev blogs 111/133/136/245 for
   rtsim/worldgen instead). Cite the GitLab README, not the book landing page, for the canonical description.
 - **The killer subsystem:** **rtsim** — persistent NPC brains/memories in *unloaded* chunks +
-  profession-based economy simulation. Working code for ballpiece's sim-LOD pillar (REFERENCES #11).
+  profession-based economy simulation. Working code for openpiece's sim-LOD pillar (REFERENCES #11).
 - **Where:** <https://gitlab.com/veloren/veloren> · book.veloren.net · docs.veloren.net
 
 ## 2. ECS-author blogs — the "read the library author's mind" pair ✅ (fetched, quoted)
@@ -33,11 +33,11 @@
   flecs.dev): <https://ajmmertens.medium.com/building-an-ecs-1-types-hierarchies-and-prefabs-9f07666a1e9d> —
   *"at the end of each post you will have enough information to implement it yourself."* Teaches
   entity-ids-as-component-ids → hierarchies (CHILDOF) and **prefabs/templates with per-instance overrides
-  (INSTANCEOF)** — a proven mechanism directly relevant to ballpiece's Def-vs-Instance registries.
+  (INSTANCEOF)** — a proven mechanism directly relevant to openpiece's Def-vs-Instance registries.
   **Staleness warning on the 2020 post itself:** *"This article is outdated, and the data structures it
   describes have been replaced"* — route to the updated version + later entries ("Archetypes and
   Vectorization", "Why Vanilla ECS Is Not Enough").
-- **Ballpiece mapping:** ECS/perf — sparse-set (EnTT ≈ ballpiece's current shape) vs archetype (flecs)
+- **Openpiece mapping:** ECS/perf — sparse-set (EnTT ≈ openpiece's current shape) vs archetype (flecs)
   trade-offs, from the people who built both.
 
 ## 3. Factorio Friday Facts — the shipped-deterministic-sim dev archive ✅ (fetched, quoted)
@@ -50,7 +50,7 @@
   - **FFF #317** "New pathfinding algorithm" — A* with chunk-based hierarchical reduction at insane scale
   - **FFF #143** "Matching server and UDP NAT punching" — multiplayer infrastructure (STUN/ICE, 2016)
   - Plus: prototypes/IDs (content-as-data), deterministic lockstep MP, map serialization, mod architecture
-- **Ballpiece mapping:** determinism · perf · content-as-data · pathfinding-at-scale. Subscribe.
+- **Openpiece mapping:** determinism · perf · content-as-data · pathfinding-at-scale. Subscribe.
 
 ## 4. Dwarf Fortress — closed-source, but the design record is open ✅ (fetched, quoted)
 
@@ -74,4 +74,4 @@
 - Named with languages: **Angband** (C), **NetHack** (C), **Cataclysm-DDA** (C++), **Dungeon Crawl Stone
   Soup** (C++); plus Roguelike Celebration talk playlists (2016–2018) on YouTube.
 - The index repo itself: ~1,284 stars but **frozen since 2021-07** — a solid snapshot; spot-check links.
-- **Ballpiece mapping:** world-sim/AI archaeology — decades-old but battle-tested system designs.
+- **Openpiece mapping:** world-sim/AI archaeology — decades-old but battle-tested system designs.

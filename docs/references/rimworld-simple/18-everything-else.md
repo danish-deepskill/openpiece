@@ -11,7 +11,7 @@ selected thing, not hard-coded UI. `Alert` (132 subclasses) is a polled-conditio
 round-robin across frames (`i += 24`) so 132 checks never spike one frame. The gem is **`Designator`**: player
 paint-tools don't *do* anything — they write `Designation` markers onto the map, and WorkGivers (chapter 10)
 later scan those markers and dispatch pawns. Player intent becomes map data the AI independently consumes —
-the exact decoupling ballpiece's strategic-command layer will need.
+the exact decoupling openpiece's strategic-command layer will need.
 → `Verse\WindowStack.cs`, `Verse\Gizmo.cs`, `RimWorld\AlertsReadout.cs`, `Verse\Designator.cs`
 
 ## 2. Trading & economy
@@ -47,7 +47,7 @@ ops), and attach typed data to any def via `DefModExtension` without subclassing
 
 One-shot particles are **Flecks**: `struct`-based (`IFleck` in plain `List<T>` arrays, real-time vs game-time
 split, parallelized drawing) — a deliberate GC-free rewrite of the old class-based Motes; the perf argument
-for ballpiece's pooled FX, made in C#. Composite effects are `Effecter`s: a bag of `SubEffecter` children
+for openpiece's pooled FX, made in C#. Composite effects are `Effecter`s: a bag of `SubEffecter` children
 (sparks + sound + glow = one def). Audio mirrors it: `SoundDef` + `Sustainer` for looping parameterized sound.
 → `Verse\FleckSystemBase.cs`, `Verse\Effecter.cs`, `Verse\Sound\Sustainer.cs`
 
@@ -55,7 +55,7 @@ for ballpiece's pooled FX, made in C#. Composite effects are `Effecter`s: a bag 
 
 Debug menus are attribute-scanned: any method tagged `[DebugAction]` (category, allowed game states, DLC
 flags) is reflectively discovered into the dev palette — zero registration. `DebugViewSettings` is a flat bag
-of static overlay bools that render code reads directly. Ballpiece's `core/Debug.ts` + debug panel follow the
+of static overlay bools that render code reads directly. Openpiece's `core/Debug.ts` + debug panel follow the
 same registration-free spirit.
 → `LudeonTK\DebugActionAttribute.cs`, `LudeonTK\DebugTabMenu_Actions.cs`, `Verse\DebugViewSettings.cs`
 
@@ -65,7 +65,7 @@ The map partitions into **regions** (connected passable chunks) grouped into dis
 a region-level flood fill (not cell-level), memoized in `ReachabilityCache`; pathfinding is cell-level A* but
 with a **region-lookahead heuristic** (`RegionCostCalculator` precomputes region-to-region costs), which
 shrinks the searched cell set dramatically. Hierarchy first, cells second — the standard answer when
-ballpiece's islands outgrow plain grid A*.
+openpiece's islands outgrow plain grid A*.
 → `Verse\Reachability.cs`, `Verse\PathFinder.cs`, `Verse\AI\RegionCostCalculator.cs`
 
 ---

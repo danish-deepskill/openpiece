@@ -16,7 +16,7 @@
   verified); full slide deck free in the CppCon/CppCon2014 GitHub repo; announced on isocpp.org 2015-01-28
   (institutional provenance). Delivered 2014-09-11.
 - **Nuance from verification:** Acton teaches **DOD, not ECS per se** — the philosophy underlying ECS/DOTS.
-- **Ballpiece mapping:** ECS/perf mindset — SoA thinking, typed arrays, avoiding per-entity object churn in
+- **Openpiece mapping:** ECS/perf mindset — SoA thinking, typed arrays, avoiding per-entity object churn in
   TS hot loops. Watch after Nystrom's Data Locality chapter.
 
 ## 2. Data-Oriented Design (the book) — Richard Fabian ✅ (fetched, quoted)
@@ -37,14 +37,14 @@
   (DNS gone). Working routes: official Vimeo <https://vimeo.com/649009599>, YouTube mirror
   <https://www.youtube.com/watch?v=IroPQ150F6c>, Wayback snapshot of the page (2022-12-20). Published
   2021-11-23.
-- **Ballpiece mapping:** ECS/perf — the most actionable modern DOD talk for a solo dev.
+- **Openpiece mapping:** ECS/perf — the most actionable modern DOD talk for a solo dev.
 
 ## 4. Handmade Hero — Casey Muratori ✅ (fetched, quoted)
 
 - **What:** **667 numbered day-episodes** (final: "Day 667: Simplified Tile Occupancy Checking") of a
   professional (RAD Game Tools / Granny 3D) building a complete game from scratch in C, every line
   explained. One of the longest structured game-programming courses in existence; free.
-- **Named episodes mapping to ballpiece:**
+- **Named episodes mapping to openpiece:**
   - *Day 063 "Simulation Regions"* + *Day 064 "Mapping Entity Indexes to Pointers"* + *Day 277 "The Sparse
     Entity System"* — entity storage + **world partitioning for sim-LOD**
   - *Day 115–116* SIMD basics/conversion · *Day 122* multithreading intro · *Day 350 "Multithreaded World
@@ -52,14 +52,14 @@
   - *Day 305 / 341* — memory arenas (allocation strategy behind pooling)
 - **How to use:** as a **searchable reference** (guide.handmadehero.org indexes every episode), not a
   linear watch. Supplementary series (Intro to C, Handmade Chat, HandmadeCon talks) also indexed.
-- **Ballpiece mapping:** sim loop · entity storage · world-sim LOD · perf.
+- **Openpiece mapping:** sim loop · entity storage · world-sim LOD · perf.
 
 ## 5. Unity Learn — "DOTS Best Practices" (official) ✅ (search layer)
 
 - **What:** the reputable version of the "Unity DOTS course" category: Unity's own free structured course on
   DOD fundamentals, chunk/archetype memory layout, and job scheduling, plus the free 50+ page "Introduction
   to DOTS" e-book. <https://learn.unity.com/course/dots-best-practices>
-- **How to read for ballpiece:** Unity-specific APIs, but the archetype/chunk iteration model is exactly
+- **How to read for openpiece:** Unity-specific APIs, but the archetype/chunk iteration model is exactly
   what a TS ECS imitates — *read for the why, not the C# how*. Not adversarially verified.
 
 ## 6. Catlike Coding — Jasper Flick ✅ (search layer)

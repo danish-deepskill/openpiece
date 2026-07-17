@@ -1,4 +1,4 @@
-# Asset pipeline — AI art → consistent game-ready ballpiece sprites
+# Asset pipeline — AI art → consistent game-ready openpiece sprites
 
 **The problem:** AI (ChatGPT/DALL·E/…) draws good art, but a *batch* of it is inconsistent — off-center,
 different sizes, on a background, wobbly outline widths, drifting colors. **The fix:** the AI makes the ART;

@@ -12,9 +12,9 @@
 - **Where (free):** GDC Vault free tier <https://www.gdcvault.com/play/1024001/-Overwatch-Gameplay-Architecture-and>
   ("free content" tag verified) + official GDC YouTube <https://www.youtube.com/watch?v=W3aieHjyNvw>.
 - **Critical nuance (from verification):** Overwatch uses determinism for **client-side prediction under
-  server authority — NOT lockstep**. That is exactly ballpiece.io's model; watch this as the corrective to
+  server authority — NOT lockstep**. That is exactly openpiece.io's model; watch this as the corrective to
   1500 Archers' P2P topology.
-- **Ballpiece mapping:** ECS/perf + netcode. The single most ballpiece-shaped talk found.
+- **Openpiece mapping:** ECS/perf + netcode. The single most openpiece-shaped talk found.
 
 ## 2. Companion: "Networking Scripted Weapons and Abilities in 'Overwatch'" — Dan Reed, GDC ✅ (search layer)
 
@@ -22,7 +22,7 @@
   predictable across client prediction and server authority. Free on the official GDC channel
   (<https://www.youtube.com/watch?v=odSBJ49rzDo>).
 - **Why it matters more than it looks:** this is "GAS-lite abilities that survive netcode" — directly
-  applicable when ballpiece's ability engine meets the PlayerIntent/ControlSystem work. Not adversarially
+  applicable when openpiece's ability engine meets the PlayerIntent/ControlSystem work. Not adversarially
   verified; confirm title/speaker before deep citation.
 
 ## 3. "1500 Archers on a 28.8" — Bettner & Terrano, Ensemble Studios, 2001 ✅✅ (3-0 ×3)
@@ -35,11 +35,11 @@
     of sync' and the game stopped."*
   - The motivation was a bandwidth ceiling: naive per-unit state over 28.8k ≈ 250 units max vs thousands.
   - **RNG hygiene precedent:** random *cosmetic* terrain sounds had to save/re-seed the PRNG so
-    presentation randomness never perturbed the sim — the exact sim/presentation RNG split ballpiece's
+    presentation randomness never perturbed the sim — the exact sim/presentation RNG split openpiece's
     canon mandates (`DESIGN_PATTERNS` §8, seeded `core/Rng`).
 - **Where (free):** <https://www.gamedeveloper.com/programming/1500-archers-on-a-28-8-network-programming-in-age-of-empires-and-beyond>;
   PDF mirror at gamedevs.org. Assigned reading at Yale CS538/WPI; openage confirms AoE2 is still lockstep.
-- **Caveat:** teaches **P2P lockstep** — ballpiece is server-authoritative; the determinism discipline
+- **Caveat:** teaches **P2P lockstep** — openpiece is server-authoritative; the determinism discipline
   transfers, the topology does not (see #1).
 
 ## 4. "Three States and a Plan: The A.I. of F.E.A.R." — Jeff Orkin, GDC 2006 ✅✅ (3-0 ×3)
@@ -57,10 +57,10 @@
     and actions from characters we already had."*
   - **Squad honesty:** *"we actually did not have any complex squad behaviors at all"* — flanking/pincers
     *emerged* from four simple squad behaviors + individual planning + dialogue barks narrating decisions.
-    Direct evidence for ballpiece's emergence-over-scripting bet.
+    Direct evidence for openpiece's emergence-over-scripting bet.
 - **Where (free):** <https://www.gamedevs.org/uploads/three-states-plan-ai-of-fear.pdf>; Vault session
   gdcvault.com/play/1013282; recording on archive.org (GDC2006Orkin). Peer-cited (WPI, Semantic Scholar).
-- **Ballpiece mapping:** AI — the step beyond BTs; read after the BT Starter Kit.
+- **Openpiece mapping:** AI — the step beyond BTs; read after the BT Starter Kit.
 
 ## 5. "Modeling Individual Personalities in The Sims 3" — Richard Evans, GDC 2010 ✅✅ (3-0 ×3)
 
@@ -72,7 +72,7 @@
     specify hundreds of interactions, and thousands of production-rules"* — slides show the designer-facing
     Excel authoring sheet; N≈300 social interactions per agent.
   - Includes live demos of the **in-game AI visualization/debug tools** — tooling guidance, not just theory
-    (ballpiece parallel: the Debug flag panel).
+    (openpiece parallel: the Debug flag panel).
 - **Where — IMPORTANT correction:** the GDC Vault *video* is **members-only paywalled** (fetch agent
   verified the members-only lock). Free routes: the official slide PDF
   (media.gdcvault.com/gdc10/slides/Evans_Richard_ModelingIndividualPersonalitiesInTheSims3.pdf) and the
@@ -94,4 +94,4 @@
     Fortress" (2017) · "Villains in Dwarf Fortress" (Roguelike Celebration 2018)
   - Stack Overflow blog: "700,000 lines of code, 20 years, and one developer" (2021) — solo-dev
     architecture sustainability, rare and directly relevant.
-- **Ballpiece mapping:** world-sim/procgen — the living-world north-star's design record.
+- **Openpiece mapping:** world-sim/procgen — the living-world north-star's design record.

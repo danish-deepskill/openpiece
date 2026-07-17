@@ -37,9 +37,9 @@ out-signals; terminal parts call `quest.End(outcome)` → per-part `Cleanup` →
 Signals are pub/sub with **string tags** namespaced per quest (`Quest42.Delay.Completed`). Power: total
 decoupling — a shuttle, a raid, and a reward drop compose purely by tag matching; quest logic never references
 world code. Cost: **stringly-typed** — no compile-time check that a producer's tag has a consumer, typos fail
-silently, and tracing "what triggers this" means grepping strings. Ballpiece's typed `EventBus` is the same
+silently, and tracing "what triggers this" means grepping strings. Openpiece's typed `EventBus` is the same
 architecture with the type-safety RimWorld gave up (their scale of dynamic content made static typing
-impractical; at ballpiece's scale it isn't).
+impractical; at openpiece's scale it isn't).
 
 ## Patterns used
 

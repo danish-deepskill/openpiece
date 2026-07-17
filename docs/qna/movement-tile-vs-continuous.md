@@ -1,4 +1,4 @@
-# Devlog Q&A: "Wait, is ballpiece tile-based or free movement?" — Yes.
+# Devlog Q&A: "Wait, is openpiece tile-based or free movement?" — Yes.
 
 > Community-facing explainer (devlog voice), written 2026-07. Engineering counterpart:
 > `../design/PATHFINDING.md` (the planner layers) + `../ARCHITECTURE.md` (the sim foundation).
@@ -78,7 +78,7 @@ The reason the hybrid is invisible is that good games plug the leaks that would 
 Here's the fun part: the grid barely exists for *you*. When you play, your fingers do all the navigation —
 you don't need the game to tell you how to get around a wall. **The grid mostly exists for the AI.**
 
-Every "smart" thing an NPC will ever do in ballpiece is secretly a question to the grid: *Can I even reach
+Every "smart" thing an NPC will ever do in openpiece is secretly a question to the grid: *Can I even reach
 him? Which route avoids the shallows that slow me down? Where's cover from that musket line? Which regions
 of this island have I actually seen?* One world, two views:
 

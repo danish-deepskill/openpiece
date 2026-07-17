@@ -1,7 +1,7 @@
 # 07 — Abilities: activated powers as comp lists
 
 > rimworld-simple atlas · [deep] · code paths relative to `..\rimworld-decomp\`
-> Ballpiece mapping: `docs/references/rimworld_patterns.md` §3 → `combat/Ability.ts` + `AbilitySystem`
+> Openpiece mapping: `docs/references/rimworld_patterns.md` §3 → `combat/Ability.ts` + `AbilitySystem`
 
 ## The idea in 3 sentences
 

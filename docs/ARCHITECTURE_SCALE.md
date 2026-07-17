@@ -1,4 +1,4 @@
-# Ballpiece — Scalability Architecture
+# Openpiece — Scalability Architecture
 
 How the foundation absorbs the full vision (`docs/design/`) as **content + small systems**, never rewrites.
 Builds on the ECS-lite + factions + control foundation in `docs/ARCHITECTURE.md`. Patterns are the

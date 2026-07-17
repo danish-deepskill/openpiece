@@ -1,7 +1,7 @@
 # 15 — World & Map Generation: def-driven procedural pipelines
 
 > rimworld-simple atlas · [deep] · code paths relative to `..\rimworld-decomp\`
-> Ballpiece parallel: `world/WorldGen.ts` — the GenStep pipeline is the scaling path for island generation.
+> Openpiece parallel: `world/WorldGen.ts` — the GenStep pipeline is the scaling path for island generation.
 
 ## The idea in 3 sentences
 
@@ -48,7 +48,7 @@ real things. Capped at 100k iterations against runaway grammars.
 terrain → scatter). Adding content = adding a def. **Grammar expansion:** hierarchical, spatially recursive
 structures — a base decomposes into rooms into furniture, rectangles subdividing with weighted variety. Rule
 of thumb: fields and scatters → GenStep; nested layouts → BaseGen (or SketchGen when you want the blueprint
-materialized first, then damaged/rotated/stamped). Ballpiece's island towns will eventually want the second.
+materialized first, then damaged/rotated/stamped). Openpiece's island towns will eventually want the second.
 
 ## Determinism
 
@@ -60,7 +60,7 @@ That's the subtle decision worth copying.
 ## Gotchas & clever bits
 
 - The blackboard is static mutable state — cleared between runs, and steps must not assume ordering beyond
-  their declared `order`. Works, but demands discipline; ballpiece can pass a context object instead.
+  their declared `order`. Works, but demands discipline; openpiece can pass a context object instead.
 - Both grammar engines refuse re-entrancy (`working` flag) — generation inside generation is a named hazard.
 - Two-phase finalize: steps needing regions/rooms defer to `PostMapInitialized` after `FinalizeInit`.
 - Biomes *injecting and removing* gen steps declaratively is the "content is data" principle applied to

@@ -1,4 +1,4 @@
-# Ballpiece vs RimWorld — the head-to-head verdict (2026-07-02)
+# Openpiece vs RimWorld — the head-to-head verdict (2026-07-02)
 
 > The atlas says how RimWorld works; `adoption-tiers.md` tiers its patterns; **this doc records the direct
 > comparison**: which codebase is closer to best practice, and which more effectively supports complex
@@ -6,29 +6,29 @@
 > plus the live code of both subjects, then 3 adversarial critics (paper-architecture bias, modernity bias,
 > proven-scale bias) attacking the panel's claims — 6 survived, 8 weakened, 3 overturned. The scoreboard
 > below is the post-critique state. Subjects as of this date: RimWorld 1.6 (9,217 classes, 5 DLCs, shipped
-> 13 years); ballpiece ≈6,000 LOC vertical slice.
+> 13 years); openpiece ≈6,000 LOC vertical slice.
 
 ## Headline
 
 **Best practice and complex-system support are different questions with different winners.** On
-design-as-it-exists, ballpiece is cleaner where its endgame demands it (typed contracts, DI, machine-enforced
+design-as-it-exists, openpiece is cleaner where its endgame demands it (typed contracts, DI, machine-enforced
 sim boundary, one composition idiom) — RimWorld's service locator, string signals, and reflection would be
 outright errors for a deterministic MP sim. On *effectiveness for complex systems*, RimWorld wins clearly:
-not because it is older or bigger, but because it **closes every loop** ballpiece leaves open. Every RimWorld
+not because it is older or bigger, but because it **closes every loop** openpiece leaves open. Every RimWorld
 system ships with its boot validation, save story, cache-invalidation events, tick cadence, and an escape
-hatch for novel behavior. Ballpiece has the better skeleton and almost none of that connective tissue yet.
+hatch for novel behavior. Openpiece has the better skeleton and almost none of that connective tissue yet.
 
 ## Scoreboard (post-critique)
 
 | Dimension | Best practice | Scalability / complex systems |
 |---|---|---|
 | Data-driven content | RimWorld (narrowed: much of its "closed loop" is XML scar tissue) | **RimWorld, clearly** |
-| Entity/composition model | **Ballpiece** (narrowed: purity claims partly aspirational) | RimWorld (critics overturned the panel's "split") |
-| Stats/modifiers/effects | Split — ballpiece's StatBlock, RimWorld's effect engine | **RimWorld, decisively** (effects) |
-| Tick & performance | Split-leaning-ballpiece (the clock itself is cleaner) | **RimWorld, not close** |
+| Entity/composition model | **Openpiece** (narrowed: purity claims partly aspirational) | RimWorld (critics overturned the panel's "split") |
+| Stats/modifiers/effects | Split — openpiece's StatBlock, RimWorld's effect engine | **RimWorld, decisively** (effects) |
+| Tick & performance | Split-leaning-openpiece (the clock itself is cleaner) | **RimWorld, not close** |
 | AI | RimWorld | **RimWorld, not close** |
-| Persistence | RimWorld (trivially — ballpiece has 0 lines) | RimWorld |
-| Determinism & testability | **Ballpiece** | Split (testability ours on evidence; determinism fenced, never proven) |
+| Persistence | RimWorld (trivially — openpiece has 0 lines) | RimWorld |
+| Determinism & testability | **Openpiece** | Split (testability ours on evidence; determinism fenced, never proven) |
 | Extensibility | Split (our one loaded seam is already accreting) | RimWorld |
 
 ## The three findings that matter most
@@ -36,10 +36,10 @@ hatch for novel behavior. Ballpiece has the better skeleton and almost none of t
 1. **RimWorld's superpower is completeness of contract, not any single pattern.** Each subsystem answers
    five questions at birth: boot validation, save participation, cache invalidation, tick cadence, and where
    novel behavior goes when data isn't enough (the def-field → comp → worker → subclass escape-hatch
-   ladder). Ballpiece's canon answers the *shape* questions and skips the lifecycle ones: 1 of 10 registries
+   ladder). Openpiece's canon answers the *shape* questions and skips the lifecycle ones: 1 of 10 registries
    validated, 0% save, no invalidation channel, no cadence, no escape hatch on `AbilityDef`. That contract
    gap — not ECS-vs-comps — is the real distance between the codebases.
-2. **Ballpiece's cleanliness is largely unloaded.** The one seam with real content pressure (Abilities,
+2. **Openpiece's cleanliness is largely unloaded.** The one seam with real content pressure (Abilities,
    14 rows) already shows RimWorld's named anti-pattern: `AbilityShape` accreted ~15 optional fields (several
    used by one row) and `AbilitySystem.update()` carries an engine branch for the Gomu Rocket family-of-one.
    Where extensibility has been tested it chose field-accretion; where it looks elegant it is untested. And
@@ -51,7 +51,7 @@ hatch for novel behavior. Ballpiece has the better skeleton and almost none of t
    symmetric one-declaration serialization is separable from the static `Scribe.mode` machine and worth
    keeping — hand-written toJSON/fromJSON pairs reintroduce the drift bug it exists to kill.
 
-## Confirmed defects in ballpiece (verified in code during this review)
+## Confirmed defects in openpiece (verified in code during this review)
 
 1. **Effect reapply collision (real bug)** — `EffectSystem.apply` builds the identical source string
    (`effect:id:by`) for reapplications, so the first instance's expiry `removeBySource` strips a still-active
@@ -107,4 +107,4 @@ hatch for novel behavior. Ballpiece has the better skeleton and almost none of t
 - **Unloaded elegance is unproven elegance.** Judge a seam by its most-loaded instance, not its cleanest.
 - **Proven-vs-designed cuts both ways.** RimWorld earns no credit for machinery that compensates
   self-inflicted problems (3-pass loads for pointer-graph saves, side registries for a missing query
-  engine); ballpiece earns none for properties that exist only as plans or comments.
+  engine); openpiece earns none for properties that exist only as plans or comments.

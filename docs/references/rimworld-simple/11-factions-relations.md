@@ -1,7 +1,7 @@
 # 11 — Factions & Relations: one hostility oracle
 
 > rimworld-simple atlas · [summary] · code paths relative to `..\rimworld-decomp\`
-> Ballpiece parallel: `defs/factions.ts` relations matrix + `combat/targeting.ts` — same philosophy, already adopted.
+> Openpiece parallel: `defs/factions.ts` relations matrix + `combat/targeting.ts` — same philosophy, already adopted.
 
 ## The idea in 3 sentences
 
@@ -36,8 +36,8 @@ guests become prisoners). All consumers then ask `HostileTo`.
 factionless things (neutral, with narrow exceptions) → mental states (`ForceHostileTo`) → hunting predators →
 prisoners (non-hostile to their host — until mid-prison-break) → rebelling slaves → dormant things → overseen
 mechs. One function to read, one to test, one to extend. This is the strongest single validation of
-ballpiece's "factions = data matrix, never team checks" canon — and the special-case ladder is a preview of
-the cases ballpiece will eventually need (mental states ≈ berserk pirates; predators ≈ sea kings; prisoners ≈
+openpiece's "factions = data matrix, never team checks" canon — and the special-case ladder is a preview of
+the cases openpiece will eventually need (mental states ≈ berserk pirates; predators ≈ sea kings; prisoners ≈
 captured crew).
 
 ## Patterns used

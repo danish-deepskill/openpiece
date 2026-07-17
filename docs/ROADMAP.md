@@ -1,4 +1,4 @@
-# Ballpiece — Roadmap (phasing)
+# Openpiece — Roadmap (phasing)
 
 We ship in stages, each with a clear question and a clear "done". The discipline: **never build the next
 phase's breadth before the current phase's question is answered** (e.g. don't author 30 Devil Fruits in PoC

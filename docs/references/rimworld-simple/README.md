@@ -1,7 +1,7 @@
 # rimworld-simple — the big-picture atlas of RimWorld's architecture
 
 A ~20-file distillation of RimWorld 1.6's codebase (9,217 decompiled classes) into its ideas, architecture,
-and design patterns. Written for both humans and AI agents working on **ballpiece**: read this first to know
+and design patterns. Written for both humans and AI agents working on **openpiece**: read this first to know
 *what exists and how it fits*, then follow the file pointers into `..\rimworld-decomp\` only when a detail
 matters.
 
@@ -15,10 +15,10 @@ atlas records patterns and pointers, never copied code. Decompiled line numbers 
   recurring trick, named — the chapter to read if you read only one).
 - **Task routing:** the "Where does X live?" table at the end of chapter 00.
 - **Per chapter:** idea in 3 sentences → key classes → data flow → patterns → gotchas → go-deeper pointers.
-- **Ballpiece verdicts** live beside this file: `adoption-tiers.md` — every pattern tiered S/A/B/C/D by
-  worth/fit for ballpiece, with milestone triggers — and `others.md` — the deep adopt/skip analysis of the
-  six core subsystems. The atlas describes RimWorld; those two decide what ballpiece takes.
-- **Head-to-head verdict:** `ballpiece-comparison.md` (2026-07) — which codebase is closer to best practice
+- **Openpiece verdicts** live beside this file: `adoption-tiers.md` — every pattern tiered S/A/B/C/D by
+  worth/fit for openpiece, with milestone triggers — and `others.md` — the deep adopt/skip analysis of the
+  six core subsystems. The atlas describes RimWorld; those two decide what openpiece takes.
+- **Head-to-head verdict:** `openpiece-comparison.md` (2026-07) — which codebase is closer to best practice
   and which better supports complex systems, dimension by dimension, adversarially reviewed; includes the
   confirmed-defects list and the prioritized steal list.
 - **Path note:** `..\rimworld-decomp\` / `..\rimworld-data\` references in the chapters point to the

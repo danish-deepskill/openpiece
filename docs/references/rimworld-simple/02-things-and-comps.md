@@ -8,7 +8,7 @@ Every in-world object — rock, gun, corpse, colonist, bullet — is a `Thing` c
 `ThingDef`. Instead of a deep class tree, most behavior bolts on as a bag of `ThingComp` objects declared
 per-def in XML; `ThingWithComps` owns the list and fans every lifecycle event out to each comp. It is
 "composition without an ECS": each comp holds *both* its state *and* its behavior, and there is no query engine
-— you ask a specific Thing for a specific comp type (contrast with ballpiece's ECS, where components are pure
+— you ask a specific Thing for a specific comp type (contrast with openpiece's ECS, where components are pure
 data and systems iterate queries).
 
 ## Key classes
@@ -58,7 +58,7 @@ quality, rot, power: a turret, a lamp, and a fridge share power draw verbatim). 
 
 - **Comp lookup cost is real.** `GetComp<T>` inlines the 0–2 comp cases, then dictionary, then linear scan.
 - **Pawns deliberately avoid the comp bag for hot subsystems** — ~40 hard-typed tracker fields instead
-  (chapter 03). Comps are for the optional long tail, not the mandatory core. Same reasoning as ballpiece
+  (chapter 03). Comps are for the optional long tail, not the mandatory core. Same reasoning as openpiece
   keeping hot components as plain fields on entities.
 - Save/load re-instantiates comp objects; only their *fields* serialize (`PostExposeData`).
 - `InitializeComps` try/catches per comp — one broken mod comp doesn't kill the Thing.

@@ -44,7 +44,7 @@ required capacity (consciousness, blood pumping) at zero, or core part destroyed
 ## Patterns used
 
 - **One verb abstraction** for melee/ranged/abilities — "swing fist", "fire rifle", "cast psycast" differ only
-  in `verbClass` + data. The unification point for ballpiece's four combat layers.
+  in `verbClass` + data. The unification point for openpiece's four combat layers.
 - **Def + worker strategy** (`DamageDef.workerClass`) and **parameter object** (`DamageInfo` threading ~20
   fields through a deep call chain).
 - **Template method** — `Verb.TryCastNextBurstShot` orchestrates; subclasses fill `TryCastShot`.

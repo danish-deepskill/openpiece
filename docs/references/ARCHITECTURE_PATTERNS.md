@@ -1,11 +1,11 @@
-# Ballpiece — Architecture & Design-Pattern References (educational)
+# Openpiece — Architecture & Design-Pattern References (educational)
 
-> A **curated, annotated bibliography** of the engineering concepts + external resources that shape ballpiece's
+> A **curated, annotated bibliography** of the engineering concepts + external resources that shape openpiece's
 > **architecture, design patterns, logic, and complex systems** — organized into **9 themes**. The *how-to-build-it*
 > companion to the game-idea tier list (`../design/REFERENCES.md`) and the vision (`../design/DEEP_SIMULATION.md`).
 >
 > **Living doc — add a line whenever you learn something architecture-shaping.**
-> Format: **concept → key resources → how it maps to ballpiece.** ✅ = verified link · ⌕ = find via the given
+> Format: **concept → key resources → how it maps to openpiece.** ✅ = verified link · ⌕ = find via the given
 > search terms (URL not pinned, to avoid staleness / fabrication).
 
 **Themes:** 1 Code Architecture · 2 Content as Data · 3 World (space/streaming/persistence) · 4 Simulation &
@@ -25,7 +25,7 @@ Complex Systems · 5 Combat, Input & Game Feel · 6 Multiplayer & Netcode · 7 P
 - **ECS** — ✅ **[ecs-faq (Sander Mertens)](https://github.com/SanderMertens/ecs-faq)** — archetypes vs sparse-set,
   why data storage matters.
 
-→ **ballpiece:** ECS-lite (`World.with`), the fixed loop (`WorldScene.update`), `EventBus` (Observer), `FsmBrain`
+→ **openpiece:** ECS-lite (`World.with`), the fixed loop (`WorldScene.update`), `EventBus` (Observer), `FsmBrain`
 (State), input→ability (Command). Systems depend on *data*, not each other (decoupling = the Moat).
 
 ## Theme 2 — Content as Data (extensibility)
@@ -38,7 +38,7 @@ Complex Systems · 5 Combat, Input & Game Feel · 6 Multiplayer & Netcode · 7 P
 - **External / moddable data + serialization formats** — JSON (moddable), **msgpack / FlatBuffers / Protobuf**
   (compact/binary for saves & netcode). ⌕ *search:* `flatbuffers vs protobuf vs msgpack`.
 
-→ **ballpiece:** `core/Registry.ts` (+ inheritance), `combat/` GAS-lite. `ARCHITECTURE_SCALE §11 #1` (external data).
+→ **openpiece:** `core/Registry.ts` (+ inheritance), `combat/` GAS-lite. `ARCHITECTURE_SCALE §11 #1` (external data).
 
 ## Theme 3 — World: Space, Streaming & Persistence
 *One seamless world, chunked, streamed, and remembered. (See `DEEP_SIMULATION.md §5–6.)`*
@@ -56,7 +56,7 @@ Complex Systems · 5 Combat, Input & Game Feel · 6 Multiplayer & Netcode · 7 P
 - **Procedural generation** — ✅ Red Blob (noise, island shaping, biomes); **generated history** as content
   multiplier. ⌕ *search:* `Caves of Qud sultan history GDC`, `Dwarf Fortress worldgen`.
 
-→ **ballpiece:** `TileGrid` = the grid → chunks (e.g. 32×32); sparse sea / dense islands; `Pathfinder` + sea flow-fields;
+→ **openpiece:** `TileGrid` = the grid → chunks (e.g. 32×32); sparse sea / dense islands; `Pathfinder` + sea flow-fields;
 `WorldGen`; serialize-by-ID solves the "does it remember?" problem. `ARCHITECTURE_SCALE §11 #2`.
 
 ## Theme 4 — Simulation & Complex Systems (emergence)
@@ -72,7 +72,7 @@ Complex Systems · 5 Combat, Input & Game Feel · 6 Multiplayer & Netcode · 7 P
 - **Deterministic sim + fixed timestep** — reproducible ticks (replay/netcode). ✅
   **[Fix Your Timestep! (Gaffer On Games)](https://gafferongames.com/post/fix_your_timestep/)**.
 
-→ **ballpiece:** `ai/brains.ts`+`FsmBrain` (the `AIProfileDef` data-knobs are the FSM→BT seam), `GameDirector`
+→ **openpiece:** `ai/brains.ts`+`FsmBrain` (the `AIProfileDef` data-knobs are the FSM→BT seam), `GameDirector`
 (storyteller seed), faction matrix (systemic), wildlife (emergence seed). `ARCHITECTURE_SCALE §11 #4,#6`.
 
 ## Theme 5 — Combat, Input & Game Feel (the moat)
@@ -84,10 +84,10 @@ Complex Systems · 5 Combat, Input & Game Feel · 6 Multiplayer & Netcode · 7 P
 - **Game feel / juice** — screen shake, hitstop, squash/stretch, particles, camera kick. ✅ concept: **Steve Swink,
   *Game Feel*** + the **"Juice it or lose it"** talk. ⌕ *search:* `juice it or lose it Jonasson Purho`, `game feel Swink`.
 
-→ **ballpiece:** the `swing` motion registry (frame phases), `MeleeSystem` (moving hitbox = hurtbox test),
+→ **openpiece:** the `swing` motion registry (frame phases), `MeleeSystem` (moving hitbox = hurtbox test),
 data-driven `shake`/`stun`, GAS-lite abilities. Posture/parry/telegraphs are the depth (`COMBAT.md`).
 
-## Theme 6 — Multiplayer & Netcode (ballpiece.io)
+## Theme 6 — Multiplayer & Netcode (openpiece.io)
 *Server-authoritative sim; hide latency on the action layer. (See `DEEP_SIMULATION.md §7.)`*
 - **Core netcode** — ✅ **[Gaffer On Games](https://gafferongames.com/)** (networked physics, snapshot interpolation,
   state sync, lockstep) · ✅ **[Source Multiplayer Networking (Valve)](https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking)**
@@ -97,7 +97,7 @@ data-driven `shake`/`stun`, GAS-lite abilities. Posture/parry/telegraphs are the
 - **Rollback** (if combat needs frame-perfect) — ⌕ *search:* `GGPO rollback netcode`.
 - **Framework** — ✅ **[Colyseus](https://colyseus.io/)** (Node/TS authoritative rooms = zones).
 
-→ **ballpiece:** engine-agnostic TS sim on the server; client predicts with the *same code*; zones = rooms; only the
+→ **openpiece:** engine-agnostic TS sim on the server; client predicts with the *same code*; zones = rooms; only the
 fast action layer needs prediction (deep sim is latency-immune).
 
 ## Theme 7 — Performance & Scale
@@ -109,7 +109,7 @@ fast action layer needs prediction (deep sim is latency-immune).
 - **Culling & pooling** — viewport/frustum culling; object pools; avoid per-frame allocation (GC hitches). (GPP:
   Object Pool, Dirty Flag.)
 
-→ **ballpiece:** the ladder in `DEEP_SIMULATION.md §7` (object-ECS → typed-array → Workers → WASM); culling already
+→ **openpiece:** the ladder in `DEEP_SIMULATION.md §7` (object-ECS → typed-array → Workers → WASM); culling already
 in `RenderSystem`/`SeaRenderer`; FX pool.
 
 ## Theme 8 — Presentation (rendering / UI / camera / audio)
@@ -121,7 +121,7 @@ in `RenderSystem`/`SeaRenderer`; FX pool.
 - **Camera** — follow, smoothing/lerp, look-ahead, screen shake, deadzones. ⌕ *search:* `game camera follow lerp deadzone`.
 - **Audio** — event-driven SFX, pooling, spatial/positional. ⌕ *search:* `game audio middleware event-driven`.
 
-→ **ballpiece:** procedural `draw` fns + `RenderSystem` (depth-sort), `RegKey` registry publishes HUD state
+→ **openpiece:** procedural `draw` fns + `RenderSystem` (depth-sort), `RegKey` registry publishes HUD state
 (reactive), camera follow + shake, `FxSystem`. Renderer is a thin sim-consumer (keeps the perf/multiplayer path open).
 
 ## Theme 9 — Practice & Process (meta)
@@ -134,7 +134,7 @@ in `RenderSystem`/`SeaRenderer`; FX pool.
 - **Project discipline** — vertical slices, "engines not content," ship one arc before widening (see
   `DEEP_SIMULATION.md §9`).
 
-→ **ballpiece:** Vitest suite over pure systems (combat/equip/factions/…), `typecheck` gate; keep sim engine-agnostic
+→ **openpiece:** Vitest suite over pure systems (combat/equip/factions/…), `typecheck` gate; keep sim engine-agnostic
 + seeded RNG so it stays testable and server-runnable.
 
 ---
@@ -146,7 +146,7 @@ in `RenderSystem`/`SeaRenderer`; FX pool.
    ticks are the *same idea* applied to render / memory / CPU / bandwidth.
 3. **Separate simulation ↔ persistence ↔ rendering.** Sim = engine-agnostic TS (runs headless on a server);
    persistence = serialize-by-ID + versioning; rendering = a thin Phaser consumer. This separation is what keeps
-   ballpiece.io *and* the performance ladder open.
+   openpiece.io *and* the performance ladder open.
 4. **Simple rules, composed, beat scripted cases.** Systemic + data-driven design is how depth *and* emergence scale
    without hand-authoring everything.
 

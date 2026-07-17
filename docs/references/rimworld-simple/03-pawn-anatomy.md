@@ -43,7 +43,7 @@ clocks, two orders — don't assume one.
 `ThingDef.race` (a `RaceProperties` block) = the **species**: intelligence tier, body, flesh type, life stages,
 think trees. `PawnKindDef` = the **spawn template**: points at a race and layers on how to roll one instance —
 backstory filters, trait/skill ranges, gear budgets, `combatPower`. One race (Human) has many kinds (Colonist,
-Pirate, Tribal) differing only in generation parameters. Ballpiece's `bodies.ts` vs `units.ts` split is the
+Pirate, Tribal) differing only in generation parameters. Openpiece's `bodies.ts` vs `units.ts` split is the
 same two levels.
 
 ## Patterns used

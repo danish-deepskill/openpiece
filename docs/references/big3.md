@@ -1,6 +1,6 @@
 # Big 3 Crossover — Design Summary
 
-> A continuation of **Ballpiece**: extending the living, deeply-simulated One Piece sea into a
+> A continuation of **Openpiece**: extending the living, deeply-simulated One Piece sea into a
 > three-verse universe of **pirates, ninjas, and soul reapers** (One Piece × Naruto × Bleach).
 > This captures the conclusions from the design conversation — the *why* behind each decision.
 
@@ -20,7 +20,7 @@ Proposed geography: One Piece's ocean as the base spine, with the ninja nations 
 
 ---
 
-## 2. Why It Fits the Ballpiece Foundation
+## 2. Why It Fits the Openpiece Foundation
 
 The crossover lands cleanly because the existing architecture is **verse-agnostic**:
 
@@ -164,8 +164,8 @@ well) vs. **Trident** (the *marketing* choice — sells itself in one glance). T
 words are memorable but hard to *own*; invented-ish names (Conflux, Triverse) are ownable but must
 *earn* their meaning.
 
-**Naming depends on:** does the new name **replace** Ballpiece as the umbrella (→ go verse-neutral,
-Vessel/Conflux) or does **Ballpiece stay** as the pirate slice with the crossover as a grander name
+**Naming depends on:** does the new name **replace** Openpiece as the umbrella (→ go verse-neutral,
+Vessel/Conflux) or does **Openpiece stay** as the pirate slice with the crossover as a grander name
 above it?
 
 ---
@@ -202,7 +202,7 @@ above it?
 
 ### One-line summary
 
-A three-verse (**pirate / ninja / soul reaper**) living-world game on the Ballpiece foundation —
+A three-verse (**pirate / ninja / soul reaper**) living-world game on the Openpiece foundation —
 where the crossover fits because the Moat is verse-agnostic and powers are just registries; where the
 three stay distinct via **shared chassis, divergent signatures**; scaled **pirate-bottom / ninja-mid /
 soul-reaper-top** with a durability split and caged hax; and where **One Piece's world-scarcity** is

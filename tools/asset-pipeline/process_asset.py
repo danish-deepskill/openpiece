@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-process_asset.py — turn raw AI-generated art PNGs into a CONSISTENT set of game-ready ballpiece sprites.
+process_asset.py — turn raw AI-generated art PNGs into a CONSISTENT set of game-ready openpiece sprites.
 
 The AI (ChatGPT / DALL-E / Scenario / ...) draws the ART, but a batch of AI art is inconsistent: off-center,
 different sizes, wobbly outline widths, drifting palettes. This script fixes ALL the mechanical
@@ -52,7 +52,7 @@ except ImportError:
     sys.exit("Pillow + numpy are required.  Run:  pip install -r requirements.txt")
 
 
-# --- ballpiece style constants (kept in sync with docs/art/README.md by hand) -------------------------
+# --- openpiece style constants (kept in sync with docs/art/README.md by hand) -------------------------
 DEFAULT_SIZE = 256          # existing sprites are 256x256 (straw_hat.png); the engine sizes uniformly anyway
 DEFAULT_MARGIN = 0.06       # fraction of canvas left as empty border after centering (breathing room)
 # HEAD CUTOUT geometry (for 'body'/'chest' frame sprites), DERIVED from the render (actorDraws.ts):
@@ -162,7 +162,7 @@ def uniform_outline(img: Image.Image, width: int, outline_rgb: tuple[int, int, i
     """Replace the AI's wobbly outline with a FIXED-width one. Method: take the alpha silhouette, optionally
     ERODE it a touch to eat the AI's own dark rim, then DILATE by `width` to make an outline ring, fill that
     ring with the charcoal color, and composite the (eroded) art on top. Result: every asset in a batch has a
-    pixel-identical border regardless of what the AI drew. Tuned for FLAT chunky art (ballpiece's style)."""
+    pixel-identical border regardless of what the AI drew. Tuned for FLAT chunky art (openpiece's style)."""
     img = img.convert("RGBA")
     alpha = img.getchannel("A")
     # binarize the silhouette (anti-aliased edges -> hard mask so the ring is crisp)
@@ -222,7 +222,7 @@ def process(src: Path, out_dir: Path, args, palette: np.ndarray, outline_rgb: tu
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Turn raw AI art into a game-ready ballpiece sprite.")
+    ap = argparse.ArgumentParser(description="Turn raw AI art into a game-ready openpiece sprite.")
     ap.add_argument("inputs", nargs="+", help="raw PNG(s) or a glob (e.g. raw/*.png)")
     ap.add_argument("--out", default="out", help="output folder (default: ./out)")
     ap.add_argument("--size", type=int, default=DEFAULT_SIZE, help=f"square output size (default {DEFAULT_SIZE})")

@@ -1,7 +1,7 @@
 # 08 — AI: ThinkTrees, Jobs, and the squad layer
 
 > rimworld-simple atlas · [deep] · code paths relative to `..\rimworld-decomp\`
-> Ballpiece mapping: `docs/references/rimworld_patterns.md` §4 → `ai/Brain.ts` + `SquadSystem`
+> Openpiece mapping: `docs/references/rimworld_patterns.md` §4 → `ai/Brain.ts` + `SquadSystem`
 
 ## The idea in 3 sentences
 

@@ -1,7 +1,7 @@
 # 01 — The Def System: content is data, code is generic
 
 > rimworld-simple atlas · [deep] · code paths relative to `..\rimworld-decomp\` · XML in `..\rimworld-data\`
-> Ballpiece mapping: `docs/references/rimworld_patterns.md` §1 → `core/Registry.ts`
+> Openpiece mapping: `docs/references/rimworld_patterns.md` §1 → `core/Registry.ts`
 
 ## The idea in 3 sentences
 
@@ -27,7 +27,7 @@ references (typed constants bound by name after load) and short hashes (compact 
 
 1. **Parse + inherit.** All mod XML is combined. Nodes with `Name="X"` register as templates; `ParentName="X"`
    children get the parent's resolved node cloned in — child elements overwrite, `<li>` lists **append**
-   (note: ballpiece chose lists-*replace* instead), `Inherit="False"` discards parent children.
+   (note: openpiece chose lists-*replace* instead), `Inherit="False"` discards parent children.
    `Abstract="True"` templates never instantiate. Cycles detected and logged.
 2. **Build objects.** Each node instantiates its def class by tag name. Any field whose type is itself a Def
    subtype is *not* parsed inline — the string is queued as a **wanted cross-reference**. This is why XML can
@@ -57,7 +57,7 @@ Def lifecycle hooks, in firing order: `PostLoad` (per-object, no cross-refs yet 
 - Reading a DefOf before binding is a classic bug; `EnsureInitializedInCtor` warns. Rule: resolve well-known
   defs in `ResolveReferences`, never in field initializers.
 - Duplicate defNames don't crash — the second gets renamed with a random suffix and an error logged (mod
-  tolerance; ballpiece throws instead, which is right for first-party content).
+  tolerance; openpiece throws instead, which is right for first-party content).
 - Short hashes are assigned in defName-sorted order with collision probing — deterministic and save-stable.
 - `GetNamed` vs `GetNamedSilentFail`: the loud one is the default; silent lookups are explicit opt-in at call
   sites that can genuinely tolerate absence.

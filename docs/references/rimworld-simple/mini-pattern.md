@@ -1,8 +1,8 @@
-# RimWorld architecture patterns — distilled for ballpiece
+# RimWorld architecture patterns — distilled for openpiece
 
 > **Companion atlas:** `C:\Files\Phaser\References\rimworld\rimworld-simple\` — a ~20-chapter big-picture map
 > of the *entire* RimWorld codebase (all subsystems, patterns catalog, coverage manifest, glossary). This doc
-> decides what ballpiece adopts; the atlas describes how RimWorld works. Read the atlas's `README.md` +
+> decides what openpiece adopts; the atlas describes how RimWorld works. Read the atlas's `README.md` +
 > `19-patterns-catalog.md` first when studying something new.
 
 > Source: RimWorld 1.6 (build 9676) decompiled locally to `C:\Files\Phaser\References\rimworld\rimworld-decomp`
@@ -11,9 +11,9 @@
 > source at `C:\Files\Phaser\References\rimworld\rimworld-source`. That code is Ludeon Studios'
 > copyright — this doc records **patterns and file pointers only**, never copied code.
 >
-> Why RimWorld: it is the existence proof for ballpiece's two biggest bets — *content is data, code is
+> Why RimWorld: it is the existence proof for openpiece's two biggest bets — *content is data, code is
 > generic* at ~10k-def scale, and *no special-cased player* (every pawn runs the same stack). Each section:
-> how RimWorld does it → what ballpiece already has → what's worth adopting → what to skip.
+> how RimWorld does it → what openpiece already has → what's worth adopting → what to skip.
 
 ---
 
@@ -37,7 +37,7 @@ Two supporting patterns: **DefOf** (`RimWorld\DefOfHelper.cs`) — classes of st
 field name after load, so code references well-known content without string literals scattered around; and
 **short hashes** — a stable `hash(defName) % 65535` per def so saves serialize compact ids.
 
-**Ballpiece already has:** the same shape, deliberately smaller — `Registry<T>` with lazy `parent`
+**Openpiece already has:** the same shape, deliberately smaller — `Registry<T>` with lazy `parent`
 flattening (child wins, **arrays replace** — note: opposite of RimWorld's list-append), per-family
 `Validator` throwing at boot, and registry-sweep tests standing in for cross-ref resolution.
 
@@ -53,7 +53,7 @@ flattening (child wins, **arrays replace** — note: opposite of RimWorld's list
   of **base defs as tuning sheets**: one abstract parent per family holding every default, so concrete rows
   are deltas (see `rimworld-data\Core\Defs\FactionDefs\Factions_Base.xml`).
 
-**Skip:** short hashes (JSON saves with string ids are fine at ballpiece's scale), reflection-driven
+**Skip:** short hashes (JSON saves with string ids are fine at openpiece's scale), reflection-driven
 deserialization (TS modules are already typed), mod-overlay merge machinery.
 
 ---
@@ -75,7 +75,7 @@ The two ideas that matter most:
 - **Caching with explicit staleness** (`StatCacheEntry`): values cached per-thing with the tick they were
   computed; callers pass how stale they tolerate; targeted invalidation on known mutations.
 
-**Ballpiece already has:** the canonical stacking pipeline (`flat → addPct → mulPct → override`) and
+**Openpiece already has:** the canonical stacking pipeline (`flat → addPct → mulPct → override`) and
 source-tracked modifiers with `removeBySource` — the same core, cleaner op vocabulary.
 
 **Worth adopting:**
@@ -87,7 +87,7 @@ source-tracked modifiers with `removeBySource` — the same core, cleaner op voc
 - Stat caching **only when profiling says so**, and then RimWorld's shape: value + computed-tick, caller
   declares tolerated staleness. Not before.
 
-**Skip:** the ~90 `StatPart` subclasses (that granularity serves colony-sim inspection; ballpiece's parts
+**Skip:** the ~90 `StatPart` subclasses (that granularity serves colony-sim inspection; openpiece's parts
 are its four layers), per-frame global cache clearing.
 
 ---
@@ -111,7 +111,7 @@ comps (pluggable behavior declared in data)**.
   warmup, cooldown, burst, targeting rules — differing only in data. Weapons, hediffs, and abilities all
   *grant verbs* into the same resolution path.
 
-**Ballpiece already has:** `AbilityDef`/`EffectSystem` foundations, swing-as-data motions, and the
+**Openpiece already has:** `AbilityDef`/`EffectSystem` foundations, swing-as-data motions, and the
 tag/modifier vocabulary — the GAS-lite target is exactly this architecture.
 
 **Worth adopting:**
@@ -140,7 +140,7 @@ tag/modifier vocabulary — the GAS-lite target is exactly this architecture.
   C# worker class (`ThinkNode_Priority` first-match, `_PrioritySorter` utility-ordered, `_Conditional*`
   gates, `_Subtree` splicing for reuse). Def declares structure; workers define evaluation. Colonists,
   raiders, animals, mechs: **same machinery, different tree defs** — "player-ness" is a condition node
-  *inside* the tree, never a code fork. This is ballpiece's Moat, shipped.
+  *inside* the tree, never a code fork. This is openpiece's Moat, shipped.
 - **Job = data; JobDriver = resumable steps.** A Job is just `def + up to 3 targets + flags`. Its driver
   decomposes into **Toils** — atomic steps (go there, wait N ticks, do X on arrival) with end conditions.
   Only a cursor index is saved; the toil list regenerates from code on load — long actions are inherently
@@ -153,7 +153,7 @@ tag/modifier vocabulary — the GAS-lite target is exactly this architecture.
   `IsHashIntervalTick(30)` so pawns spread across frames. Damage-triggered rethink rate-limited (180 ticks).
   A runaway guard kills pawns starting 10 jobs in 10 ticks.
 
-**Ballpiece already has:** `Brain` strategy per-unit, data-driven `AIProfileDef` knobs, `SquadSystem`, and
+**Openpiece already has:** `Brain` strategy per-unit, data-driven `AIProfileDef` knobs, `SquadSystem`, and
 the FSM→BT migration explicitly planned.
 
 **Worth adopting:**
@@ -188,7 +188,7 @@ the FSM→BT migration explicitly planned.
 - **Dirty-flag caches everywhere:** regions/rooms rebuild only dirty cells; reachability memoized per
   (district, district, params) tri-state; expensive scans guarded by "already computed this tick".
 
-**Ballpiece already has:** fixed timestep, seeded `Rng`, Phaser-free deterministic sim (enforced by test),
+**Openpiece already has:** fixed timestep, seeded `Rng`, Phaser-free deterministic sim (enforced by test),
 `SpatialQuery`.
 
 **Worth adopting:**
@@ -227,7 +227,7 @@ multi-clock (`TickManager` vs per-map) split.
 Scaling property: **adding an event touches zero director code** — the comps discover new `IncidentDef`s by
 category scan. The director speaks only categories, weights, points, and the CanFire/Execute contract.
 
-**Ballpiece already has:** `GameDirector` (spawn-wave era) and `PowerTier` — the declared destination is
+**Openpiece already has:** `GameDirector` (spawn-wave era) and `PowerTier` — the declared destination is
 exactly this (`ARCHITECTURE_SCALE.md` event director; sea/land events in `design/EVENTS.md`).
 
 **Worth adopting (this is the blueprint — take it whole):**
@@ -236,12 +236,12 @@ exactly this (`ARCHITECTURE_SCALE.md` event director; sea/land events in `design
   with `canFire(ctx, parms)` / `execute(ctx, parms)` split — the split is what makes eligibility testable.
 - One `EventParms` bag (points, faction, zone, position) so every event family shares the pipeline.
 - **Points formula from PowerTier**: player tier + crew + gear → a budget the worker spends when sizing the
-  event. Ballpiece's tier system slots in exactly where colony wealth sits in RimWorld's.
+  event. Openpiece's tier system slots in exactly where colony wealth sits in RimWorld's.
 - Refire cooldowns tracked per def id (`lastFiredTick` map) — the difference between "living world" and
   "raid spam".
 - Directors as def rows too (calm seas vs chaotic New World = different weights/pacing — same engine).
 
-**Skip:** adaptation/grace-period tuning (needs playtest data ballpiece doesn't have yet), the quest-graph
+**Skip:** adaptation/grace-period tuning (needs playtest data openpiece doesn't have yet), the quest-graph
 system above incidents.
 
 ---

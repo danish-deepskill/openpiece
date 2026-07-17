@@ -1,7 +1,7 @@
 # 05 — Health & Effects: the Hediff engine
 
 > rimworld-simple atlas · [deep] · code paths relative to `..\rimworld-decomp\`
-> Ballpiece mapping: `docs/references/rimworld_patterns.md` §3 → `combat/Effect.ts` + `EffectSystem`
+> Openpiece mapping: `docs/references/rimworld_patterns.md` §3 → `combat/Effect.ts` + `EffectSystem`
 
 ## The idea in 3 sentences
 

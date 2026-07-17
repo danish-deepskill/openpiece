@@ -1,6 +1,6 @@
-# Generating consistent ballpiece character references (ChatGPT / image models)
+# Generating consistent openpiece character references (ChatGPT / image models)
 
-These are **top-down character reference portraits** in ballpiece's own render style — the view you get
+These are **top-down character reference portraits** in openpiece's own render style — the view you get
 looking straight DOWN at a unit standing still, facing the camera (south). They are art references, NOT
 in-game sprites. The engine draws units procedurally (`app/src/draw/actorDraws.ts`); these images are the
 "what should this character look like" target that art + procedural tuning aim at.

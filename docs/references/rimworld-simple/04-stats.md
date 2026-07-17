@@ -1,7 +1,7 @@
 # 04 — Stats: one pipeline, every number explained
 
 > rimworld-simple atlas · [deep] · code paths relative to `..\rimworld-decomp\`
-> Ballpiece mapping: `docs/references/rimworld_patterns.md` §2 → `combat/StatBlock.ts` + `Modifier.ts`
+> Openpiece mapping: `docs/references/rimworld_patterns.md` §2 → `combat/StatBlock.ts` + `Modifier.ts`
 
 ## The idea in 3 sentences
 
@@ -41,7 +41,7 @@ them adjacent in one class is the discipline.
 ## Patterns used
 
 - **Def + worker strategy** — `StatDef.workerClass` (default `StatWorker`), instantiated lazily.
-- **Offsets-then-factors** — a two-bucket stacking order (ballpiece's `flat → addPct → mulPct → override` is
+- **Offsets-then-factors** — a two-bucket stacking order (openpiece's `flat → addPct → mulPct → override` is
   the same idea with a finer vocabulary).
 - **Pluggable parts** — `StatPart` = per-stat Strategy list, priority-sorted at `PostLoad`.
 - **Tolerated-staleness caching** — `GetValue(thing, cacheStaleAfterTicks)`: caller declares how stale is

@@ -1,7 +1,7 @@
 # 13 — Storyteller & Events: the event director
 
 > rimworld-simple atlas · [deep] · code paths relative to `..\rimworld-decomp\`
-> Ballpiece mapping: `docs/references/rimworld_patterns.md` §6 → `systems/GameDirector.ts` (the blueprint to take whole)
+> Openpiece mapping: `docs/references/rimworld_patterns.md` §6 → `systems/GameDirector.ts` (the blueprint to take whole)
 
 ## The idea in 3 sentences
 
@@ -48,7 +48,7 @@ cluster, or a manhunter pack — the "matchmaking formula" in one function.
 
 Adding an event touches zero director code: one `IncidentDef` row (+ a worker subclass if genuinely new
 behavior) is discovered by the category scan. Storyteller personalities just re-weight categories. The
-director speaks only categories, weights, points, and the CanFire/Execute contract. For ballpiece: EventDef
+director speaks only categories, weights, points, and the CanFire/Execute contract. For openpiece: EventDef
 registry + worker map + `PowerTier`-based points formula + per-def `lastFiredTick` refire map = this
 architecture, with player tier standing where colony wealth stands.
 

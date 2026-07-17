@@ -1,10 +1,10 @@
-# Ballpiece — Claude Code Context
+# Openpiece — Claude Code Context
 
 A **One Piece-inspired open-world action-RPG** (Rell Seas / Necesse / OSRS-like systems). Fresh, clean
 Phaser + TypeScript + ECS build under `app/`. The old prototype (`docs/references/grand_voyage.html`) is a
 **behavioral reference only** — not built upon. Long-term vision: a **living, deeply-simulated sea** (Kenshi-tier world sim) you rise
 through from F-tier nobody to Yonko — strategic command + possess-any-unit — eventually multiplayer
-(**ballpiece.io**, server-authoritative). The architecture decisions below exist to serve that endgame.
+(**openpiece.io**, server-authoritative). The architecture decisions below exist to serve that endgame.
 
 ## Working agreements (how the developer works — don't make him repeat these)
 The developer-side half of this contract is `docs/WORKING_WITH_CLAUDE.md` (request template, shared
@@ -29,7 +29,7 @@ knobs + playtest list → gates).
   deliberately). Cherry-pick external advice (courses/references) against THIS codebase's goals; most
   OOP/engine-coupling advice doesn't fit and should be rejected with reasons.
 - **Explanations:** he's learning engineering practice — when he asks "why/what/is it worth it", answer with
-  the concept first, mapped to ballpiece second, with concrete numbers where possible. Concise > exhaustive.
+  the concept first, mapped to openpiece second, with concrete numbers where possible. Concise > exhaustive.
 
 ## Required reading
 - `docs/DESIGN_PATTERNS.md` — the coding-standards canon (principles, naming, ECS idioms, determinism, the
@@ -41,7 +41,7 @@ knobs + playtest list → gates).
   director, persistence. Read before designing a new system.
 - `docs/design/` — the target vision (`VISION.md` first). Ahead of the code on purpose.
 - `docs/references/rimworld-simple/` — the RimWorld 1.6 atlas: how EVERY RimWorld subsystem works (start:
-  `README.md` + `19-patterns-catalog.md`), plus the ballpiece verdicts — `adoption-tiers.md` (all patterns
+  `README.md` + `19-patterns-catalog.md`), plus the openpiece verdicts — `adoption-tiers.md` (all patterns
   tiered S/A/B/C/D with milestone triggers) and `others.md` (deep adopt/skip on the six core subsystems).
   Full decompiled source + XML defs for deeper digs: `C:\Files\Phaser\References\rimworld\rimworld-{decomp,
   data,source}` (patterns only — Ludeon copyright, never copy code).

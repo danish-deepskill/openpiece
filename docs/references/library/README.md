@@ -3,7 +3,7 @@
 Deep reference "books" for the architecture agent (and the developer). Where
 [`../LEARNING_SOURCES.md`](../LEARNING_SOURCES.md) is the one-page curated map, each volume here preserves the
 **full detail** from the 105-agent deep-research pass of 2026-07-02: per-source credibility evidence, verbatim
-quotes, publish dates, staleness warnings, dead-link corrections, and ballpiece subsystem mappings.
+quotes, publish dates, staleness warnings, dead-link corrections, and openpiece subsystem mappings.
 
 **Trust levels** (carried through every volume):
 - ✅✅ adversarially verified — 3 independent refutation votes, all survived; links checked live 2026-07-02
@@ -29,5 +29,5 @@ still-unresearched categories: OSRS/EVE economy design, the Gambetta/Gaffer serv
 chain, WFC procgen verification, sim-LOD talks.
 
 When adding a volume to this library: keep the per-source format (what it teaches · credibility evidence ·
-free status + legal basis · dates/staleness · ballpiece mapping · trust level), and prefer verbatim quotes
+free status + legal basis · dates/staleness · openpiece mapping · trust level), and prefer verbatim quotes
 over paraphrase — the quotes are what an agent can re-verify.

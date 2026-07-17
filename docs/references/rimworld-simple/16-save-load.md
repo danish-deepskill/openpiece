@@ -1,7 +1,7 @@
 # 16 — Save/Load: the Scribe system
 
 > rimworld-simple atlas · [deep] · code paths relative to `..\rimworld-decomp\`
-> Ballpiece relevance: the design target for persistence (`ARCHITECTURE_SCALE.md`) — serialize-by-id is already canon.
+> Openpiece relevance: the design target for persistence (`ARCHITECTURE_SCALE.md`) — serialize-by-id is already canon.
 
 ## The idea in 3 sentences
 

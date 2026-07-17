@@ -10,7 +10,7 @@ Verse). All state nests in one containment tree — `Root` (Unity entry) → `Ga
 (playable tiles) → `Thing`s — and two static classes (`Current` mutable holder, `Find` read-only facade) let any
 code reach that tree without threading references. Simulation and presentation run on **two different clocks**:
 drawing happens once per rendered frame, but the sim ticks 0..N times per frame depending on game speed — the
-same split as ballpiece's fixed `SIM_DT` timestep vs Phaser's render loop.
+same split as openpiece's fixed `SIM_DT` timestep vs Phaser's render loop.
 
 ## Key classes
 
@@ -49,10 +49,10 @@ pawns) → Play scene loads → `Root_Play.Start` queues `Game.InitNewGame()`: `
 
 ## Patterns used
 
-- **Layered engine split** — Verse knows nothing about colonies; RimWorld builds on it. (Ballpiece's
+- **Layered engine split** — Verse knows nothing about colonies; RimWorld builds on it. (Openpiece's
   `sim vs presentation` boundary is the same cut, enforced by test instead of assembly.)
 - **Service Locator** (`Find`/`Current`) — global access instead of dependency injection. Costs they pay:
-  hidden dependencies, hard unit-testing, null-fragility outside the Playing state. Ballpiece deliberately
+  hidden dependencies, hard unit-testing, null-fragility outside the Playing state. Openpiece deliberately
   chose constructor injection instead; read this facade as the cautionary alternative.
 - **Plugin slots** (`GameComponent`/`WorldComponent`/`MapComponent`) — every non-abstract subclass is
   reflectively auto-instantiated, ticked, and saved with its owner. This is the main mod/DLC seam: add a class,

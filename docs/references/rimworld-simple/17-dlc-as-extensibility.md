@@ -1,7 +1,7 @@
 # 17 — DLC as Extensibility Proof: five expansions, no rewrites
 
 > rimworld-simple atlas · [summary] · code paths relative to `..\rimworld-decomp\` · XML in `..\rimworld-data\`
-> Ballpiece relevance: this is the empirical test of "engines, not content" — what hooks a codebase needs to
+> Openpiece relevance: this is the empirical test of "engines, not content" — what hooks a codebase needs to
 > absorb a whole expansion. The Devil Fruit / Haki / style layers should plug in the way genes/precepts do.
 
 ## The idea in 3 sentences
@@ -42,7 +42,7 @@ The pattern: a "new combat/belief/monster system" is mostly **new def families f
 `StatWorker` contains literal gene and precept loops; `ThoughtDef` grew `requiredGenes`/`nullifyingGenes`
 fields; `Pawn` carries `genes`/`ideo` tracker fields in core Verse; `Gene.cs` itself lives in Verse. Lesson:
 even the best seam design ends with the *aggregation points* (the stat pipeline, the pawn tick) knowing about
-each major layer — the goal is confining that knowledge to single functions, not eliminating it. Ballpiece
+each major layer — the goal is confining that knowledge to single functions, not eliminating it. Openpiece
 equivalent: `StatBlock` will enumerate the four combat layers as modifier sources; that's fine, as long as
 it's the only place that does.
 
@@ -55,7 +55,7 @@ it's the only place that does.
 - `Notify_GenesChanged` fans cache invalidation out to needs/render/skills/health — adding a modifier *source*
   means adding its invalidation events too.
 - Hooks are opt-in at call sites: if core forgets to `RecordEvent`, the precept never fires. An event bus is
-  only as complete as its emit coverage (ballpiece's `silent-failure-hunter` agent exists for exactly this).
+  only as complete as its emit coverage (openpiece's `silent-failure-hunter` agent exists for exactly this).
 
 ## Go deeper
 

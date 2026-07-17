@@ -1,7 +1,7 @@
 # 12 — Tick & Performance: how thousands of things stay cheap
 
 > rimworld-simple atlas · [deep] · code paths relative to `..\rimworld-decomp\`
-> Ballpiece mapping: `docs/references/rimworld_patterns.md` §5 → `ecs/World.ts` + `core/Rng.ts`
+> Openpiece mapping: `docs/references/rimworld_patterns.md` §5 → `ecs/World.ts` + `core/Rng.ts`
 
 ## The idea in 3 sentences
 
@@ -57,12 +57,12 @@ indexes + hierarchical (region) search · dirty-flag memoization · per-subsyste
 ## Gotchas & clever bits
 
 - Naive `tick % 250 === 0` gives a stutter spike every 250th tick; the bucket trick is the fix and costs ~20
-  lines. (Directly applicable to ballpiece wildlife/town/distant-ship systems.)
+  lines. (Directly applicable to openpiece wildlife/town/distant-ship systems.)
 - The frame budget means max speed is *effective*, not nominal — the game auto-slows under load and even
   auto-boosts speed when `NothingHappeningInGame()`.
 - `Rand`'s static-ctor seeds from wall clock, but all *sim* paths re-seed explicitly — global randomness is
-  for juice only. Same split as ballpiece's seeded `Rng` streams vs presentation randomness.
-- Registration queues (`thingsToRegister`) are the standard answer to add-while-iterating; ballpiece's
+  for juice only. Same split as openpiece's seeded `Rng` streams vs presentation randomness.
+- Registration queues (`thingsToRegister`) are the standard answer to add-while-iterating; openpiece's
   `World` defers entity destruction for the same reason.
 
 ## Go deeper
