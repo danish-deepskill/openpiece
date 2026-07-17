@@ -53,6 +53,11 @@ export interface DeckGrid {
   cols: number;
   rows: number;
   tilePx: number;
+  /** Dense (cy·cols + cx) → cell index — the HOT-PATH oracle (2026-07 foundation audit): tileAt/
+   *  deckCellAtLocal run per on-deck walker per tick, and a `cells.find()` there was a linear search with a
+   *  per-call closure (deckCollision's masks solved this shape for collision; the general lookup never got
+   *  the same index). `undefined` = off-hull (open sea). Built once in parseDeck; grids are immutable defs. */
+  byCell: (DeckCell | undefined)[];
 }
 
 /** Deck tile size in px = the WORLD tile (config/constants TILE). ONE tile scale across the whole game: standing
@@ -92,7 +97,9 @@ export function parseDeck(rows: readonly string[], tilePx = DECK_TILE_PX): DeckG
       });
     }
   }
-  return { cells, cols, rows: gridRows, tilePx };
+  const byCell: (DeckCell | undefined)[] = new Array(cols * gridRows).fill(undefined);
+  for (const c of cells) byCell[c.cy * cols + c.cx] = c;
+  return { cells, cols, rows: gridRows, tilePx, byCell };
 }
 
 /** True if a tile kind is walkable (you can stand on it). Stations (helm/cannon) + the gangplank ARE walkable
@@ -105,7 +112,7 @@ export function deckWalkable(tile: DeckTile): boolean {
  *  Used by the renderer + deck collision + the enclosure check to ask "is there ship here?". */
 export function tileAt(grid: DeckGrid, cx: number, cy: number): DeckTile | undefined {
   if (cx < 0 || cy < 0 || cx >= grid.cols || cy >= grid.rows) return undefined;
-  return grid.cells.find((c) => c.cx === cx && c.cy === cy)?.tile;
+  return grid.byCell[cy * grid.cols + cx]?.tile; // O(1) index, no closure — hot path (audit M2)
 }
 
 /** The hull's drawn size in px, DERIVED from the grid (its tight bounding box × tilePx). The drawn boat and the
@@ -221,7 +228,8 @@ export function worldToDeck(pose: ShipPose, wx: number, wy: number): { lx: numbe
 export function deckCellAtLocal(grid: DeckGrid, lx: number, ly: number): DeckCell | undefined {
   const cx = Math.floor((lx + (grid.cols * grid.tilePx) / 2) / grid.tilePx);
   const cy = Math.floor((ly + (grid.rows * grid.tilePx) / 2) / grid.tilePx);
-  return grid.cells.find((c) => c.cx === cx && c.cy === cy);
+  if (cx < 0 || cy < 0 || cx >= grid.cols || cy >= grid.rows) return undefined;
+  return grid.byCell[cy * grid.cols + cx]; // O(1) index, no closure — hot path (audit M2)
 }
 
 /** The gangplank's OUTWARD unit direction (toward open sea) — whichever orthogonal neighbor is off-grid. Used by

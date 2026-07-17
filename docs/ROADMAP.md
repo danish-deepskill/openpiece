@@ -43,3 +43,28 @@ many fruits, mesh-form bosses); polish, balance, performance, art pass; multipla
 ## Status
 End of **PoC**. Combat feel pass + character UI + the Haki↔Logia capstone are the last PoC items; then we
 enter **Prototype** (find the fun).
+
+## Foundation-audit ledger (repo-wide, 2026-07 — baseline d7d5afb)
+
+The first full architecture audit (OOP-creep, boundaries, hot loops, determinism, scaling pillars) returned
+**zero critical findings** — canon is test-enforced, determinism is proven, no OOP rot. What it flagged, and
+the state of each:
+
+**Fixed same-day:** dead events deleted (`enemyKilled`/`playerDied` had zero listeners); dense deck-cell
+index (`DeckGrid.byCell` — tileAt/deckCellAtLocal are O(1) now); every "who's near X" enumeration routed
+through the SpatialQuery chokepoint (melee, AoE, pistol cone, close-pass, doors, hull boarding — the future
+uniform-grid swap is now a one-class change; systems take a defaulted `query` so tests stand, the scene
+passes its SHARED instance).
+
+**Open, with triggers:**
+- **Chase-state extraction** (brains.ts ~500-line god-state → named pure sub-behaviors): its own focused
+  session; prework for the jobs/behavior-tree brain (pillar 6).
+- **ShipSystem three-hats split** (physics / deck parenting / helm-station verbs): trigger = the CANNON
+  station. Until then the rule is "no new station methods on ShipSystem". Never split the physics integrator.
+- **Versioned full save** (masterSeed + Rng stream states + wind.time + director atop the entity snapshot):
+  the audit's #1 strategic move — land BEFORE persistent world state exists to lose (pillar 2).
+- **External-data widening** (units/aiProfiles/layers/abilities → JSON rows): pillar 1's next tranche; a
+  content-velocity multiplier that gets pricier the longer TS literals grow.
+- Minors, opportunistic: input policy behind named fns (PlayerIntent prep); town spawns → LevelLayout
+  `units`; `''` loadout sentinels → optional fields; fx payloads carry entity/faction ids not `control`
+  reads (multiplayer prep).

@@ -76,7 +76,6 @@ export class GameDirector {
     if (e.loot) {
       this.gold += e.loot.gold;
       events.emit('fx:dmgText', { x: t.x, y: t.y, value: e.loot.gold, color: '#f0b429' });
-      events.emit('enemyKilled', { gold: e.loot.gold, boss });
     }
     this.world.destroy(e); // RenderSystem's orphan sweep destroys the gfx -- sim never touches presentation objects
   }
@@ -84,7 +83,6 @@ export class GameDirector {
   private die(): void {
     events.emit('fx:shake', { amount: 8 });
     this.setState('dead');
-    events.emit('playerDied', {});
   }
 
   respawn(): void {

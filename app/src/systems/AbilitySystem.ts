@@ -13,6 +13,7 @@ import type { Entity, Loadout, MeleeSwing } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { EffectSystem } from './EffectSystem';
 import type { StrikeResolver } from './StrikeResolver';
+import { SpatialQuery } from '../world/SpatialQuery';
 
 /** Per-strike aim error (rad), centred toward 0 — natural imprecision so combat isn't a perfect lock.
  *  (Could become a per-unit `accuracy` stat later: skilled fighters tighten this.) */
@@ -31,11 +32,14 @@ function setCooldown(lo: Loadout, id: ContentId, seconds: number): void {
  * in here). Damage scales off the user's Attributes, so all four combat layers feed one resolution.
  */
 export class AbilitySystem {
+  // query DEFAULTED so standalone tests stand unchanged; the scene passes its SHARED instance (audit M1:
+  // every neighbor enumeration through the one chokepoint — the future grid swap must share one index)
   constructor(
     private readonly world: World,
     private readonly effects: EffectSystem,
     private readonly strikes: StrikeResolver,
     private readonly rng: Rng, // the seeded `combat` stream: scatter / motion picks (determinism)
+    private readonly query: SpatialQuery = new SpatialQuery(world),
   ) {}
 
   /** Decrement every loadout's ability cooldowns + combo-chain windows. (Combatant resource upkeep lives
@@ -99,16 +103,17 @@ export class AbilitySystem {
     events.emit('fx:ring', { x: t.x, y: t.y, radius: radius * 1.15, color: 0xffffff, life: 0.35 }); // the slam SHOCKWAVE — white, matching the sword-finisher slash-wave; expands past the AoE edge and fades
     events.emit('debug:aoe', { x: t.x, y: t.y, radius }); // the overlay draws this radius briefly (debug only)
     if (d.shake) events.emit('fx:shake', { amount: d.shake }); // one shake for the slam impact (data opt-in)
-    for (const o of this.world.with('transform', 'health', 'faction')) {
-      if (!canHit(o)) continue;
-      const ot = o.transform;
+    // candidates via the SPATIAL CHOKEPOINT (audit M1) — pad covers the widest body; exact test below
+    this.query.forEachWithin(t.x, t.y, radius + 40, (o) => {
+      if (!o.health || !o.faction || !canHit(o)) return;
+      const ot = o.transform!; // forEachWithin only visits transformed entities
       const dx = ot.x - t.x;
       const dy = ot.y - t.y;
       const gap = Math.hypot(dx, dy); // NOT `dist` — that would shadow the core/math import used below
-      if (gap > radius + ot.r) continue;
+      if (gap > radius + ot.r) return;
       const inv = gap > 0.01 ? 1 / gap : 0; // knock each target radially outward from the impact
       this.strikes.hit(e, o, d, base, dx * inv * kb, dy * inv * kb, 0, d.stun ?? 0); // no per-target shake; the slam shook once above
-    }
+    });
   }
 
   ready(e: Entity, id: string): boolean {
@@ -395,11 +400,12 @@ export class AbilitySystem {
     const t = e.transform!; // shooter has a transform (proven by fireShot's caller)
     const canHit = harmableBy(e);
     let nearest = Infinity;
-    for (const o of this.world.with('transform', 'health', 'faction')) {
-      if (o.id === e.id || !canHit(o)) continue;
-      const gap = dist(t.x, t.y, o.transform.x, o.transform.y) - o.transform.r; // surface gap, not center
+    // only surface gaps INSIDE closePassRange matter — the chokepoint cut (audit M1) pads for the widest body
+    this.query.forEachWithin(t.x, t.y, range + 40, (o) => {
+      if (o.id === e.id || !o.health || !o.faction || !canHit(o)) return;
+      const gap = dist(t.x, t.y, o.transform!.x, o.transform!.y) - o.transform!.r; // surface gap, not center
       if (gap < nearest) nearest = gap;
-    }
+    });
     if (nearest >= range) return 0; // no one point-blank ⇒ a clean shot
     const k = 1 - Math.max(0, nearest) / range; // 1 at contact → 0 at the range edge
     return peak * k * k; // STEEP: squared, so only truly point-blank shots risk fumbling
@@ -415,9 +421,11 @@ export class AbilitySystem {
     const aim = this.scatter(t.angle); // the shot scatters slightly off true aim
     events.emit('fx:swing', { type: 'pistol', x: t.x, y: t.y, angle: aim, len: range, life: 0.16, max: 0.16, arc: shape.arc });
 
-    const targets = this.world
-      .with('transform', 'health', 'faction')
-      .filter(canHit)
+    // candidates via the SPATIAL CHOKEPOINT (audit M1): the old shape filtered + SORTED the whole world
+    // per shot — now only bodies the cone could reach are gathered, then range-sorted (nearest-first for
+    // shape.single). Pad covers the widest body; the exact cone/range tests below still decide.
+    const targets = this.query
+      .within(t.x, t.y, range + 40, (o) => !!o.health && !!o.faction && canHit(o))
       .sort((a, b) => dist(t.x, t.y, a.transform!.x, a.transform!.y) - dist(t.x, t.y, b.transform!.x, b.transform!.y));
 
     const kb = d.knockback ?? 0;

@@ -21,9 +21,9 @@ export interface GameEvents {
   startGame: {};
   setPaused: { paused: boolean };
   notify: { msg: string };
-  // director hooks — consumed by HUD today; the event director/persistence will subscribe later
-  enemyKilled: { gold: number; boss: boolean };
-  playerDied: {};
+  // (enemyKilled/playerDied DELETED by the 2026-07 foundation audit: emitted with zero listeners — the
+  // house rule is dead keys go, and return WITH their first real subscriber (event director/persistence).
+  // Gold + death already flow through director state / RegKey; nothing consumed these.)
   autoAimChanged: { on: boolean };
   // fx channel -- the SIM emits these; FxSystem (presentation) subscribes. Sim never calls presentation
   // directly (DESIGN_PATTERNS section 5); this stream is also the future audio hook + net-replication feed.

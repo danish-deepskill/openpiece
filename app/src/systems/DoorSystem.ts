@@ -1,6 +1,7 @@
 import { TILE } from '../config/constants';
 import { Structures } from '../defs/structures';
 import type { World } from '../ecs/World';
+import { SpatialQuery } from '../world/SpatialQuery';
 
 /** Px past 'just touching' at which a door opens — an APPROACH radius, not a contact test. Big enough that a
  *  body pinned against the wall BESIDE the doorway still opens it (the corner assist can then funnel them in —
@@ -18,22 +19,28 @@ const APPROACH_PAD = 14;
  * makes contact — so enemies follow you inside instead of being walled out. (Future: a per-door `locked`
  * flag on the component.)
  */
+/** Widest actor body the door probe must see (r + pad headroom) — a conservative spatial cut only; the
+ *  exact per-actor reach test below still decides. */
+const DOOR_PROBE_R = 64;
+
 export class DoorSystem {
-  constructor(private readonly world: World) {}
+  // query DEFAULTED so standalone tests stand unchanged; the scene passes its SHARED instance (audit M1:
+  // every neighbor enumeration through the one chokepoint — the future grid swap must share one index)
+  constructor(
+    private readonly world: World,
+    private readonly query: SpatialQuery = new SpatialQuery(world),
+  ) {}
 
   update(): void {
     for (const d of this.world.with('structure', 'transform')) {
       if (!Structures.get(d.structure.def).door) continue;
       let open = false;
-      for (const e of this.world.with('transform', 'mover')) {
-        if (e.health?.dead) continue;
-        const t = e.transform;
+      this.query.forEachWithin(d.transform.x, d.transform.y, d.transform.r + DOOR_PROBE_R, (e) => {
+        if (open || !e.mover || e.health?.dead) return;
+        const t = e.transform!; // forEachWithin only visits transformed entities
         const reach = t.r + d.transform.r + APPROACH_PAD; // actor body APPROACHING the door's footprint opens it
-        if ((t.x - d.transform.x) ** 2 + (t.y - d.transform.y) ** 2 < reach * reach) {
-          open = true;
-          break;
-        }
-      }
+        if ((t.x - d.transform.x) ** 2 + (t.y - d.transform.y) ** 2 < reach * reach) open = true;
+      });
       d.structure.open = open;
     }
   }

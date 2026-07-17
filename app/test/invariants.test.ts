@@ -53,12 +53,12 @@ function buildSim(masterSeed: number) {
   const damage = new Damage();
   const strikes = new StrikeResolver(damage, combatRng);
   const effects = new EffectSystem(world);
-  const abilities = new AbilitySystem(world, effects, strikes, combatRng);
+  const abilities = new AbilitySystem(world, effects, strikes, combatRng, query);
   // wind seeded from the SAME master mint as every other stream (canon review: a fixed literal here left
   // advancing weather outside the replay proof — the harness must cover the whole canonical tick)
   const wind = new WindSystem(streamSeed(masterSeed, 'wind'));
   const ships = new ShipSystem(world, collision, wind);
-  const hulls = new HullCollisionSystem(world);
+  const hulls = new HullCollisionSystem(world, query);
   const squads = new SquadSystem(world, query);
   const spawner = new Spawner(world, worldgenRng);
   // a representative world, spawn order mirroring WorldScene.create (spawn rolls consume worldgenRng, so
@@ -70,12 +70,12 @@ function buildSim(masterSeed: number) {
   spawner.spawnShip('ship.rowboat', level.boatSpawn.x, level.boatSpawn.y, 'straw_hat');
   const ctx: AIContext = { world, query, rng: aiRng, abilities, pathfinder };
   const director = new GameDirector(world, level);
-  const doors = new DoorSystem(world);
+  const doors = new DoorSystem(world, query);
   const ai = new AISystem(world, ctx);
   const move = new MovementSystem(world, collision);
   const swim = new SwimSystem(world, damage);
   const bodies = new BodyCollisionSystem(world, query, collision);
-  const melee = new MeleeSystem(world, strikes);
+  const melee = new MeleeSystem(world, strikes, query);
   const projectiles = new ProjectileSystem(world, strikes, collision, combatRng);
   const combatants = new CombatantSystem(world);
   const dialogue = new DialogueSystem();

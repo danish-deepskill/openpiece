@@ -1,4 +1,4 @@
-import { Abilities } from '../combat/Ability';
+import { Abilities, abilityRange } from '../combat/Ability';
 import { strikeFrameOf, strikeVolumes, volumeHits } from '../combat/hitVolume';
 import { swingGeomOf, swingPose } from '../combat/swing';
 import { harmableBy } from '../combat/targeting';
@@ -6,6 +6,7 @@ import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 import { leapBack } from './MovementSystem';
 import type { StrikeResolver } from './StrikeResolver';
+import { SpatialQuery } from '../world/SpatialQuery';
 
 /** Airborne window (s) for an on-hit recoil LEAP (the Shock Kick's jump-back). Matches the jump feel — long
  *  enough to read as a hop-arc, short enough to snap back to firing quickly. The DISTANCE is the ability's
@@ -21,9 +22,12 @@ const RECOIL_LEAP_DUR = 0.45;
  * both attack this way. The hit itself is delegated to StrikeResolver; this system owns only the geometry.
  */
 export class MeleeSystem {
+  // query DEFAULTED so standalone tests stand unchanged; the scene passes its SHARED instance (audit M1:
+  // every neighbor enumeration through the one chokepoint — the future grid swap must share one index)
   constructor(
     private readonly world: World,
     private readonly strikes: StrikeResolver,
+    private readonly query: SpatialQuery = new SpatialQuery(world),
   ) {}
 
   update(dt: number): void {
@@ -67,7 +71,14 @@ export class MeleeSystem {
       const a1 = v.active ? v.active[1] : phaseEnd; //   windowless volumes inherit the active phase
       if (p < a0 || p > a1) continue; // this volume isn't live yet / anymore (p is monotonic — no reset needed)
       const hits = (m.hitByVolume[vi] ??= []); // per-volume once-only set (volumes may deliberately double-dip)
-      for (const o of this.world.with('transform', 'health', 'faction')) {
+      // candidates via the SPATIAL CHOKEPOINT (audit M1), not a full-world walk. The cut is conservative
+      // on purpose — ability reach ×1.5 + a fat pad covers every volume offset + the widest body; the
+      // exact volumeHits test below still decides. within() (not forEachWithin): the loop needs `return`
+      // for the parry-cancel and single-hit exits, and the candidate list is small.
+      const et = e.transform!;
+      const probe = abilityRange(d, e.attributes?.get('reach') ?? 0) * 1.5 + 120;
+      const candidates = this.query.within(et.x, et.y, probe, (o) => !!o.health && !!o.faction);
+      for (const o of candidates) {
         if (!canHit(o) || hits.includes(o.id)) continue; // shared harm predicate (enemies + huntable wildlife)
         const ot = o.transform!;
         if (!volumeHits(v, frame, ot.x, ot.y, ot.r)) continue; // steel/slash hasn't reached them yet

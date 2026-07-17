@@ -4,6 +4,7 @@ import { deckCanOccupy, hullBlocksOutside, hullWoodClearance } from '../world/de
 import { enterDeck, inFrameCooldown } from '../world/frames';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
+import { SpatialQuery } from '../world/SpatialQuery';
 
 /**
  * BOARDING HANDOFFS + a hull depenetration FALLBACK (movement-frames.md / big-walkable-ship.md). The hull is a
@@ -15,7 +16,12 @@ import type { World } from '../ecs/World';
  * eject (a bump to the edge), not the old fling-to-nearest-sea. AIRBORNE + on-deck actors are skipped.
  */
 export class HullCollisionSystem {
-  constructor(private readonly world: World) {}
+  // query DEFAULTED so standalone tests stand unchanged; the scene passes its SHARED instance (audit M1:
+  // every neighbor enumeration through the one chokepoint — the future grid swap must share one index)
+  constructor(
+    private readonly world: World,
+    private readonly query: SpatialQuery = new SpatialQuery(world),
+  ) {}
 
   update(): void {
     for (const ship of this.world.with('ship', 'transform')) {
@@ -26,12 +32,11 @@ export class HullCollisionSystem {
       // width): that under-covered a long hull's bow/stern corners, leaving a dead zone where landings neither
       // boarded nor pushed.
       const reach = (hull.length + hull.width) / 2;
-      for (const e of this.world.with('transform', 'mover')) {
-        if (e.onDeck || e.mover!.layer === 'air' || e.mover!.mode === 'boat' || e.health?.dead) continue; // aboard / jumping over / a ship / dead
-        const t = e.transform!;
-        const dx = t.x - st.x;
-        const dy = t.y - st.y;
-        if (dx * dx + dy * dy > (reach + t.r) * (reach + t.r)) continue; // too far to touch this hull
+      // walkers via the SPATIAL CHOKEPOINT (audit M1): the pad stands in for the old per-walker `+ t.r`
+      // reject (24 ≥ the widest body radius); one closure per SHIP per tick, not per walker
+      this.query.forEachWithin(st.x, st.y, reach + 24, (e) => {
+        if (e.onDeck || !e.mover || e.mover.layer === 'air' || e.mover.mode === 'boat' || e.health?.dead) return; // ashore-walkers only
+        const t = e.transform!; // forEachWithin only visits transformed entities
         const local = worldToDeck(st, t.x, t.y);
         // THE GANGPLANK IS A PASSAGE, not a point. If the walker's CENTER is within the gangplank LANE (the
         // gangplank cell + the approach cell just outside it), it's crossing the door — do NOT push it (even though
@@ -61,7 +66,7 @@ export class HullCollisionSystem {
             enterDeck(e, ship.id, local.lx, local.ly); // NO perch: the plank is a corridor — moveOnDeck walks
             //                                            the entry overhang in along the board axis (no PERCH state)
           }
-          continue; // in the lane → never pushed (the door is open)
+          return; // in the lane → never pushed (the door is open)
         }
         // LAND-ON-DECK BOARDING: a world walker whose center is over a WALKABLE interior cell got there by clearing
         // the rail through the AIR (jump/Geppo over the low-wall rail, then landed inside) — that IS boarding, the
@@ -76,7 +81,7 @@ export class HullCollisionSystem {
           // PERCH-AS-NEEDED, same rule as landings: a leap can come down with the CENTER on walkable deck but
           // the BODY over the rail — boarded grounded-illegal would freeze; perched it's movable + self-clears.
           e.mover!.onLedge = !deckCanOccupy(grid, local.lx, local.ly, t.r, false, false);
-          continue;
+          return;
         }
         if (cell?.tile === 'rail' && !inFrameCooldown(e)) {
           // a grounded world body whose center sits ON the rail BLOCK (a jump landing, incl. half-over-the-sea)
@@ -87,15 +92,15 @@ export class HullCollisionSystem {
           // a ping-pong — the beat lets it walk free first.
           enterDeck(e, ship.id, local.lx, local.ly);
           e.mover!.onLedge = true;
-          continue;
+          return;
         }
-        if (!hullBlocksOutside(grid, local.lx, local.ly, t.r)) continue; // clear — nothing to do
+        if (!hullBlocksOutside(grid, local.lx, local.ly, t.r)) return; // clear — nothing to do
         // JUST TRANSITIONED (the frame beat): a body wider than the rail's outer band legitimately exits the
         // drop-off still overlapping the gunwale wood — the beat lets it WALK itself clear (the embedded-veto
         // lift permits moving while overlapped) instead of being ejected: ejecting here was the walk-off snap.
-        if (inFrameCooldown(e)) continue;
+        if (inFrameCooldown(e)) return;
         this.pushOut(e, ship, local.lx, local.ly, t.r);
-      }
+      });
     }
   }
 

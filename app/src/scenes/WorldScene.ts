@@ -128,9 +128,9 @@ export class WorldScene extends Phaser.Scene {
     const damage = new Damage();
     const strikes = new StrikeResolver(damage, combatRng);
     const effects = new EffectSystem(world);
-    const abilities = new AbilitySystem(world, effects, strikes, combatRng);
+    const abilities = new AbilitySystem(world, effects, strikes, combatRng, query);
     const ships = new ShipSystem(world, collision, wind); // sail rigs read curve × apparent-strength from the wind field
-    const hulls = new HullCollisionSystem(world); // boarding handoffs (gangplank / leap-on) + embedded-in-hull eject fallback
+    const hulls = new HullCollisionSystem(world, query); // boarding handoffs (gangplank / leap-on) + embedded-in-hull eject fallback
     const squads = new SquadSystem(world, query);
     const spawner = new Spawner(world, worldgenRng);
 
@@ -173,10 +173,10 @@ export class WorldScene extends Phaser.Scene {
     this.windSys = wind;
     this.hullSys = hulls;
     this.squadSys = squads;
-    this.meleeSys = new MeleeSystem(world, strikes);
+    this.meleeSys = new MeleeSystem(world, strikes, query);
     this.projectileSys = new ProjectileSystem(world, strikes, collision, combatRng);
     this.combatantSys = new CombatantSystem(world);
-    this.doorSys = new DoorSystem(world);
+    this.doorSys = new DoorSystem(world, query);
     this.doorRenderer = new DoorRenderer(this, world);
     this.debug = new DebugOverlay(this, world, level.grid, wind);
     this.dialogueSys = new DialogueSystem();
