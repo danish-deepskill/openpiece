@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design — Openpiece</title>
+<link rel="stylesheet" href="style.css">
+<script>try{var t=localStorage.getItem('op-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+</head>
+<body>
+
+<canvas class="deepsea" data-sea aria-hidden="true"></canvas>
+
+<div class="topbar">
+  <div class="bar">
+    <a class="brand" href="index.html">OPENPIECE<span class="jr">▸</span></a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="design.html" class="on">Design</a>
+      <a href="about.html">About</a>
+      <a href="support.html">Support</a>
+    </nav>
+    <button class="themebtn" type="button" data-theme-toggle aria-label="Switch light / dark" title="Switch light / dark">◐</button>
+  </div>
+</div>
+
+<main class="wrap">
+
+<section>
+  <h2 style="margin-top:2.4rem">The design</h2>
+  <p class="sub">The game, area by area — what each part is, how it's meant to work, and why. Every tile
+  carries its area's <strong>real development state</strong>, and every page says plainly what runs in-engine
+  today and what is still ink on the chart.</p>
+  <span class="ladder">charted → researched → designed → building → built</span>
+
+  <div class="tilegrid">
+    <a class="tile" href="design-story.html"><canvas data-icon="story" aria-hidden="true"></canvas><span class="badge">charted</span><span class="lbl">Story</span></a>
+    <a class="tile" href="design-sailing.html"><canvas data-icon="sailing" aria-hidden="true"></canvas><span class="badge">built</span><span class="lbl">Sailing</span></a>
+    <a class="tile" href="design-combat.html"><canvas data-icon="combat" aria-hidden="true"></canvas><span class="badge">built</span><span class="lbl">Combat</span></a>
+    <a class="tile" href="design-powers.html"><canvas data-icon="powers" aria-hidden="true"></canvas><span class="badge">built</span><span class="lbl">Powers</span></a>
+    <a class="tile" href="design-control.html"><canvas data-icon="control" aria-hidden="true"></canvas><span class="badge">built</span><span class="lbl">Control</span></a>
+    <a class="tile" href="design-factions.html"><canvas data-icon="factions" aria-hidden="true"></canvas><span class="badge">built</span><span class="lbl">Factions</span></a>
+    <a class="tile" href="design-world.html"><canvas data-icon="world" aria-hidden="true"></canvas><span class="badge">built</span><span class="lbl">World</span></a>
+    <a class="tile" href="design-crew.html"><canvas data-icon="crew" aria-hidden="true"></canvas><span class="badge">researched</span><span class="lbl">Crew</span></a>
+    <a class="tile" href="design-minds.html"><canvas data-icon="minds" aria-hidden="true"></canvas><span class="badge">designed</span><span class="lbl">Minds</span></a>
+    <a class="tile" href="design-exploration.html"><canvas data-icon="exploration" aria-hidden="true"></canvas><span class="badge">charted</span><span class="lbl">Exploration</span></a>
+    <a class="tile" href="design-bounty.html"><canvas data-icon="bounty" aria-hidden="true"></canvas><span class="badge">charted</span><span class="lbl">Bounty</span></a>
+    <a class="tile" href="design-activities.html"><canvas data-icon="activities" aria-hidden="true"></canvas><span class="badge">charted</span><span class="lbl">Activities</span></a>
+    <a class="tile" href="design-economy.html"><canvas data-icon="economy" aria-hidden="true"></canvas><span class="badge">charted</span><span class="lbl">Economy</span></a>
+    <a class="tile" href="design-parley.html"><canvas data-icon="parley" aria-hidden="true"></canvas><span class="badge">charted</span><span class="lbl">Parley</span></a>
+  </div>
+
+  <p class="sub" style="margin-top:1.4rem">One more thing worth saying once: everything in Openpiece — fruits,
+  ships, factions, islands — is <strong>data the engine reads</strong>, not code. That's the way moddable
+  games are built. No modding promises yet; just a door deliberately left framed.</p>
+</section>
+
+<footer>
+  <p class="notice">Openpiece is a non-commercial fan project inspired by Eiichiro Oda's One Piece. It is not
+  affiliated with, endorsed by, or connected to Eiichiro Oda, Shueisha, Toei Animation, or any rights holder.
+  All original characters, names, and materials from One Piece belong to their respective owners.</p>
+</footer>
+
+</main>
+<script src="site.js"></script>
+</body>
+</html>

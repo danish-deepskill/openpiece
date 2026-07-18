@@ -1,0 +1,303 @@
+/* ============ OPENPIECE community site — shared stylesheet ============
+   tokens = the game's own materials: sea-ink (ocean) · canvas cream (sails)
+   · plank (deck) · pennant red (bow flag) · streak teal (debug sea) */
+:root {
+  --ground: #f2ecdd; --panel: #e9e0c9; --ink: #1c2b36; --ink-soft: #51616b;
+  --wood: #8a5f33; --accent: #bf4438; --sea: #2273ad; --sea2: #1c5d92;
+  --hero-ink: #ffffff; --hero-sub: #dcecf7; --water: #2273ad; --foam: 255,255,255; --shallow: #6cc4d8; --sand: #e6d49a; --grove: #4f9e57;
+  --teal: #0d7a6c; --rule: #d5c9ab; --done: #2e7d4f;
+  --teal-ink: #0c6558; --accent-ink: #a93a2f; /* text-safe variants (AA on parchment) */
+  --gold: #b8860b; --gold-ink: #8a6508; --blue: #3f6ea5; --blue-ink: #33587f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #13222d; --panel: #1a2c39; --ink: #ece3cd; --ink-soft: #9fadad;
+    --wood: #b08347; --accent: #e2685a; --teal: #35e0c0; --rule: #2b4152;
+    --done: #5fc98a; --teal-ink: #35e0c0; --accent-ink: #e2685a;
+    --gold: #d4a63f; --gold-ink: #d4a63f; --blue: #7fb3e8; --blue-ink: #7fb3e8;
+    --sea: #0e1a23; --sea2: #16283a; --hero-ink: #f3e7c9; --hero-sub: #b9c6c6;
+    --water: #0e1a23; --foam: 236,231,201; --shallow: #1d3a4a; --sand: #7a6a4a; --grove: #2e5b3a;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #13222d; --panel: #1a2c39; --ink: #ece3cd; --ink-soft: #9fadad;
+  --wood: #b08347; --accent: #e2685a; --teal: #35e0c0; --rule: #2b4152;
+  --done: #5fc98a; --teal-ink: #35e0c0; --accent-ink: #e2685a;
+  --gold: #d4a63f; --gold-ink: #d4a63f; --blue: #7fb3e8; --blue-ink: #7fb3e8;
+  --sea: #0e1a23; --sea2: #16283a; --hero-ink: #f3e7c9; --hero-sub: #b9c6c6;
+  --water: #0e1a23; --foam: 236,231,201; --shallow: #1d3a4a; --sand: #7a6a4a; --grove: #2e5b3a;
+}
+:root[data-theme="light"] {
+  --ground: #f2ecdd; --panel: #e9e0c9; --ink: #1c2b36; --ink-soft: #51616b;
+  --wood: #8a5f33; --accent: #bf4438; --teal: #0d7a6c; --rule: #d5c9ab;
+  --done: #2e7d4f; --teal-ink: #0c6558; --accent-ink: #a93a2f;
+  --gold: #b8860b; --gold-ink: #8a6508; --blue: #3f6ea5; --blue-ink: #33587f;
+  --sea: #2273ad; --sea2: #1c5d92; --hero-ink: #ffffff; --hero-sub: #dcecf7;
+  --water: #2273ad; --foam: 255,255,255; --shallow: #6cc4d8; --sand: #e6d49a; --grove: #4f9e57;
+}
+* { box-sizing: border-box; }
+html { background: var(--sea); scroll-behavior: smooth; }
+body {
+  margin: 0; color: var(--ink);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.6;
+}
+h1, h2, h3 { font-family: "Palatino Linotype", "Iowan Old Style", "Book Antiqua", Georgia, serif; text-wrap: balance; }
+a { color: var(--accent-ink); }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.wrap { max-width: 52rem; margin: 0 auto; padding: 0 1.25rem; }
+/* the DEEP SEA: one fixed canvas under everything — the whole page floats on open water */
+.deepsea { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; }
+.topbar, .hero { position: relative; z-index: 1; }
+main.wrap {
+  position: relative; z-index: 1;
+  background: transparent; /* the PARCHMENT moves to ::before so it can be hole-punched (see the chart cutout) */
+  border: 3px solid var(--wood); border-radius: 6px;
+  margin: 1.6rem auto 3rem; padding: 0.4rem 1.6rem 2.2rem;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+}
+/* the parchment FILL as a maskable layer: opaque everywhere MINUS the chart rectangle, so the fixed
+   background sea (.deepsea, z-index 0, behind main.wrap) shows THROUGH the chart — one continuous ocean.
+   JS sets --hx/--hy/--hw/--hh to the chartbox's position; with no chart the hole is 0×0 (full parchment). */
+main.wrap::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: var(--ground); border-radius: 4px;
+  -webkit-mask: linear-gradient(#000, #000), linear-gradient(#000, #000);
+  -webkit-mask-position: 0 0, var(--hx, 0) var(--hy, 0);
+  -webkit-mask-size: 100% 100%, var(--hw, 0) var(--hh, 0);
+  -webkit-mask-repeat: no-repeat; -webkit-mask-composite: xor;
+  mask: linear-gradient(#000, #000), linear-gradient(#000, #000);
+  mask-position: 0 0, var(--hx, 0) var(--hy, 0);
+  mask-size: 100% 100%, var(--hw, 0) var(--hh, 0);
+  mask-repeat: no-repeat; mask-composite: exclude;
+}
+@media (max-width: 560px) { main.wrap { margin: 0.8rem 0.5rem 1.6rem; padding: 0.2rem 1rem 1.6rem; } }
+
+/* ============ THE TOPBAR — ship's-HUD navigation (always the night sea) ============ */
+.topbar {
+  background: var(--sea); border-bottom: 3px solid var(--wood);
+  position: sticky; top: 0; z-index: 10;
+}
+.topbar .bar {
+  max-width: 52rem; margin: 0 auto; padding: 0.55rem 1.25rem;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+}
+.brand {
+  font-family: "Palatino Linotype", Georgia, serif; font-weight: bold;
+  font-size: 1.15rem; letter-spacing: 0.04em; color: var(--hero-ink); text-decoration: none;
+}
+.brand .jr { color: #e2685a; } /* the pennant tip */
+.topbar nav { margin-left: auto; display: flex; gap: 0.25rem; }
+.topbar nav a {
+  font-family: Consolas, monospace; font-size: 0.8rem; letter-spacing: 0.1em;
+  text-transform: uppercase; text-decoration: none; color: var(--hero-sub);
+  padding: 0.35rem 0.65rem; border-radius: 3px; border-bottom: 2px solid transparent;
+}
+.topbar nav a:hover { color: var(--hero-ink); background: rgba(255,255,255,0.1); }
+.topbar nav a.on { color: var(--hero-ink); border-bottom-color: var(--accent); }
+.themebtn {
+  font-family: Consolas, monospace; font-size: 0.95rem; line-height: 1;
+  background: transparent; color: var(--hero-sub); border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 3px; padding: 0.3rem 0.5rem; cursor: pointer; margin-left: 0.35rem;
+}
+.themebtn:hover { color: var(--hero-ink); background: rgba(255,255,255,0.1); }
+
+/* ============ HERO (the night sea — deliberately single-theme) ============ */
+.hero { background: transparent; color: var(--hero-ink); overflow: hidden; border-bottom: 3px solid var(--wood); }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hero-inner { position: relative; z-index: 1; max-width: 52rem; margin: 0 auto; padding: 3.6rem 1.25rem 3.4rem; }
+.hero .flag {
+  font-family: Consolas, monospace; font-size: 0.72rem; letter-spacing: 0.24em;
+  text-transform: uppercase; color: #e2685a;
+}
+.hero h1 {
+  font-size: clamp(2.4rem, 7vw, 3.8rem); margin: 0.25rem 0 0.5rem; letter-spacing: 0;
+  color: var(--hero-ink); text-shadow: 0 2px 4px rgba(0,0,0,0.35);
+}
+.hero .lede { font-size: 1.125rem; color: var(--hero-sub); max-width: 56ch; margin: 0; }
+.hero .lede strong { color: var(--hero-ink); }
+.helm {
+  display: inline-block; margin-top: 1.3rem; font-family: Consolas, monospace; font-size: 0.8rem;
+  color: #35e0c0; border: 1px solid #2b4152; border-radius: 3px; padding: 0.45rem 0.75rem;
+  background: rgba(0,0,0,0.25); white-space: nowrap; max-width: 100%; overflow-x: auto;
+  box-shadow: 0 0 12px rgba(53,224,192,0.12); /* instrument glow */
+}
+@media (max-width: 420px) { .helm { font-size: 0.72rem; } }
+
+/* ============ prose & sections ============ */
+main section { margin: 3rem 0; }
+h2 { font-size: 1.75rem; margin: 0 0 0.35rem; }
+main h2::before { content: "⚑ "; color: var(--accent); font-family: inherit; } /* the pennant marker (their skull-banner trick, our flag) */
+.sub { color: var(--ink-soft); margin: 0 0 1rem; max-width: 62ch; }
+p { max-width: 64ch; }
+
+/* ============ stat cards (game-panel look) ============ */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.7rem; margin-top: 1.1rem; }
+.card {
+  background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--wood);
+  border-radius: 4px; padding: 0.75rem 0.9rem;
+}
+.card h3 { margin: 0 0 0.25rem; font-size: 1.02rem; }
+.card p { margin: 0; font-size: 0.9rem; color: var(--ink-soft); line-height: 1.5; }
+.grid .card.wide { grid-column: 1 / -1; }
+
+/* ============ THE SEA CHART (the gamified roadmap) ============ */
+/* A real HOLE cut through the parchment sheet: the chartbox has NO background of its own — the fixed
+   page-background sea (.deepsea, behind everything) shows THROUGH it, continuous with the water on the
+   sheet's sides. The parchment is painted on main.wrap's ::before layer, which is masked to leave this
+   rectangle transparent; JS keeps the mask aligned to the box as it moves/resizes. An inset shadow gives
+   the cut real depth (you're looking DOWN through the sheet to the ocean below). */
+.chartbox {
+  position: relative; background: transparent; overflow: visible;
+  height: 24rem; margin: 1.1rem 0 0; border-radius: 0; /* sharp rect — matches the mask cutout exactly */
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.35), inset 0 6px 22px rgba(0,0,0,0.5), inset 0 -3px 14px rgba(0,0,0,0.35);
+}
+@media (max-width: 560px) { .chartbox { height: 18rem; } }
+.chartbox canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.chartbox svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.node {
+  position: absolute; transform: translate(-50%, -50%); z-index: 2;
+  display: grid; justify-items: center; gap: 0.15rem;
+  text-decoration: none; text-align: center;
+}
+.node .isle {
+  width: 2.6rem; height: 1.9rem; background: var(--sand);
+  box-shadow: inset 0 0 0 100vmax transparent;
+  border-radius: 58% 42% 55% 45% / 55% 60% 40% 45%;
+  box-shadow: inset 0 -5px 0 rgba(0,0,0,0.3), 0 0 0 3px rgba(0,0,0,0.25), 0 0 14px rgba(212,166,63,0.3); /* lantern glow */
+}
+.node:nth-of-type(2n) .isle { border-radius: 45% 55% 40% 60% / 60% 45% 55% 40%; width: 2.3rem; }
+.node.big .isle { width: 3.3rem; height: 2.3rem; } /* the Grand Line — biggest landmass on the chart */
+.node.here .isle { background: #bf4438; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.3), 0 0 0 3px rgba(0,0,0,0.25), 0 0 18px rgba(226,104,90,0.45); }
+.node .tag {
+  font-family: Consolas, monospace; font-size: 0.66rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #8fb0ab;
+}
+.node .nm {
+  font-family: "Palatino Linotype", Georgia, serif; font-size: 0.92rem; color: #f3e7c9;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+}
+.node.here .tag { color: #e2685a; }
+.node:hover .isle, .node:focus-visible .isle { outline: 2px solid #35e0c0; outline-offset: 3px; }
+.ship { /* your ship, riding at the current island — information, always visible; only the bob is motion */
+  position: absolute; z-index: 3; width: 0; height: 0; transform: translate(-50%, -100%);
+  border-left: 0.4rem solid transparent; border-right: 0.4rem solid transparent;
+  border-bottom: 0.8rem solid #f3e7c9;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ship { animation: bob 3.2s ease-in-out infinite; }
+  @keyframes bob { 0%, 100% { transform: translate(-50%, -100%) rotate(-5deg); } 50% { transform: translate(-50%, -92%) rotate(5deg); } }
+}
+
+/* ============ quest-log panels (island details) ============ */
+.quest {
+  background: var(--panel); border: 1px solid var(--rule); border-left: 4px solid var(--wood);
+  border-radius: 4px; padding: 0.9rem 1.1rem; margin-top: 0.9rem;
+}
+.quest.here { border-left-color: var(--accent); }
+.quest .status {
+  font-family: Consolas, monospace; font-size: 0.75rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--teal-ink);
+}
+.quest.here .status { color: var(--accent-ink); }
+.quest h3 { margin: 0.1rem 0 0.3rem; font-size: 1.25rem; }
+.quest .q { color: var(--ink); font-style: italic; margin: 0.2rem 0 0.5rem; max-width: 60ch; }
+.quest ul { list-style: none; padding: 0; margin: 0.3rem 0 0; font-size: 0.93rem; max-width: 58ch; }
+.quest li { margin: 0.3rem 0; padding-left: 1.4rem; position: relative; color: var(--ink-soft); }
+.quest li::before { /* quest checkbox */
+  content: ""; position: absolute; left: 0; top: 0.28em; width: 0.72em; height: 0.72em;
+  border: 2px solid var(--wood); border-radius: 2px; background: transparent;
+}
+.quest li.done { color: var(--ink); }
+.quest li.done::before { background: var(--done); border-color: var(--done); }
+.quest li.done::after { content: "✓"; position: absolute; left: 0.12em; top: 0; font-size: 0.8em; color: var(--ground); font-weight: bold; }
+
+/* ============ gold CTA — ONE per page, tops (the lantern the eye should find) ============ */
+.btn {
+  display: inline-block; background: linear-gradient(180deg, #d4a63f, #b8860b);
+  color: #1c2b36; font-weight: 600; text-decoration: none;
+  padding: 0.55rem 1.1rem; border-radius: 4px; border: 1px solid #8a6508;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.25), 0 0 16px rgba(212,166,63,0.25);
+}
+.btn:hover { filter: brightness(1.06); }
+
+/* ============ THE MANIFEST (feature board — status badges are REAL repo states) ============ */
+.manifest { display: grid; gap: 0.6rem; margin-top: 1.1rem; }
+.feat {
+  background: var(--panel); border: 1px solid var(--rule); border-left: 4px solid var(--ink-soft);
+  border-radius: 4px; padding: 0.7rem 0.95rem;
+}
+.feat .row { display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap; }
+.feat h3 { margin: 0; font-size: 1.05rem; }
+.feat .badge {
+  margin-left: auto; font-family: Consolas, monospace; font-size: 0.72rem;
+  letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap;
+}
+.feat p { margin: 0.3rem 0 0; font-size: 0.92rem; color: var(--ink-soft); line-height: 1.5; max-width: 66ch; }
+/* status colors — one hue per lifecycle stage, borders + badges together */
+.s-shipped   { border-left-color: var(--done); }   .s-shipped .badge   { color: var(--done); }
+.s-building  { border-left-color: var(--gold); }   .s-building .badge  { color: var(--gold-ink); }
+.s-designed  { border-left-color: var(--teal); }   .s-designed .badge  { color: var(--teal-ink); }
+.s-researched{ border-left-color: var(--blue); }   .s-researched .badge{ color: var(--blue-ink); }
+.s-charted   { border-left-color: var(--ink-soft); } .s-charted .badge { color: var(--ink-soft); }
+.ladder {
+  font-family: Consolas, monospace; font-size: 0.78rem; color: var(--ink-soft);
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 3px;
+  padding: 0.5rem 0.8rem; display: inline-block; max-width: 100%; overflow-x: auto; white-space: nowrap;
+}
+
+/* ============ creeds / log / notice / footer ============ */
+.creed { border-left: 3px solid var(--wood); background: var(--panel); padding: 0.8rem 1rem; margin: 0.9rem 0; max-width: 62ch; }
+.creed b { display: block; font-family: "Palatino Linotype", Georgia, serif; margin-bottom: 0.15rem; }
+.creed span { color: var(--ink-soft); font-size: 0.95rem; }
+.log { display: grid; gap: 0.55rem; margin-top: 1rem; max-width: 62ch; }
+.entry { display: flex; gap: 0.8rem; align-items: baseline; }
+.entry time {
+  flex: none; font-family: Consolas, monospace; font-size: 0.72rem; letter-spacing: 0.08em;
+  color: var(--teal-ink); text-transform: uppercase; width: 5.2rem;
+}
+.entry p { margin: 0; font-size: 0.93rem; }
+.entry b { color: var(--ink); }
+.entry span { color: var(--ink-soft); }
+.notice {
+  border-top: 3px double var(--wood); padding-top: 1rem; margin-top: 3rem;
+  color: var(--ink-soft); font-size: 0.85rem; max-width: 64ch;
+}
+footer { padding: 0 0 3.5rem; }
+
+/* ============ THE PLAN — design-area tiles (framed panels, one page each) ============ */
+.tilegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 0.9rem; margin-top: 1.2rem; }
+.tile {
+  position: relative; display: grid; text-decoration: none; overflow: hidden;
+  background: var(--panel); border: 3px solid var(--wood); border-radius: 6px;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.2);
+}
+.tile:hover, .tile:focus-visible {
+  box-shadow: 0 0 16px rgba(212,166,63,0.4), 0 2px 0 rgba(0,0,0,0.2); /* lantern glow */
+  transform: translateY(-2px);
+}
+@media (prefers-reduced-motion: reduce) { .tile:hover, .tile:focus-visible { transform: none; } }
+.tile canvas { width: 100%; aspect-ratio: 1; display: block; background: var(--sea2); }
+.tile .lbl {
+  text-align: center; font-family: Consolas, monospace; font-size: 0.82rem;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink);
+  padding: 0.42rem 0.2rem; border-top: 3px solid var(--wood);
+}
+.tile .badge { /* the honest corner: the area's REAL lifecycle state, over the icon */
+  position: absolute; top: 0.35rem; right: 0.4rem; font-family: Consolas, monospace;
+  font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase;
+  background: rgba(0,0,0,0.5); color: #f3e7c9; padding: 0.12rem 0.35rem; border-radius: 2px;
+}
+
+/* ============ design pages (one area each) ============ */
+.crumb { font-family: Consolas, monospace; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; margin: 2.2rem 0 0; }
+.crumb a { text-decoration: none; }
+.dstat { font-family: Consolas, monospace; font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 1.2rem; }
+.stat-built { color: var(--done); } .stat-building { color: var(--gold-ink); }
+.stat-designed { color: var(--teal-ink); } .stat-researched { color: var(--blue-ink); }
+.stat-charted { color: var(--ink-soft); }
+main h3 { margin: 1.4rem 0 0.25rem; font-size: 1.1rem; }
+.dlist { padding-left: 1.15rem; max-width: 62ch; margin: 0.3rem 0 0; }
+.dlist li { margin: 0.35rem 0; color: var(--ink-soft); }
+.dlist b, .dlist strong { color: var(--ink); }

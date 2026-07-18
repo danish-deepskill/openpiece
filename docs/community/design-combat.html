@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Combat · Design — Openpiece</title>
+<link rel="stylesheet" href="style.css">
+<script>try{var t=localStorage.getItem('op-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+</head>
+<body>
+
+<canvas class="deepsea" data-sea aria-hidden="true"></canvas>
+
+<div class="topbar">
+  <div class="bar">
+    <a class="brand" href="index.html">OPENPIECE<span class="jr">▸</span></a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="design.html" class="on">Design</a>
+      <a href="about.html">About</a>
+      <a href="support.html">Support</a>
+    </nav>
+    <button class="themebtn" type="button" data-theme-toggle aria-label="Switch light / dark" title="Switch light / dark">◐</button>
+  </div>
+</div>
+
+<main class="wrap">
+
+<section>
+  <p class="crumb"><a href="design.html">← all design areas</a></p>
+  <h2>Combat</h2>
+  <p class="dstat stat-built">status: built — the core runs today; the full fight-feel is designed</p>
+
+  <p>Fighting is action, and it's honest: you move, you aim, you strike, you dodge — no dice rolling behind
+  your back, no fight you couldn't have read if you were watching closely. Reach matters. Position matters.
+  And every fighter in the world, you included, fights by exactly the same rules.</p>
+
+  <h3>In the game today</h3>
+  <p>Real-time melee and abilities with real reach and real openings — swords, guns, brawling, and Devil
+  Fruit techniques through one engine (see <a href="design-powers.html">Powers</a> for how they compose).
+  <b>Stamina already gates offense</b>: every swing, dodge, and sprint spends it, and it only refills when
+  you ease off — swing wild and you're spent in front of someone who isn't. Reach is honest and bodily:
+  it comes from your frame plus your weapon, so a Fishman's bare fist out-ranges a human's and a blade
+  adds its steel on top. Stances switch mid-fight. And what you see is what hits — the drawn fist
+  <em>is</em> the punch hitbox. Enemies fight back with genuinely different minds — a thug and a captain
+  are not the same opponent (see <a href="design-minds.html">Minds</a>).</p>
+
+  <h3>There are no bosses</h3>
+  <p>Deliberately. A "boss fight" is a scripted special case — an arena, phases, health-gated plot armor —
+  and this game refuses special cases on principle. The terrifying people of this sea are just
+  <em>people</em>: same engine, same rules, bands and Haki so far above yours that no script is needed
+  (see <a href="design-powers.html">Powers</a> for how far that gap goes). Which changes everything about
+  how you meet them: an Admiral isn't waiting in a room for you — he's somewhere real, doing something
+  real, and the fight happens wherever your bad luck arranges it. You can run from him. You can ambush
+  him. Ten years from now, you can <em>be</em> him. Even the monstrous war-forms that great battles can
+  spawn play by the engine's rules — nothing in this world fights outside them.</p>
+
+  <h3>The direction: telegraph and punish</h3>
+  <p>The designed fight-feel, next on the slipway — a duel of reads, not just reflexes:</p>
+  <ul class="dlist">
+    <li><b>Two bars, two games</b> — stamina gates offense (in the game now); <b>posture</b> gates
+      defense: block too much, get pressured too long, and your guard breaks open. Souls-style discipline
+      on the attack, Sekiro-style dueling at the guard.</li>
+    <li><b>The parry / block / feint triangle</b> — a timed <b>parry</b> turns an attack and spikes the
+      attacker's posture; a held <b>block</b> braces, but every hit you eat feeds your own break; a
+      <b>feint</b> sells a swing that never comes. And the best feints have no rhythm — because good
+      enemies learn yours (see <a href="design-minds.html">Minds</a>).</li>
+    <li><b>Telegraphs that teach</b> — dangerous attacks announce themselves with a colored cue that
+      <em>names its answer</em>: this one you parry, this one you dodge, this one you simply get out from
+      under. Deep combat stays learnable instead of memorized — the cue tells you what it wants; doing it
+      under pressure is the skill.</li>
+    <li><b>No stun-locks</b> — combo strings end by design (a finisher that launches and resets the
+      exchange), so nobody, including you, gets held in place and deleted. Fairness is a rule of the
+      engine, not a courtesy.</li>
+  </ul>
+  <p>And a word for the skeptics: this kind of depth reads <em>better</em> from above. The whole fight is
+  on screen at once — every windup, every flank, every escape route. Top-down isn't the compromise; it's
+  the vantage point.</p>
+
+  <h3>Further out</h3>
+  <ul class="dlist">
+    <li><b>Ranged, one substrate</b> — muskets, thrown steel, cannonballs, and fruit shots as one system.
+      Charted.</li>
+    <li><b>Elements</b> — fire, ice, lightning, rubber; matchups that work in combat and out in the world.
+      Charted.</li>
+  </ul>
+
+  <h3>The price of defeat</h3>
+  <p>An honest open question. Today the game uses a simple arcade respawn — a placeholder, not the plan.
+  What losing should really cost (wounds that heal slowly? captains carried off by their crew, Kenshi-style?)
+  is being decided together with the <a href="design-crew.html">Crew</a> design, because who drags you off
+  the field changes everything.</p>
+
+  <p><em>Skill should read the fight — not the stat sheet.</em></p>
+</section>
+
+<footer>
+  <p class="notice">Openpiece is a non-commercial fan project inspired by Eiichiro Oda's One Piece. It is not
+  affiliated with, endorsed by, or connected to Eiichiro Oda, Shueisha, Toei Animation, or any rights holder.
+  All original characters, names, and materials from One Piece belong to their respective owners.</p>
+</footer>
+
+</main>
+<script src="site.js"></script>
+</body>
+</html>
