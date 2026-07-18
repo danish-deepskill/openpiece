@@ -1,10 +1,12 @@
 # Power Tiers — Reference
 
-> **Stage:** designed — the 27-band power scale — built into combat stats/nameplates
+> **Stage:** designed — the 30-band power scale — built into combat stats/nameplates
 
-The single power scale, weakest `F-` → strongest `SSS+`. Every letter (F E D C B A S SS SSS) has three
-bands: `-`, base, `+` — 27 bands total. Tier is the dial that drives combat stats, nameplate color, and
-(per the tables below) **bounty minimum** and **sea region**.
+The single power scale, weakest `F-` → strongest `X+`. Every letter (F E D C B A S SS SSS X) has three
+bands: `-`, base, `+` — 30 bands total. `X` (indices 27–29) is the APEX band above the Yonko-class `SSS`
+— "beyond Imu", the secret endgame ceiling; it sits above the region/bounty charts below, which top out
+at `SSS+`. Tier is the dial that drives combat stats, nameplate color, and (per the tables below)
+**bounty minimum** and **sea region**.
 
 Designer source of truth. Code lives in `app/src/combat/PowerTier.ts`.
 
@@ -23,6 +25,7 @@ The `-`/`+` bands share their letter's color.
 | S   | red `#ff4d4d` |
 | SS  | orange `#ff8c1a` |
 | SSS | gold `#ffd24a` |
+| X   | apex cyan `#5ce1ff` |
 
 ## Sea regions
 

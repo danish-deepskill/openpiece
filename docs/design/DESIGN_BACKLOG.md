@@ -22,12 +22,53 @@ must answer, my current LEANS (marked — not canon until a pass lands them), an
    never a menu purchase that skips the world.
 6. **Engines over content volume.** A system must MULTIPLY existing defs (fruits × haki × terrain × factions),
    not demand hand-authoring per instance.
+7. **No bosses (2026-07-18, developer-stated).** The corollary of "no player-shaped special cases," applied
+   to enemies: no scripted boss encounters — no arenas, phase scripts, or health-gated plot armor. The
+   terrifying people of the sea are CHARACTERS on the one engine (tier bands + Haki + INT are what make an
+   Admiral an "Admiral fight"), which keeps possession, determinism, and multiplayer honest — you can flee
+   them, ambush them, or one day BE them. (Emergent war-forms — COMBAT.md's mesh giants — are events, not
+   scripts, and play by engine rules.) Any capture text that assumes bosses/dungeons as content anchors
+   (e.g. PROGRESSION.md's EXP tiers) is invalidated on this point and must be re-sourced by its pass.
+8. **Original cast in an inspired world (2026-07-18, developer-ratified).** No canon One Piece characters,
+   no retold canon plot, no scripted "story mode" — three grounds: moat #1 (a campaign is a script and
+   would need all the special-case machinery this engine refuses); the LEGAL line (systems vocabulary —
+   fruits/haki/Marines/Yonko — is shared genre language; reproducing cast + plot crosses from homage into
+   replication, and the free-fan-project posture depends on staying on this side); and scale (the sim
+   stages its OWN Marineford-class era sagas via the director — unspoiled, yours). The homage lives in
+   NICHE ECHOES: world-seed fills canon-shaped niches (the freezing admiral, the father-emperor, the lone
+   greatest swordsman) with ORIGINAL names and faces — players fluent in the source feel the rhymes.
+   "Story mode" translates to CHOSEN STARTS (#5's lean).
 
 Already-designed ledger (passes DONE, don't re-open casually): sailing model + skill bands (`SAILING.md`),
 ship classes as axes + upgrade law (`NAVAL.md`), seamless chunked sea (`WORLD.md` + `ARCHITECTURE_SCALE §5`),
 movement frames + transition rulebook (`features/movement-frames.md`), pathfinding stack (`PATHFINDING.md`),
 AI INT ladder (`ai/AI_INTELLIGENCE.md`), combat stamina/posture/parry direction (`COMBAT.md`),
 time/calendar/day-night substrate (#18 → `TIME.md`, evidence `docs/research/TIME_RESEARCH.md`).
+
+## The pass queue (2026-07-18 — the recommended order of the thinking)
+
+1. **#21 items & inventory — first, and soon.** Small pass, everything downstream: #1 (provisions), #7
+   (goods), #19 (ammo), and the 2026-07-18 decisions (rarity field, fruit vessels, blade grades) all need
+   `ItemDef` vocabulary. The argument that won #18 its early slot, re-won.
+2. **#1 crew — the named SAILING-grade pass, unchanged** — with one added duty: its loyalty / morale /
+   recruitment surface must be designed as the EMBRYO of #17 (the shipped-embryo pattern — today's
+   wander/alert FSM is the embryonic arbiter), so the later social pass generalizes it instead of
+   colliding with it.
+3. **#9 knowledge — jumped the queue.** The 2026-07-18 lean stacks draw checks on it from every side
+   (fruit/copy identification, the counter-matrix learned in-world, luck's paper-trail-via-news, "the
+   plate shows what your character knows", charts-as-items), and #1's navigator information axes feed
+   straight into it. Runs right after crew, possibly overlapping.
+4. **#6 bounty/heat — cheap promotion.** Already near pass-grade in this file; runs best on #9's heels
+   (witness/news propagation is shared machinery).
+5. **#4 + #5 together** (recorded: they define each other) — after the crew era, before Grand Line
+   content. Both arrive mostly pre-run by the 2026-07-18 lean stacks; the pass assembles and judges.
+6. **#8 the director** — after #9/#6 (it consumes news + knowledge machinery), now owing three new jobs:
+   luck-weighted sampling, era sagas (moat #8), staged context (the chase-distraction pattern).
+7. **#7 economy** — after #21 and #14's vocabulary (both exist now), ideally after #8 (traders react to
+   events).
+8. **Content-era passes when their eras arrive:** #10 world-gen (+ moat #8's niche echoes), #16, #19,
+   #11, #12; #3 waits on crew by design; #13 stays deferred; #20 is content-triggered. Audio still needs
+   a line someday; it is nobody's #1.
 
 ---
 
@@ -45,7 +86,9 @@ beaten honorably, shared dream) and each recruit carries a personal goal (a cont
 pull); jobs v1 = stations + a tiny priority list, NOT full RimWorld work tabs; idle-life animations are
 cheap and carry the whole alive-ship feel.
 **Pass when:** sailing core lands (it defines the stations) + crew-follow pathfinding slice. **This is the
-next SAILING-grade pass.**
+next SAILING-grade pass.** Added duty (2026-07-18, the queue): design the loyalty/morale/recruitment
+surface as the EMBRYO of #17 — the social pass must be able to generalize it, not fight it. #21 (items)
+runs first — provisions need its vocabulary.
 
 ## 2. Needs-lite — provisions, fatigue, morale (inside the crew pass)
 **Moat:** needs exist to CREATE JOBS AND STORIES, not chore bars. The cheap version (hunger/thirst meters
@@ -88,6 +131,53 @@ cannot touch, conqueror is a LEGEND threshold (you don't train it; you become it
 axis: crafted, shipwright-adjacent, maintainable — the Franky path for players who want power without RNG
 fruit luck. The COUNTER-MATRIX (armament>logia, observation>feints, conqueror>fodder) ships as DATA and as
 in-world KNOWLEDGE — you learn it from the world, not a wiki (moat test #2).
+**Lean (2026-07-18, developer decision) — ARTIFICIAL fruits solve density vs scarcity.** TRUE fruits stay
+canon-scarce (one per kind in the world, rebirth on the eater's death, awakening-capable) — but MOST fruit
+users in the world carry ARTIFICIAL copies (the science axis's crown work): deliberately inferior — reduced
+magnitudes, a PARTIAL ability kit, and NO awakening, ever. One def family with a grade flag, never a second
+engine (an artificial Gomu is the same rows, weaker numbers, fewer of them). COPY QUALITY VARIES BY MAKER
+(2026-07-18 addendum — the craft-quality law: wherever a thing is MADE, the maker's skill is a quality
+axis): a masterwork copy from a great lab approaches-but-never-reaches the true fruit; a back-alley copy
+is weak or dangerously defective (canon's Vegapunk-dragon vs SMILE split) — which deepens the underworld
+trade (WHAT grade of copy, and who vouches?). FRUIT INEQUALITY (2026-07-18) decomposes into three
+mechanisms, never one "stronger" scalar: (a) MAGNITUDE SIBLINGS (Kilo→Ton — same ability rows via parent
+inheritance, bigger numbers; honest because fruits are FOUND, not chosen off a menu — and the weaker
+sibling's user hearing the stronger one re-manifested is a sim-generated quest); (b) ELEMENTAL DOMINANCE
+(Mera<Magu — DIRECTIONAL matchup in #16's ladder, not global rank: magma beats fire, the sea still beats
+magma); (c) FAMILY SCARCITY (Zoan→Ancient→Mythical — sub-family tags, power correlated with kind-scarcity).
+No "god class": the apex is INDIVIDUAL NAMED singleton fruits (era-defining, tied to X-band holders) —
+apex as content-with-names, the Supreme-Grade-blade pattern. One-fruit-for-life makes inequality poignant
+not purchasable: your road up is MASTERY/awakening of what fate handed you. What it buys: a sea full of
+fruit powers without cheapening the true fruit (meeting a full-kit user MEANS something — you're facing the
+real one); copies as tradeable goods for #7/#6's underworld; and "is this fruit real?" as a purchasable
+answer in #9's knowledge economy. The true fruit becomes a hunt-worthy apex item precisely BECAUSE the copy
+exists.
+**Lean (2026-07-18, sharpened in discussion) — RARITY exists as a standard def field; the ONE forbidden
+wire is label→power.** `rarity: common | uncommon | rare | epic | legendary | mythical | divine` on defs
+(the developer's ladder — all adjectives, deliberately). The cross-domain dial for spawn frequency
+(world-gen), price (#7), and newsworthiness. `mythical` = world-tracked SINGLETONS (true fruits, Supreme
+blades): one-of-a-kind, the world knows it — but the world holds a few DOZEN such artifacts. `divine` =
+the WORLD-AXIS handful (1–5 per world): era-defining objects entangled with X-band holders — the apex
+fruit, the world's one greatest blade; the director treats their movement as ERA events, not news items.
+This lands the earlier "god fruit" instinct honestly: "god fruit" is the STREET NAME for a divine-rarity
+fruit (fiction-side vocabulary, like "Mythical Zoan"), never a fruit class or field value. (NB: "Mythical
+Zoan" the fruit FAMILY is a fiction-side name on a different axis — such fruits usually carry `mythical`
+rarity, but family label ≠ rarity field.) The guard that
+survives from the original refusal: the field NEVER grants stats (no +X%-because-rare; power lives on the
+thing itself, so rarity↔strength correlation is EARNED in-fiction — a master forged it, the family is
+potent), and no second color spine (tier bands own the colors), with rarity EXPRESSED per domain in its native vocabulary — weapons = the FIVE-STEP
+GRADE ladder (2026-07-18, developer-chosen): **Ungraded → Graded → Skillful → Great → Supreme** (canon's
+Wazamono shape with an honest floor). Grade is an IN-WORLD INSTITUTION, not a drop property: the upper
+lists are FINITE AND NAMED (canon's counts — ~12 Supreme / 21 Great / 50 Skillful — adopt the pattern, tune
+the numbers), so Supreme/Great blades are world-tracked uniques exactly like true fruits; grading is an ACT
+(appraisers recognize a blade — which gives the smith career its endgame: forge your way ONTO the Skillful
+list); and fame is the price (a Supreme blade on your hip is a theft target and a walking bounty poster).
+GUARD: this ladder is the WEAPON domain's native scale only — stamping it onto fruits/styles/science
+rebuilds the refused color ladder in a kimono; each domain keeps its own vocabulary; fruits = kind-scarcity (artificial
+copies the common rung, true fruits one-per-kind; Logia rarer than Paramecia, Mythical Zoan the apex);
+science = ACCESS-rarity (schematic + materials + the one engineer — #9's knowledge economy); styles =
+TEACHER-rarity (who teaches it, whether they'll teach YOU). The label never grants power; the world's
+scarcity does.
 **Lean (2026-07) — the roster IS a substrate roadmap.** Pick the first ~12 fruits for MECHANICAL
 ORTHOGONALITY, one new engine substrate each, so fruits 13–50 become def rows: Gomu (shipped — reach +
 self-impulse) · Mera/Doku (persistent TILE state, #16) · Hie (runtime walkability rewrite) · Bari (player-
@@ -96,6 +186,51 @@ authored geometry → repath stress) · Doa (portals as content, PATHFINDING L2)
 (summons under a command scope) · Ito (control-writer theft — the Moat weaponized). Abilities are CHANNEL
 composites (entity / body-continuous / world-tile) — the AI side needs only role tags + a targeting kind
 (AI_FOUNDATION §12.3b), never per-fruit brains.
+**Lean (2026-07-18) — DEPTH RIVALS BREADTH, by falsifiable promise.** Layer-count ≠ power. Mechanisms:
+capped capability SPLITS across layers (mono-masters reach band-ceiling verbs hybrids never see); HAKI is
+the equalizer (open to all, adversity-gated, UNCAPPED by layer count — Roger = sword + all three hakis at
+the ceiling, Conqueror-coated steel as the apex depth technique); a fruit adds power AND attack surface
+(sea, sea-stone, dominance tags — the pure master presents fewer exploitable tags). THE CANON TEST as
+requirement: "the world's strongest swordsman holds no fruit" (Mihawk/Roger topology) must be PRODUCIBLE
+by the engine — if a fruitless master can't reach the apex, the balance failed. THE INVERSE GUARD (same
+date — why "everyone just masters haki" doesn't dominate): HAKI IS A MULTIPLIER, NOT A BASE — it needs a
+discipline to express through (coated nothing is nothing; Roger = supreme SWORDSMANSHIP × supreme haki,
+never haki alone); the road to haki runs THROUGH the layers (adversity-gated training must be SURVIVED —
+your fruit/blade/style is the survival vehicle; the haki-only purist dies in the fight that would have
+taught them); open-to-all ≠ reached-by-all (the haki population is a PYRAMID — Conqueror a threshold,
+advanced tiers era-legend; a fruit pays out the day you eat it — real time-to-power economics); and at
+the apex haki CANCELS (both sides coated + foresighted = entry fee, not edge) so layers differentiate
+again — and layers own the VERBS (mobility, weather, terrain, doors) haki never grants. Haki: necessary
+at the top, sufficient nowhere. THE FLOOR/CEILING LAW (same date — "does a second layer add raw power?"
+YES, honestly): a fruit RAISES THE FLOOR and buys TEMPO (day-one payout, tier acceleration — WHY fruits
+command their prices; denying this would falsify the fruit economy), but never the CEILING (top bands
+unlock nonlinearly; haki multiplies the BASE, and a deep base out-multiplies shallow-base-plus-flat-grant)
+— and the raw advantage is PURCHASED with attack surface (sea/sea-stone/dominance tags). Equal TIER
+already normalizes the comparison: the dual-layer S arrived sooner and shallower, the mono S later and
+deeper — same total, different shape. APEX STACKING (same date — "eat Seiryu AND hold Yoru?") is LEGAL,
+PRICED, SELF-GATING: multi-layer apex builds are canon-correct (Kaido = fruit + weapon + haki — the
+design SHOULD produce a Yonko when someone pays Yonko costs); artifacts multiply mastery, never replace
+it (Yoru at a nobody's blade-depth is expensive iron; Kaido's unbreakable scales were fruit × HIS
+mastery); and acquisition is the first gate — divine/mythical artifacts sit in apex hands, so assembling
+the stacked build is a SAGA against era-powers (world-tracked artifacts also make the assembler the most
+hunted person alive). Tools never substitute for mastery — they multiply it.
+**Lean (2026-07-18) — FRUIT VESSELS: fruits can be fed to OBJECTS (science-gated technique).** The object
+IS the eater (occupies the fruit's one-body slot); the wielder gets the abilities THROUGH the item —
+still swims, may still eat their own fruit. The honest trade-off: an eaten fruit can never be taken; a
+fruit-WEAPON leaves with the weapon (disarm/theft/loot = the only fruit-power transfer without a death) —
+making fruit-vessels the most contested objects afloat (legendary/mythical rarity by nature). Zoan
+vessels gain a WILL (semi-autonomous — near-unit behavior). The CRAFTING technique is guarded science
+knowledge (#9), rarer than any single vessel.
+**Lean (2026-07-18) — HYBRID BUILDS are free; synergy techniques are the reward.** Multi-layer fighters
+(Kaku: Zoan + two-sword style; Chopper: fruit + style + science) cost the engine NOTHING — layers are
+grant sources into one pool, so no combination needs code, and no exclusivity rules exist. What LIMITS
+stacking is costs, never locks: capped use-based growth (breadth vs depth = identity, #5), one-fruit-for-
+life, adversity-gated haki, cyborg-frame-as-body, finite loadout slots. Haki integrates ONCE with the
+engine, never per-style: armament is a tagged coating on ANY strike (kick/blade/cyborg fist/fruit limb) —
+the tag bypasses `logia.intangible` wherever it lands; advanced haki = higher-tier rows of the same
+(emission, future-sight), still layer-generic. CROSS-LAYER SYNERGY TECHNIQUES = ability rows gated on TAG
+COMBINATIONS (Kaku's giraffe-Rankyaku requires zoan-tag + blade-style-tag) — pure data, and knowledge-
+economy content: rare techniques for rare combinations, learned in-world.
 **Pass when:** after the crew era, before Grand Line content (fruits are the tier-2 power spike).
 
 ## 5. Progression that isn't cheap (the pass over PROGRESSION.md)
@@ -107,6 +242,58 @@ capped so you can't max everything: identity through specialization), KNOWLEDGE 
 LEARNED from teachers/books/observation, never leveled; the INT-ladder's player mirror), LEGEND (bounty/fame —
 social power: fear, recruits, marine response, doors that open). Tiers (F→Yonko) DERIVE from the three, no
 tier is bought. SAILING's skill-band rule generalizes: capabilities unlock at band edges, numbers grow within.
+**World-ledger growth (the "world levels too" question, given its shape — 2026-07-18):** NPCs grow by the
+SAME three currencies, sim-TIERED like everything else (#14): near = the real systems ticking (you can
+literally watch the drills), far = a coarse growth tick computed from the same data (ambition, INT, duties,
+training access). The two paths must RECONCILE — the follow test's long form: tail one marine for three
+in-game years and the life you watched must land where the ledger would have put him (seeded determinism
+makes that provable, not hoped). And not everyone climbs: ambition-as-data seeds a few RISERS per region
+(the Supernova pattern) — most townsfolk stay townsfolk, which is realism, perf, AND drama; #6's nemesis
+wants exactly a rival who rose while you did.
+**Lean (2026-07-18) — CHOSEN STARTS answer both "story mode" and creation-time class (moat #8's
+translation).** New game = pick an ORIGIN, Kenshi-shape: dockside orphan / marine recruit / disgraced
+noble / freed captive / shipwreck survivor / … — each a shaped opening SITUATION (location, standing,
+gear, relationships, a pull — never a quest script; the pull is a situation the sim maintains, not a
+storyline). This also replaces the capture's weapon-class-at-creation (contradiction note #2): starts
+grant CIRCUMSTANCES; class-identity comes later, from use. Ten starts, zero scripts — and the missing
+"first screen" design (the earlier gap sweep) now has its shape.
+**Lean (2026-07-18) — the capture's three-bucket scheme: taxonomy survives, "Points" die.** Three growth
+FAMILIES are the right skeleton; the points mechanism (generic currency earned anywhere, spent anywhere)
+IS the universal XP bar the moat refuses. One substitution everywhere: TRACKS THAT GROW BY THEIR OWN
+EXERCISE, no spend step. Verdicts: HAKI points already dead (adversity-driven tracks, settled in #4);
+ATTRIBUTES grow by living (exertion→endurance, hits→toughness, resisting fear→will), with LUCK innate
+(settled) and SPIRITUAL needing a job to survive — PROPOSED: Willpower = mental RESISTANCE (fear/CC/
+posture recovery) vs Spiritual = the HAKI WELLSPRING (capacity/recovery of the haki resource the three
+tracks draw on) — without a distinct job, Spiritual is a similar-but-separated cut; SKILLS use-based and
+capped (correct already) but the table must include SAILING (bands are canon — the model row) and likely
+the COMBAT lines (Blades/Guns/Brawling — one law, one table, one cap policy for fishing AND
+swordsmanship).
+**Lean (2026-07-18) — LUCK is real, and it acts on the WORLD, never in the DUEL.** The Buggy decomposition:
+half his "luck" is EMERGENT from systems we have — legend/power divergence compounding through news,
+followers, and org misattribution (#6's "delicious when wrong"; Buggy is the PROOF CASE — if the sim can't
+generate a Buggy, the divergence isn't brave enough). The other half is the LUCK STAT: a WEIGHT on the
+event director + encounter/windfall sampling (what washes ashore near you, who docks today, whether your
+disaster is the survivable kind) — implemented as bias on the SEEDED streams: deterministic, replay-safe,
+no dice behind anyone's back. HARD REFUSAL: luck never rolls in combat (no crits, no lucky dodges —
+combat honesty is a moat; a mid-fight "lucky break" is the DIRECTOR staging context, never the resolution
+layer). Luck grants OPPORTUNITY, never outcome — it hands you the story; surviving it is still you.
+Growth: innate (born/trait/race — "the sea favors some"), not use-trained; whether it stays one of the six
+attributes is this pass's call, now with a defined job. JOURNEY GUARDS (same date): LOW luck = the world's
+INDIFFERENCE, never targeted malice (no favor, cruel TIMING texture — but no doom spawns; the director
+never hunts anyone) — the F− career is the DELIBERATE game (knowledge/work/mastery/legend are all
+luck-independent: harder tempo, same ceiling); HIGH luck = the STORY-FLOOD (opportunity above your band,
+faster than wisdom — over-gifting is the danger: windfalls paint unearned bullseyes, and the legend system
+misreads coincidence as competence); and luck is SOCIAL — superstitious sailors follow visibly lucky
+captains, so luck feeds legend/recruitment on its own. Same duel, same fight, always: luck waits outside
+the circle. THE SAMPLE/DECIDE LAW (same date, from boundary cases): luck biases what the world SAMPLES
+(hazard-phase alignment at your arrival, encounter/windfall tables, event scheduling, vacancy/audition
+TIMING), never what its systems DECIDE (a commodore's pursue-vs-recall scoring, promotions — which run on
+reports, and doing nothing files none — relations, combat resolution: all luck-proof; luck reaching into
+another brain's scoring = hidden puppeteer, refused). Tracked singletons: luck picks among PLAUSIBLE
+worlds, never edits history (a divine fruit rests where its causal chain left it; luck weights which
+plausible resting place is near YOUR route). Corollary — every lucky break has a PAPER TRAIL (the recall
+order, the sunk ship, the vacancy): an inspectable cause, discoverable via news, so fortune reads as the
+world breaking your way, never the game cheating.
 **Pass when:** with #4 (they define each other).
 
 ## 6. Bounty, HEAT, witnesses & news — reputation with teeth (+ Nemesis rivals)
@@ -253,7 +440,12 @@ your base, or arrange your rival's disgrace.
 **Duties as jobs:** patrol/inspection/raid/escort are the JOB SYSTEM (#1's work model) running on org
 assets — a patrol is a standing order, an inspection is heat's sensor, an escort is #7's economy made
 raidable. Player-as-marine = the same duties as missions; player-as-pirate = those duties are the living
-opposition.
+opposition. And the org door swings both ways for CREWS (2026-07-18 sharpening): a pirate crew is an
+`OrgDef` row like any other, so the player can SIGN ON under an NPC captain — the captain's orders land on
+you as duties (#1's job model), compliance is WATCHED through the same sensors that watch any subordinate,
+and refusal is read by the loyalty/morale + social machinery (#1/#17) that already powers mutiny: the
+captain's trust of you is one ledger, the crew's collective morale (defiance is contagious) is another.
+Enlist-and-climb, pirate-flavored — the rise can START on someone else's deck.
 **Generalizes:** pirate crews (captain/first mate/quartermaster), Cipher Pol, kingdoms — all OrgDef rows on
 one engine. The Marines are just the biggest org.
 **Hard questions:** the rank ladder's granularity (canon has ~12 ranks — how many MATTER mechanically);
@@ -495,3 +687,22 @@ noise — currents are GEOGRAPHY, not weather (elevate this maxim into SAILING.m
 Line-shaped region) — the field is deliberately chunk-independent, so #14 is NOT a real dependency (the
 review caught the false bundling: both merely smelled like "big world"). An authored strait between today's
 two islands could ship on the current architecture.
+
+## 21. Items & inventory — the substrate half the passes assume (2026-07-18)
+**Moat:** not itself a moat but a SUBSTRATE (the #18 TIME situation repeated): the rarity field (#4) needs
+an `ItemDef` to live on; #7 trades goods; #2 consumes provisions; #19 counts powder and shot; #3's enemies
+loot a downed body; #9's charts are ITEMS; #11 assembles parts; #4's fruit VESSELS are items with grant
+lists, and graded/named blades are item IDENTITY. Cheap version refused: a generic loot-table + rarity-color
+inventory screen.
+**The shape (lean):** an `ItemDef` family (Registry, Definition-vs-Instance canon) with a TWO-TIER model —
+FUNGIBLE COMMONS (def + count; a barrel of salt fish) vs TRACKED UNIQUES (instance ENTITIES with provenance
+history — named blades, true fruits, fruit vessels: `mythical`+ rarity implies instance-tracking, which is
+what "world-tracked" MEANS mechanically). Items can carry GRANTS (the Clima-Tact/vessel pattern — an item
+is a grant source like any layer). Containers: body/pack/ship hold/warehouse as a uniform containment
+relation; equipment slots reconcile with `bodies.ts`.
+**Hard questions:** where exactly the commons/tracked boundary sits (does an `epic` blade get an instance?);
+ownership & theft semantics (stolen goods as HEAT sensors — ties #6; fencing ties the underworld);
+degradation/upkeep (ships already wear — do blades?); how far equipment slots go (armor? trinkets? the
+Combat Potentials "posters" already exist as modifier bundles).
+**Pass when:** EARLY — before #1 (provisions), #7 (goods), and #19 (ammo) need its vocabulary; lightweight
+to design, load-bearing to get right (same argument that won #18 its early pass).

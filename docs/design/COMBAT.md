@@ -74,6 +74,12 @@ The depth that separates "deep" from "spammy" (see `REFERENCES.md` S#2, A#8, A#1
 map aerials/uppercuts/jump-over telegraphs to **ground-plane states** (knockdown/ragdoll; dodge/reposition prompts).
 
 ## Bosses
+> **⚠ Contradicted (2026-07-18) by moat test #7 — NO BOSSES:** scripted boss encounters and guaranteed
+> first-kill ability drops are refused. What survives: **mesh-form giants** (event-emergent from War
+> events, playing by engine rules), and "where you test the full build" re-sources to high-tier
+> CHARACTERS met in the world (an Admiral is an "Admiral fight" via tier bands + Haki + INT, no script).
+> Ability rewards re-source per PROGRESSION.md's same-dated contradiction note.
+
 Where you test the full build. Each boss has a unique ability drop (first kill guaranteed). **Mesh-form
 bosses** (multiple enemies combine into a giant) emerge in War events.
 

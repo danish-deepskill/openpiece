@@ -1,6 +1,15 @@
 # Progression, Classes & Character (Design)
 
 > **Stage:** capture — vision capture — the progression pass will judge it
+>
+> **⚠ Contradicted since capture (2026-07-18 — the #5 pass must resolve, not inherit):**
+> 1. **"Bosses" and "dungeons" as EXP/ability sources** (EXP tiers; "bosses — guaranteed first-kill") —
+>    invalidated by the NO-BOSSES moat (backlog moat test #7). Re-source these rewards from world events,
+>    org duties, and high-tier CHARACTERS.
+> 2. **"Weapon class chosen at creation"** — in tension with backlog #5's lean (identity from use-based
+>    growth, not a creation menu). The pass decides: starting flavor vs no creation-time class at all.
+> 3. **Spendable stat points** vs grow-by-use — the already-listed reconciliation question; #5's
+>    three-currencies lean (capability / knowledge / legend) is the operative direction until judged.
 
 Fully **non-linear**: grow by doing. No global level gate; you invest in any mix and **cannot max everything**.
 
