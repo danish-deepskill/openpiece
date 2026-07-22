@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulation · Design · Openpiece</title>
+<link rel="stylesheet" href="style.css">
+<script>try{var t=localStorage.getItem('op-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+</head>
+<body>
+
+<canvas class="deepsea" data-sea aria-hidden="true"></canvas>
+
+<div class="topbar">
+  <div class="bar">
+    <a class="brand" href="index.html">OPENPIECE<span class="jr">▸</span></a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="design.html" class="on">Design</a>
+      <a href="about.html">About</a>
+      <a href="support.html">Support</a>
+    </nav>
+    <button class="themebtn" type="button" data-theme-toggle aria-label="Switch light / dark" title="Switch light / dark">◐</button>
+  </div>
+</div>
+
+<main class="wrap">
+
+<section>
+  <p class="crumb"><a href="design.html">← all design areas</a></p>
+  <h2>Simulation</h2>
+  <p class="dstat stat-built">status: built, the deterministic engine runs and is test-proven; the seamless sea is designed</p>
+
+  <p>Every game calls itself "deeply simulated." This page is what we actually mean by it, and how you
+  could check us.</p>
+
+  <div class="pull">The world is arithmetic that never stops, and the pretty part you see is just
+  <b>the arithmetic standing up</b>.</div>
+
+  <h3>The world runs at resolutions, not on rails</h3>
+  <p>Nothing far away ever pauses; it runs at lower <em>resolution</em>. Near you, every swing and
+  footstep is computed in full. A sea away, a trading ship isn't animated wave by wave: she is a
+  departure, a heading, and an arrival the world has already scheduled, one line of math evaluated only
+  when someone asks. A thousand distant voyages cost about as much as a timetable, because that's what
+  they are. A railway doesn't animate its trains; it runs on a timetable, and wheels and steam exist
+  wherever someone stands on a platform. You are the platform.</p>
+
+  <h3>The bread counter</h3>
+  <p>Watch a baker's stall holding ten loaves, sail away for a day, come back. You won't see "the same
+  ten" (frozen), and you won't see a refilled template (the theme-park chest). You'll see what the
+  town's ledger honestly says: four loaves, because you returned at dusk after the buying hours, or
+  twenty, because the morning batch just landed. The town traded while you were gone, as cheap
+  arithmetic on its market ledger, and your own fingerprints persist in it: buy three loaves before
+  leaving and everything downstream starts from seven. Leaving town doesn't freeze it or reset it. It
+  just stops the rendering. The arithmetic never left.</p>
+
+  <h3>Same seed, same world</h3>
+  <p>The whole simulation is deterministic: same starting seed, same decisions, same world, every time,
+  proven by automated replay tests (hundreds of them run on every change). This is the receipt behind
+  every promise on this site. "The world runs without you" isn't a vibe, it's an assertion a test can
+  check: the ship that sailed unwatched arrives at the same port, at the same time, with the same
+  cargo, as the ship that sailed watched. And nothing rerolls when you look twice: revisiting a shop
+  doesn't re-randomize its stock, because observation renders the world, it never rolls it.</p>
+
+  <h3>Nothing is scripted</h3>
+  <p>There are no quest rails, no boss scripts, no invisible director forcing outcomes. Situations come
+  from systems: the ambush you sailed into was a real crew with a real grudge and a real route (see
+  <a href="design-story.html">Story</a> for what that does to storytelling, and
+  <a href="design-combat.html">Combat</a> for why even the terrifying fights are unscripted). The event
+  director exists, but it aims the world's weather; it never fakes the physics.</p>
+
+  <h3>Nothing is lost, either</h3>
+  <p>Unloading is never deletion; it's compression, and the world has exactly four tricks:</p>
+  <div class="chips">
+    <span class="chip">terrain → a seed</span>
+    <span class="chip">changes → deltas</span>
+    <span class="chip cool">lives → ledgers</span>
+    <span class="chip hot">timers → timestamps</span>
+  </div>
+  <p>The tree you felled and the powder you dropped are small recorded differences. The dropped loot
+  that rots after three days "expires" via one subtraction when anyone next arrives. Four file formats,
+  and the world loses nothing in any of them.</p>
+
+  <h3>And you're not special to it</h3>
+  <p>The simulation doesn't know which character is yours. Same rules, same growth, same death, same
+  gossip about you as about anyone (see <a href="design-control.html">Control</a>). The camera follows
+  you; the world doesn't.</p>
+
+  <h3>Where it stands</h3>
+  <p>The deterministic engine, the seeded randomness, the fixed timestep, and the replay proofs are
+  built and running today; they've been the foundation since the first commit. The seamless
+  chunk-streamed sea with its full resolution ladder is designed and in final review; the machinery
+  above is how it will breathe. The living content that rides on all this has its own page:
+  <a href="design-world.html">World</a>.</p>
+
+  <p><em>A simulated world is a promise. Determinism is the receipt.</em></p>
+</section>
+
+<footer>
+  <p class="notice">Openpiece is a non-commercial fan project inspired by Eiichiro Oda's One Piece. It is not
+  affiliated with, endorsed by, or connected to Eiichiro Oda, Shueisha, Toei Animation, or any rights holder.
+  All original characters, names, and materials from One Piece belong to their respective owners.</p>
+</footer>
+
+</main>
+<script src="site.js"></script>
+</body>
+</html>

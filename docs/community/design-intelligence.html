@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Minds · Design — Openpiece</title>
+<title>Intelligence · Design · Openpiece</title>
 <link rel="stylesheet" href="style.css">
 <script>try{var t=localStorage.getItem('op-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 </head>
@@ -29,28 +29,55 @@
 
 <section>
   <p class="crumb"><a href="design.html">← all design areas</a></p>
-  <h2>Minds</h2>
-  <p class="dstat stat-designed">status: designed — the intelligence ladder is on paper; basic minds run today</p>
+  <h2>Intelligence</h2>
+  <p class="dstat stat-designed">status: designed, the intelligence ladder is on paper; basic minds run today</p>
 
   <p>Every enemy runs on the same brain. What differs is how much of it they're allowed to use. A dockside
-  thug and a marine captain aren't different code — they're different <em>minds</em>: one rushes you in a
+  thug and a marine captain aren't different code, they're different <em>minds</em>: one rushes you in a
   straight line, the other keeps his reach, feints, cuts off your escape, and counters the trick that
   worked on the last three men.</p>
 
+  <div class="pull">No wallhacks. No aimbots. If a captain finds you, it's because <b>someone saw
+  you</b>, or he guessed well.</div>
+
   <h3>The intelligence ladder</h3>
-  <p>Smarts as a dial from 1 to 10, set per character as data. Low rungs are honest about being dumb —
-  slow to react, easy to bait. High rungs earn their reputation: they read your patterns, reposition, and
-  make you solve a new problem every few seconds. Rank should be a warning label you learn to respect.</p>
+  <p>Smarts is a dial from 1 to 10, set per character as data. Climb it and watch the same fight change
+  species:</p>
+  <div class="rungs">
+    <div class="rung"><i>1–2</i>fodder<br>rushes straight,<br>swings at air</div>
+    <div class="rung"><i>3–4</i>thug<br>blocks sometimes,<br>baited easily</div>
+    <div class="rung"><i>5–6</i>soldier<br>keeps reach,<br>uses his squad</div>
+    <div class="rung"><i>7–8</i>captain<br>feints, flanks,<br>cuts escapes</div>
+    <div class="rung top"><i>9–10</i>ace<br>reads your habits,<br>punishes the rhythm</div>
+  </div>
+  <p class="sub">Rank is a warning label you learn to respect.</p>
 
-  <h3>Fair minds only</h3>
-  <p>AI reads the world through the same senses you do — vision cones, hearing, the dark of night. No
-  wallhacks, no aimbots, no knowing where you are because the computer says so. If a captain finds you,
-  it's because someone saw you, or he guessed well.</p>
+  <h3>The same swing, three fighters</h3>
+  <p>What a rung actually buys, watching one attack land on three defenders:</p>
+  <div class="grid">
+    <div class="card"><h3>The recruit</h3><p>Sees the swing late. Gets his guard up clumsily or eats it.
+      Blocks whatever comes, because blocking is all he knows.</p></div>
+    <div class="card"><h3>The veteran</h3><p>Reads the windup early. Knows this one wants a parry, not a
+      block. Steps his dodge to the safe side.</p></div>
+    <div class="card"><h3>The ace</h3><p>Reads the <em>feint</em>. Your fake windup doesn't move him. And
+      the third time you try your favorite trick, he's already where the real swing lands.</p></div>
+  </div>
 
-  <h3>The gym</h3>
-  <p>Behind the scenes, minds are tuned the way fighters are: in a training ring. An offline scenario league
-  pits intelligence tiers against each other until "a 7 beats a 4" is a measured fact, not a hope — so the
-  difficulty you feel is calibrated, not accidental.</p>
+  <div class="creed"><b>Fair minds only.</b><span>AI reads the world through the same senses you do:
+  vision cones, hearing, the dark of night. Feint with no rhythm and you beat the ace honestly. That's
+  the whole duel, in both directions.</span></div>
+
+  <div class="quest">
+    <span class="status">behind the scenes · offline</span>
+    <h3>The gym</h3>
+    <p class="q">Minds are tuned the way fighters are: in a training ring nobody watches.</p>
+    <ul>
+      <li class="done">A scenario league pits intelligence tiers against each other, thousands of duels
+        at a time</li>
+      <li class="done">"A 7 beats a 4" becomes a measured fact, not a hope</li>
+      <li>A mind is promoted to the live game only when the ring says it earned it</li>
+    </ul>
+  </div>
 
   <h3>Where it stands</h3>
   <p>Simple minds run in-engine today (states, profiles, squad hunts). The full ladder, the counter-play,

@@ -155,6 +155,42 @@ document.querySelectorAll('canvas[data-sea]').forEach(initSea);
     x.closePath();
   }
   var ICONS = {
+    multiplayer: function (x, p) { // two sails meeting on one waterline: the shared sea
+      x.strokeStyle = p.wood; x.lineWidth = 3;
+      x.beginPath(); x.moveTo(19, 12); x.lineTo(19, 44); x.stroke();
+      x.beginPath(); x.moveTo(45, 18); x.lineTo(45, 46); x.stroke();
+      x.fillStyle = p.cream; // the two crews' canvas, bellied toward each other
+      x.beginPath(); x.moveTo(22, 14); x.quadraticCurveTo(36, 26, 22, 40); x.closePath(); x.fill();
+      x.fillStyle = p.red;
+      x.beginPath(); x.moveTo(42, 20); x.quadraticCurveTo(30, 30, 42, 42); x.closePath(); x.fill();
+      x.strokeStyle = p.sea; x.lineWidth = 5; // one waterline under both keels
+      x.beginPath(); x.moveTo(5, 50); x.quadraticCurveTo(18, 45, 32, 50); x.quadraticCurveTo(46, 55, 59, 50); x.stroke();
+    },
+    simulation: function (x, p) { // a gear half-sunk in the sea: the arithmetic under the water
+      x.strokeStyle = p.cream; x.fillStyle = p.cream;
+      x.save(); x.translate(32, 30);
+      for (var i = 0; i < 8; i++) { // gear teeth
+        x.rotate(Math.PI / 4);
+        x.fillRect(-2.5, -17, 5, 6);
+      }
+      x.restore();
+      x.beginPath(); x.arc(32, 30, 12, 0, 6.2832); x.lineWidth = 5; x.stroke();
+      x.beginPath(); x.arc(32, 30, 3, 0, 6.2832); x.fill();
+      x.strokeStyle = p.sea; x.lineWidth = 6; // the waterline swallowing the gear's lower half
+      x.beginPath(); x.moveTo(6, 40); x.quadraticCurveTo(19, 34, 32, 40); x.quadraticCurveTo(45, 46, 58, 40); x.stroke();
+      x.strokeStyle = p.cream; x.lineWidth = 2;
+      x.beginPath(); x.moveTo(8, 48); x.quadraticCurveTo(20, 43, 32, 48); x.quadraticCurveTo(44, 53, 56, 48); x.stroke();
+    },
+    progression: function (x, p) { // rising steps with a pennant at the top: the climb
+      x.fillStyle = p.wood;
+      x.fillRect(8, 46, 14, 8); x.fillRect(24, 38, 14, 16); x.fillRect(40, 28, 14, 26);
+      x.fillStyle = p.sand; // step tops catch the light
+      x.fillRect(8, 46, 14, 2); x.fillRect(24, 38, 14, 2); x.fillRect(40, 28, 14, 2);
+      x.strokeStyle = p.ink; x.lineWidth = 2;
+      x.beginPath(); x.moveTo(47, 28); x.lineTo(47, 12); x.stroke();
+      x.fillStyle = p.red;
+      x.beginPath(); x.moveTo(47, 12); x.lineTo(59, 15.5); x.lineTo(47, 19); x.closePath(); x.fill();
+    },
     story: function (x, p) { // an open book — the story you write, not one we wrote
       x.fillStyle = p.cream;
       x.beginPath(); x.moveTo(32, 18); x.quadraticCurveTo(20, 13, 10, 17); x.lineTo(10, 45); x.quadraticCurveTo(20, 41, 32, 46); x.closePath(); x.fill();
@@ -221,7 +257,7 @@ document.querySelectorAll('canvas[data-sea]').forEach(initSea);
       }
       mate(18, 27, p.cream); mate(46, 27, p.sand); mate(32, 23, p.red);
     },
-    minds: function (x, p) { // a pawn that thinks
+    intelligence: function (x, p) { // a pawn that thinks
       x.fillStyle = p.cream;
       x.beginPath(); x.arc(32, 23, 6, 0, 6.2832); x.fill();
       x.beginPath(); x.moveTo(26, 46); x.quadraticCurveTo(28, 31, 32, 29); x.quadraticCurveTo(36, 31, 38, 46); x.closePath(); x.fill();

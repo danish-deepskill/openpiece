@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multiplayer · Design · Openpiece</title>
+<link rel="stylesheet" href="style.css">
+<script>try{var t=localStorage.getItem('op-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+</head>
+<body>
+
+<canvas class="deepsea" data-sea aria-hidden="true"></canvas>
+
+<div class="topbar">
+  <div class="bar">
+    <a class="brand" href="index.html">OPENPIECE<span class="jr">▸</span></a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="design.html" class="on">Design</a>
+      <a href="about.html">About</a>
+      <a href="support.html">Support</a>
+    </nav>
+    <button class="themebtn" type="button" data-theme-toggle aria-label="Switch light / dark" title="Switch light / dark">◐</button>
+  </div>
+</div>
+
+<main class="wrap">
+
+<section>
+  <p class="crumb"><a href="design.html">← all design areas</a></p>
+  <h2>Multiplayer</h2>
+  <p class="dstat stat-charted">status: charted, the farthest sail on this chart; the foundations are being laid now</p>
+
+  <p>One sea, shared. The plan is that someday you open <b>openpiece.io</b>, press Sail, and the living
+  world every other page describes has other real captains on it: crews of actual people, rivals with
+  someone behind the eyes, wars where both admirals are players.</p>
+
+  <div class="pull">One law above all of it: <b>the world stays exactly as honest with a hundred players
+  as it is with one.</b> Same simulation, same rules, nobody special.</div>
+
+  <h3>The front door</h3>
+  <p>Two buttons. <b>Quick Join</b> drops you into a healthy public sea with room aboard. <b>Browse</b>
+  shows every public sea like a harbor board: its name, captains currently aboard, how old its world is,
+  its house rules. Click one and you're sailing, in your browser, no install. The ease of the little
+  web games you already know, with a living world behind it instead of an arena.</p>
+
+  <h3>Seas belong to their communities</h3>
+  <p>Servers are not ours. The server is a free program anyone can run: a friend's computer hosts
+  tonight's voyage for ten, a community's rented box runs a hundred-sailor sea that never sleeps.
+  How many players fit is the host's call, sized to their machine. This is the oldest multiplayer
+  tradition there is, the one Minecraft proved for fifteen years: worlds live longest when the players
+  own them.</p>
+  <p>It's also what <a href="support.html">free forever</a> demands. Your sea never depends on us paying
+  a server bill, so it can never die of one.</p>
+  <p>Shared official seas take the same idea one step further: each runs on a <b>public meter</b>, its
+  real monthly cost and every coin donated toward it, visible to everyone. The month the meter fills,
+  that sea sails, open to all, donor or not. The month it doesn't, the sea isn't deleted, it
+  <b>freezes</b>: archived exactly as it stood, resuming the day its community wills it back. Money can
+  pause a sea. It can never kill one.</p>
+
+  <h3>One sailor, many captains</h3>
+  <p>Characters are natives of their sea. Your captain's legend lives in that world's own ledgers, the
+  bounty its marines wrote, the grudges its pirates hold, and none of that can be packed in a crate and
+  shipped to another ocean. So you don't move characters, you <b>collect</b> them: one account, a roster
+  of lives, a hardened veteran on one sea, a fresh nobody on another, ten seconds to switch. Your name
+  and flag travel with you everywhere; your power never does. Sail into a new sea and nobody has heard
+  of you. Earning it again is the game.</p>
+
+  <h3>One truth, no cheats</h3>
+  <p>The same simulation that runs the whole world runs on the server, and the server is the only voice
+  that counts. Your browser draws your patch of sea and sends your intentions: turn, fire, speak. What
+  actually happens is decided where no player can reach it. A modified game can draw itself a golden
+  ship; it cannot make the server agree.</p>
+
+  <h3>What a shared sea means</h3>
+  <p>Every system on these pages, unchanged, with people in it. A crew whose captain is a person, whose
+  cook is a person, whose mutiny, if it comes, is personal. A bounty poster other crews actually read.
+  A rival who remembers you because there is genuinely someone remembering. And at the far end of it,
+  the thing this game is being shaped for: two fleets meeting, dozens of captains a side, generals
+  reading the chart above decks where their monsters are dueling. The command ranks on the
+  <a href="design-crew.html">Crew</a> page were designed for human beings to hold.</p>
+
+  <h3>While you sleep</h3>
+  <p>A persistent sea keeps sailing after you log off. What happens to your ship that night, safe
+  harbor, loyal crew standing watch, or fair game, is one of the questions we are answering carefully
+  and in the open, before any of this is built. Honest worlds need honest rules about absence.</p>
+
+  <h3>Where it stands</h3>
+  <p>The most honest badge on the chart: nothing multiplayer runs today, and it sits deliberately last
+  in the build order. But it is no afterthought. The engine is built server-shaped on purpose: the
+  entire simulation already runs headless, fully deterministic, without a renderer attached, in the
+  test suite, today. Every design decision on every other page is audited against one quiet question:
+  will this survive a hundred captains? That's a multiplayer engine waiting for its sea.</p>
+
+  <p><em>One sea. Many captains. The world revolves around none of them.</em></p>
+</section>
+
+<footer>
+  <p class="notice">Openpiece is a non-commercial fan project inspired by Eiichiro Oda's One Piece. It is not
+  affiliated with, endorsed by, or connected to Eiichiro Oda, Shueisha, Toei Animation, or any rights holder.
+  All original characters, names, and materials from One Piece belong to their respective owners.</p>
+</footer>
+
+</main>
+<script src="site.js"></script>
+</body>
+</html>

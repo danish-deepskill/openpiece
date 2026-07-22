@@ -247,6 +247,42 @@ p { max-width: 64ch; }
   padding: 0.5rem 0.8rem; display: inline-block; max-width: 100%; overflow-x: auto; white-space: nowrap;
 }
 
+/* ============ design-page layout kit (pages are game panels, not markdown) ============ */
+main section > h3 { /* section headings must READ as headings, not bold body text */
+  font-size: 1.3rem; margin: 2.2rem 0 0.6rem; color: var(--ink);
+  padding-bottom: 0.3rem; border-bottom: 1px solid var(--rule);
+}
+main section > h3::before { content: "› "; color: var(--accent); }
+main section > p:has(> em:only-child) { /* the page's closing line, set like an epitaph */
+  text-align: center; margin: 2.4rem auto 0.5rem; color: var(--ink-soft); max-width: 46ch;
+}
+.pull { /* the page's TWIST, displayed like it matters */
+  font-family: "Palatino Linotype", Georgia, serif; font-size: 1.3rem; line-height: 1.4;
+  border-left: 4px solid var(--accent); background: var(--panel);
+  padding: 0.85rem 1.1rem; margin: 1.3rem 0; max-width: 56ch; border-radius: 0 4px 4px 0;
+}
+.pull b { color: var(--accent-ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.8rem 0; }
+.chip {
+  font-family: Consolas, monospace; font-size: 0.72rem; letter-spacing: 0.06em;
+  padding: 0.28rem 0.55rem; border: 1px solid var(--rule); border-radius: 3px;
+  background: var(--panel); color: var(--ink-soft);
+}
+.chip.hot { border-color: var(--accent); color: var(--accent-ink); }
+.chip.cool { border-color: var(--teal); color: var(--teal-ink); }
+.rungs { /* an ascending ladder readout (INT, tiers, phases) */
+  display: flex; gap: 0.3rem; align-items: flex-end; margin: 1rem 0; flex-wrap: wrap;
+}
+.rung {
+  flex: 1; min-width: 4.2rem; text-align: center; font-family: Consolas, monospace;
+  font-size: 0.68rem; line-height: 1.35; color: var(--ink-soft);
+  border: 1px solid var(--rule); border-bottom: 4px solid var(--wood); border-radius: 3px;
+  padding: 0.45rem 0.25rem 0.35rem; background: var(--panel);
+}
+.rung i { display: block; font-style: normal; font-weight: bold; font-size: 0.95rem; color: var(--ink); font-family: "Palatino Linotype", Georgia, serif; }
+.rung.top { border-bottom-color: var(--accent); }
+.rung.top i { color: var(--accent-ink); }
+
 /* ============ creeds / log / notice / footer ============ */
 .creed { border-left: 3px solid var(--wood); background: var(--panel); padding: 0.8rem 1rem; margin: 0.9rem 0; max-width: 62ch; }
 .creed b { display: block; font-family: "Palatino Linotype", Georgia, serif; margin-bottom: 0.15rem; }

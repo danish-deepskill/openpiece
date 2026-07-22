@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Roadmap — Openpiece</title>
+<title>Roadmap · Openpiece</title>
 <link rel="stylesheet" href="style.css">
 <script>try{var t=localStorage.getItem('op-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 </head>
@@ -29,12 +29,12 @@
 
 <section>
   <h2 style="margin-top:2.4rem">The voyage chart</h2>
-  <p class="sub">Four islands between here and the full game — <strong>milestones, not dates</strong>: each
+  <p class="sub">Four islands between here and the full game, <strong>milestones, not dates</strong>: each
   opens when the last answers its question. The ship marks where development stands; the full feature
   manifest is below.</p>
 
   <div class="chartbox" id="chart-hole">
-    <!-- no canvas here: this is a HOLE — the fixed background sea shows through it (see site.js hole sync) -->
+    <!-- no canvas here: this is a HOLE, the fixed background sea shows through it (see site.js hole sync) -->
     <!-- the dotted route, drawn in chart-space (percent coords; the nodes sit on the same grid) -->
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
       <path d="M 12 70 C 22 48, 28 38, 38 36 S 56 56, 64 62 S 80 38, 88 26"
@@ -68,54 +68,55 @@
 <section id="manifest">
   <h2>The manifest</h2>
   <p class="sub">Every feature walks the same ladder, and these badges are the project's REAL internal
-  states — not marketing labels. <strong>Built = running in-engine today.</strong> The game itself is
+  states, not marketing labels. <strong>Built = running in-engine today.</strong> The game itself is
   pre-MVP: nothing is released yet, and that's the point of showing the ladder honestly.</p>
   <span class="ladder">charted → researched → designed → building → built</span>
 
   <div class="manifest">
-    <div class="feat s-shipped"><div class="row"><h3>Sailing 1.0</h3><span class="badge">Built</span></div><p>A real wind field, points of sail per rig, four sail states, a true anchor (the anchor-turn works), a windable + lashable wheel, leeway and sternway — and in irons is a delay, never a prison.</p></div>
+    <div class="feat s-shipped"><div class="row"><h3>Sailing 1.0</h3><span class="badge">Built</span></div><p>A real wind field, points of sail per rig, four sail states, a true anchor (the anchor-turn works), a windable + lashable wheel, leeway and sternway, and in irons is a delay, never a prison.</p></div>
     <div class="feat s-shipped"><div class="row"><h3>Walkable ships &amp; boarding</h3><span class="badge">Built</span></div><p>Decks are real places: cross the gangplank, leap the rail, ride a moving deck seamlessly. Three hulls with genuinely different handling.</p></div>
-    <div class="feat s-shipped"><div class="row"><h3>Layered combat core</h3><span class="badge">Built</span></div><p>Devil Fruit + weapon + fighting style through one engine — the Gomu fruit end-to-end, swords, guns, brawling.</p></div>
-    <div class="feat s-shipped"><div class="row"><h3>A living island</h3><span class="badge">Built</span></div><p>Factions with real relations, self-defending townsfolk, wildlife, hunting squads — and possession of any character.</p></div>
+    <div class="feat s-shipped"><div class="row"><h3>Layered combat core</h3><span class="badge">Built</span></div><p>Devil Fruit + weapon + fighting style through one engine, the Gomu fruit end-to-end, swords, guns, brawling.</p></div>
+    <div class="feat s-shipped"><div class="row"><h3>A living island</h3><span class="badge">Built</span></div><p>Factions with real relations, self-defending townsfolk, wildlife, hunting squads, and possession of any character.</p></div>
     <div class="feat s-shipped"><div class="row"><h3>The honest engine</h3><span class="badge">Built</span></div><p>Deterministic simulation proven by replay tests; everything data-driven; ~480 automated tests. Multiplayer-shaped from the first commit.</p></div>
 
-    <div class="feat s-building"><div class="row"><h3>The Haki ↔ Logia capstone</h3><span class="badge">Building</span></div><p>Armament Haki countering a Logia's intangibility — emerging from the combat engine's own rules, no special-case code. Closes Island 0.</p></div>
+    <div class="feat s-building"><div class="row"><h3>The Haki ↔ Logia capstone</h3><span class="badge">Building</span></div><p>Armament Haki countering a Logia's intangibility, emerging from the combat engine's own rules, no special-case code. Closes Island 0.</p></div>
 
-    <div class="feat s-designed"><div class="row"><h3>Ship impacts &amp; cannons</h3><span class="badge">Designed</span></div><p>Collisions, ramming with real momentum, grounding — then broadside cannons and part damage. First cargo of Island 1.</p></div>
+    <div class="feat s-designed"><div class="row"><h3>Ship impacts &amp; cannons</h3><span class="badge">Designed</span></div><p>Collisions, ramming with real momentum, grounding, then broadside cannons and part damage. First cargo of Island 1.</p></div>
     <div class="feat s-designed"><div class="row"><h3>Combat direction: stamina · posture · parry</h3><span class="badge">Designed</span></div><p>The full fight-feel plan: resource discipline, guard-break posture, telegraphs and punishes.</p></div>
-    <div class="feat s-designed"><div class="row"><h3>Ship classes &amp; the upgrade law</h3><span class="badge">Designed</span></div><p>Every hull and part a trade-off, never a strictly-better buy — the no-cheap-power contract, on paper and ready.</p></div>
-    <div class="feat s-designed"><div class="row"><h3>The navigator's ladder</h3><span class="badge">Designed</span></div><p>Sailing skill as capability bands — a veteran reads wind, currents, and forecasts a rookie simply cannot see.</p></div>
-    <div class="feat s-designed"><div class="row"><h3>AI intelligence ladder</h3><span class="badge">Designed</span></div><p>Enemy smarts as data, 1–10: a thug rushes, a captain feints, reroutes, and counters — same engine, different minds.</p></div>
-    <div class="feat s-designed"><div class="row"><h3>Time, calendar &amp; day/night</h3><span class="badge">Designed</span></div><p>The clock substrate half the world's systems assume — watches, routines, seasons of the sea.</p></div>
-    <div class="feat s-designed"><div class="row"><h3>The seamless sea</h3><span class="badge">Designed</span></div><p>One continuous chunk-streamed ocean with simulation tiers — distant ships live as ledger entries, near ones in full. In final design review.</p></div>
+    <div class="feat s-designed"><div class="row"><h3>Ship classes &amp; the upgrade law</h3><span class="badge">Designed</span></div><p>Every hull and part a trade-off, never a strictly-better buy, the no-cheap-power contract, on paper and ready.</p></div>
+    <div class="feat s-designed"><div class="row"><h3>The navigator's ladder</h3><span class="badge">Designed</span></div><p>Sailing skill as capability bands, a veteran reads wind, currents, and forecasts a rookie simply cannot see.</p></div>
+    <div class="feat s-designed"><div class="row"><h3>AI intelligence ladder</h3><span class="badge">Designed</span></div><p>Enemy smarts as data, 1–10: a thug rushes, a captain feints, reroutes, and counters, same engine, different minds.</p></div>
+    <div class="feat s-designed"><div class="row"><h3>Time, calendar &amp; day/night</h3><span class="badge">Designed</span></div><p>The clock substrate half the world's systems assume, watches, routines, seasons of the sea.</p></div>
+    <div class="feat s-designed"><div class="row"><h3>The seamless sea</h3><span class="badge">Designed</span></div><p>One continuous chunk-streamed ocean with simulation tiers, distant ships live as ledger entries, near ones in full. In final design review.</p></div>
+    <div class="feat s-designed"><div class="row"><h3>Items, cargo &amp; treasure</h3><span class="badge">Designed</span></div><p>Everyday goods stack and trade like goods; storied things, graded blades, true fruits, named relics, are one-of-a-kind objects that carry their own history. Ship holds, provisions, and loot all share one system.</p></div>
 
-    <div class="feat s-researched"><div class="row"><h3>Crew &amp; shipboard life</h3><span class="badge">Researched</span></div><p>Roles, jobs, watches, morale — a 95-claim research bank across the genre's best is in; the design pass is next. The crew is the mid-game.</p></div>
+    <div class="feat s-researched"><div class="row"><h3>Crew &amp; shipboard life</h3><span class="badge">Researched</span></div><p>Roles, jobs, watches, morale, a 95-claim research bank across the genre's best is in; the design pass is next. The crew is the mid-game.</p></div>
 
     <div class="feat s-charted"><div class="row"><h3>Currents &amp; the structured sea</h3><span class="badge">Charted</span></div><p>Sailing 2.0: currents as chartable geography, wind shadows behind islands, funneling straits, squalls.</p></div>
-    <div class="feat s-charted"><div class="row"><h3>Ranged &amp; projectiles</h3><span class="badge">Charted</span></div><p>One substrate for muskets, thrown steel, cannonballs, and fruit shots — skill unlocks verbs, not numbers.</p></div>
-    <div class="feat s-charted"><div class="row"><h3>Progression &amp; skills</h3><span class="badge">Charted</span></div><p>Stats, Haki growth, learn-by-doing skills, crafting — power priced in time and risk, never menus.</p></div>
-    <div class="feat s-charted"><div class="row"><h3>Economy, trade &amp; activities</h3><span class="badge">Charted</span></div><p>Cargo runs, fishing, bounties, provisioning — the peaceful half of a pirate's ledger.</p></div>
-    <div class="feat s-charted"><div class="row"><h3>Marines &amp; organizations</h3><span class="badge">Charted</span></div><p>Ranks, authority, duty and promotion as data — an enemy that is an institution, not a spawn table.</p></div>
-    <div class="feat s-charted"><div class="row"><h3>Elements &amp; the dominance ladder</h3><span class="badge">Charted</span></div><p>Fire, ice, lightning, rubber — reactive matchups in combat and out in the world.</p></div>
-    <div class="feat s-charted"><div class="row"><h3>Dialogue &amp; the social web</h3><span class="badge">Charted</span></div><p>Talking as real play: reputation, favors, recruitment, betrayal — the other half of "peer".</p></div>
-    <div class="feat s-charted"><div class="row"><h3>Territory &amp; the endgame</h3><span class="badge">Charted</span></div><p>The strategic layer: holdings, fleets, rivals — the rise from captain to power.</p></div>
+    <div class="feat s-charted"><div class="row"><h3>Ranged &amp; projectiles</h3><span class="badge">Charted</span></div><p>One substrate for muskets, thrown steel, cannonballs, and fruit shots, skill unlocks verbs, not numbers.</p></div>
+    <div class="feat s-charted"><div class="row"><h3>Progression &amp; skills</h3><span class="badge">Charted</span></div><p>Stats, Haki growth, learn-by-doing skills, crafting, power priced in time and risk, never menus.</p></div>
+    <div class="feat s-charted"><div class="row"><h3>Economy, trade &amp; activities</h3><span class="badge">Charted</span></div><p>Cargo runs, fishing, bounties, provisioning, the peaceful half of a pirate's ledger.</p></div>
+    <div class="feat s-charted"><div class="row"><h3>Marines &amp; organizations</h3><span class="badge">Charted</span></div><p>Ranks, authority, duty and promotion as data, an enemy that is an institution, not a spawn table.</p></div>
+    <div class="feat s-charted"><div class="row"><h3>Elements &amp; the dominance ladder</h3><span class="badge">Charted</span></div><p>Fire, ice, lightning, rubber, reactive matchups in combat and out in the world.</p></div>
+    <div class="feat s-charted"><div class="row"><h3>Dialogue &amp; the social web</h3><span class="badge">Charted</span></div><p>Talking as real play: reputation, favors, recruitment, betrayal, the other half of "peer".</p></div>
+    <div class="feat s-charted"><div class="row"><h3>Territory &amp; the endgame</h3><span class="badge">Charted</span></div><p>The strategic layer: holdings, fleets, rivals, the rise from captain to power.</p></div>
     <div class="feat s-charted"><div class="row"><h3>Multiplayer</h3><span class="badge">Charted</span></div><p>Server-authoritative from the architecture up. Pursued when the single-player sim has earned it.</p></div>
   </div>
 </section>
 
 <section>
   <h2>The ship's log</h2>
-  <p class="sub">Recent entries — newest first:</p>
+  <p class="sub">Recent entries, newest first:</p>
   <div class="log">
-    <div class="entry"><time>Jul 2026</time><p><b>Sailing 1.0 landed.</b> <span>A real wind field, points of sail per rig, four sail states, a true anchor (the anchor-turn works), a wheel that winds and can be lashed, leeway and sternway — and being caught in irons is a delay, never a prison.</span></p></div>
+    <div class="entry"><time>Jul 2026</time><p><b>Sailing 1.0 landed.</b> <span>A real wind field, points of sail per rig, four sail states, a true anchor (the anchor-turn works), a wheel that winds and can be lashed, leeway and sternway, and being caught in irons is a delay, never a prison.</span></p></div>
     <div class="entry"><time>Jul 2026</time><p><b>The game found its name.</b> <span>Openpiece. The old working title walked the plank.</span></p></div>
-    <div class="entry"><time>Jul 2026</time><p><b>Ships became places.</b> <span>Decks are walkable tile grids with real boarding — cross the gangplank, leap the rail, ride a moving deck without the world noticing the seam.</span></p></div>
-    <div class="entry"><time>Jul 2026</time><p><b>The world runs the same twice.</b> <span>Full determinism proven by replay tests — the quiet foundation multiplayer will one day stand on.</span></p></div>
+    <div class="entry"><time>Jul 2026</time><p><b>Ships became places.</b> <span>Decks are walkable tile grids with real boarding, cross the gangplank, leap the rail, ride a moving deck without the world noticing the seam.</span></p></div>
+    <div class="entry"><time>Jul 2026</time><p><b>The world runs the same twice.</b> <span>Full determinism proven by replay tests, the quiet foundation multiplayer will one day stand on.</span></p></div>
   </div>
 </section>
 
 <footer>
-  <p class="sub"><strong>Follow the voyage:</strong> community channels open when Island 1 docks — playtests
+  <p class="sub"><strong>Follow the voyage:</strong> community channels open when Island 1 docks, playtests
   will be announced there first. Until then, this page is the log.</p>
   <p class="notice">Openpiece is a non-commercial fan project inspired by Eiichiro Oda's One Piece. It is not
   affiliated with, endorsed by, or connected to Eiichiro Oda, Shueisha, Toei Animation, or any rights holder.
