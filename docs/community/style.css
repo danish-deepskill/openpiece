@@ -329,7 +329,11 @@ footer { padding: 0 0 3.5rem; }
 /* ============ design pages (one area each) ============ */
 .crumb { font-family: Consolas, monospace; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; margin: 2.2rem 0 0; }
 .crumb a { text-decoration: none; }
+.tile .badge.dlc { /* the one non-lifecycle badge: a far-off expansion, marked in void colors */
+  background: rgba(34,18,52,0.85); color: #cdb8f0; border: 1px solid rgba(160,130,220,0.45);
+}
 .dstat { font-family: Consolas, monospace; font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 1.2rem; }
+.stat-dlc { color: #9a86c8; }
 .stat-built { color: var(--done); } .stat-building { color: var(--gold-ink); }
 .stat-designed { color: var(--teal-ink); } .stat-researched { color: var(--blue-ink); }
 .stat-charted { color: var(--ink-soft); }

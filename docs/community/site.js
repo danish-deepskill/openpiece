@@ -155,6 +155,17 @@ document.querySelectorAll('canvas[data-sea]').forEach(initSea);
     x.closePath();
   }
   var ICONS = {
+    dreadline: function (x, p) { // a bell under the waterline: the sea's dark basement
+      x.strokeStyle = p.sea; x.lineWidth = 5; // the surface, seen from below: a ceiling
+      x.beginPath(); x.moveTo(6, 12); x.quadraticCurveTo(19, 7, 32, 12); x.quadraticCurveTo(45, 17, 58, 12); x.stroke();
+      x.strokeStyle = p.cream; x.lineWidth = 2; // the rope down into the dark
+      x.beginPath(); x.moveTo(32, 15); x.lineTo(32, 24); x.stroke();
+      x.fillStyle = p.cream; // the bell that rings down there
+      x.beginPath(); x.moveTo(32, 22); x.quadraticCurveTo(44, 25, 44, 41); x.lineTo(20, 41); x.quadraticCurveTo(20, 25, 32, 22); x.closePath(); x.fill();
+      x.fillRect(17, 41, 30, 3);
+      x.fillStyle = p.red; // the clapper: the deep's slow heartbeat
+      x.beginPath(); x.arc(32, 49, 2.6, 0, 6.2832); x.fill();
+    },
     multiplayer: function (x, p) { // two sails meeting on one waterline: the shared sea
       x.strokeStyle = p.wood; x.lineWidth = 3;
       x.beginPath(); x.moveTo(19, 12); x.lineTo(19, 44); x.stroke();
