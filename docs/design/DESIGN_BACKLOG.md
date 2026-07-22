@@ -43,7 +43,9 @@ Already-designed ledger (passes DONE, don't re-open casually): sailing model + s
 ship classes as axes + upgrade law (`NAVAL.md`), seamless chunked sea (`WORLD.md` + `ARCHITECTURE_SCALE §5`),
 movement frames + transition rulebook (`features/movement-frames.md`), pathfinding stack (`PATHFINDING.md`),
 AI INT ladder (`ai/AI_INTELLIGENCE.md`), combat stamina/posture/parry direction (`COMBAT.md`),
-time/calendar/day-night substrate (#18 → `TIME.md`, evidence `docs/research/TIME_RESEARCH.md`).
+time/calendar/day-night substrate (#18 → `TIME.md`, evidence `docs/research/TIME_RESEARCH.md`),
+items & inventory substrate (#21 → `ITEMS.md`, evidence `docs/research/ITEMS_RESEARCH_PARTIAL.md` —
+salvaged run, labels honest; 2026-07-18).
 
 ## The pass queue (2026-07-18 — the recommended order of the thinking)
 
@@ -88,7 +90,102 @@ cheap and carry the whole alive-ship feel.
 **Pass when:** sailing core lands (it defines the stations) + crew-follow pathfinding slice. **This is the
 next SAILING-grade pass.** Added duty (2026-07-18, the queue): design the loyalty/morale/recruitment
 surface as the EMBRYO of #17 — the social pass must be able to generalize it, not fight it. #21 (items)
-runs first — provisions need its vocabulary.
+runs first — provisions need its vocabulary. Added lean (2026-07-18, from the dialogue design): CREW
+INTIMACY = MEMORY + CONSEQUENCE, not words — the load-bearing feature is the pairwise SHARED LOG
+(you↔crewmate salient history: storms survived, rescues, grudges, goal progress) that composed dialogue
+and the optional LLM banter draw from ("like that night off Hollow Point" assembled from a voyage that
+HAPPENED — the line no authored game can say truthfully). Discipline: SILENCE OVER FILLER (crew speak
+when state has something NEW to say — a salience rule, never a chatter timer; repetition is the one
+thing that makes a real shipmate feel like a vending machine). The Sims/DF precedent: relationship
+depth comes from systems; words are garnish. ROLE AUDIT (2026-07-19, developer-probed): the law —
+**ROLES ARE PEOPLE; STATIONS ARE CHAIRS.** Professions (v1 five): navigator · cook · doctor ·
+shipwright · gunner. LOOKOUT (and helm) are WATCH STATIONS, not professions — duty slots on the
+rotation anyone mans, with quality varying by the sitter (the sharp-eyed see sails sooner). COOK BUFFS
+adopted: meals = crew-wide timed modifier bundles (the Modifier system, source-tracked), chained to
+systems — catch determines menu (Activities), regional ingredients = regional dishes (exploration
+reward you eat), the pre-battle meal as ritual; GUARD: meals ride the watch rhythm, never potion-spam.
+SHIPWRIGHT = carpenter+engineer merged at v1; an Engineer fork splits only when science content grows.
+GUNNER = all crew-served ordnance (cannons, mortars) as one class. EXTENDED (same date, developer's
+major/minor + officers question) — **THE THREE HATS**: every crewmate holds three independent slots:
+OFFICE (authority: captain / first mate / quartermaster / boatswain — the ship's org chart),
+PROFESSION (craft: the five majors), STATION (tonight's chair: helm, lookout, watches). Small crews
+wear many hats; warships specialize — crew depth emerges from three data fields. Office semantics:
+FIRST MATE = the succession (the death-stack's heir — choosing one is choosing who you become);
+QUARTERMASTER = the crew's elected counterweight (Golden Age history): loot shares + grievances
+aggregate IN HIM — the mutiny system's human face, the captain↔QM relation is the readable barometer;
+BOATSWAIN = deck foreman (turns orders into work gangs; shipwright crafts, bosun directs). CABIN BOY =
+the apprentice office (owns nothing, learns everything) and a natural chosen start. **THE FOURTH HAT:
+COMMAND** (same date, developer asked for squad/division leadership, made native): an earned capability
+with SHIP-NAMED BANDS gating which scope entities (AI_FOUNDATION §5) a person can helm — **a hand**
+(2-3 stay together) → **a deck** (a boarding squad holds through smoke) → **a wing** (squads in
+concert: a division's feints and lines) → **the sea** (a fleet answers; era-names only). Earned BY
+LEADING (use-based) × BACKED BY LEGEND (nobody holds a wing that doesn't respect them — the one
+capability multiplying two currencies; born wing-holders with mediocre blades are TREASURE). Offices
+and war-posts CONSUME bands (first mate wants deck-band; fleet division posts demand wing-band) — so
+the 12v15 war's division commanders are crewmates you GREW: the end-game's quality is downstream of
+mid-game crew development. **THE OVERLAP RESOLUTION (2026-07-19, developer-probed): AN OFFICE IS A
+SYSTEM YOU NO LONGER RUN YOURSELF** — offices embody systems that exist anyway (read-the-world applied
+to management): FIRST MATE = the control system's face — THE SHIP'S ACTING BRAIN when your mind is
+elsewhere (possess another body and the FM sails her; die and the FM is who you become — the
+possession-autopilot and death-heir are one office); QUARTERMASTER = the morale+shares systems' face
+(the morale HUD in the flesh; cook buys FOOD on his autonomy, QM budgets MONEY and hears grumbling);
+BOATSWAIN = the job system's face (no bosun = the player sets the work table by hand; a good bosun IS
+the table running itself). Officer quality = how well the system runs UNATTENDED. Offices = the
+DELEGATION LADDER: every appointment converts a management chore into a relationship; small crews run
+everything by menu, growing crews hand systems to minds. **THE FRACTAL CREW (2026-07-19, developer's
+10/30/60-3-ships/fleet scenarios): EVERY SHIP IS A COMPLETE CREW; A FLEET IS A CREW OF CREWS.** Scale
+ladder: 10 = flat era (menus fine, shared logs build) → 30 = office era (read the QM) → 60/3 ships =
+the structural jump: ship-heads are **CAPTAINS of their hulls** (amended 2026-07-19: "Commander"
+belongs to divisions alone — one word per level; each detached hull = its own org node + full office
+set; your direct reports become captains — 60 souls = 3 conversations); commanders' ships run on their
+brains (the FM-autopilot law generalized), arrive as REPORTS (operational-sensors pattern), and carry
+MEDIATED LOYALTY (sailors loyal to THEIR captain first — lose a commander's heart, risk losing a hull;
+the commanders' council = the fleet's morale gauge). FLEET TYPES: **GROWN** (one org, deep tree, risen
+through your ranks — tight, slow, every officer a shared log) vs **FEDERATED** (the Whitebeard model:
+allied crews pledge via an ALLIANCE edge, keeping captains/identity — wide, fast, wholesale-defection
+risk). Family or coalition is the endgame's character question. Emotional throughline: THE ORIGINAL TEN
+BECOME THE OFFICER CORPS — the fleet is your first crew, promoted. **OFFICE TIERS (2026-07-19, developer's naming RATIFIED as canon — plain tiers for system/UI, salty
+vocabulary demoted to in-world flavor, the rarity-naming precedent):** Captain → **Executive Officer**
+(first mate + quartermaster) → **Senior Officer** (profession MASTERS + bosun — THE MERGE: the
+profession hat elevates into the office ladder at its top; age-of-sail "standing officers" stayed with
+the SHIP — capture texture) → **Officer** (the mates: bosun's mate, cook's mate + watch/squad leads) →
+**Crew** (with RATINGS inside the tier: able/ordinary/green) → **Apprentice** (cabin boy, powder
+monkey). Sailors SAY "the captain's table"/"rated able" in dialogue; the crew sheet says the tier. **COMMAND
+HIERARCHY plain-named to match (2026-07-19):** levels = the canon scope ladder (Unit → **Squad** 2-5 →
+**Division** → **Fleet**, AI_FOUNDATION §5); capability bands renamed plainly (**squad-level /
+division-level / fleet-level command** — hand/deck/wing/sea demoted to sailor slang); war-POSTS =
+battle assignments consuming tier + capability, ONE WORD PER LEVEL (2026-07-19, developer caught the
+Commander overload, picked the apex, then caught the false linearity): the shape is a FORK, not a
+line — **Squad Leader → Division Commander → FLEET GENERAL** (2026-07-19 FINAL, developer-ruled: Captain
+REMOVED from the war ladder — captain is a ship OFFICE, not a battle assignment; war-posts command
+FORMATIONS of fighters, ships sail under their captains war or peace, and the two chains meet at the
+Fleet General, who commands both: captains steering hulls, commanders leading formations. Posts are
+SCOPE + TITLE; scope words name FORMATIONS, not terrains — the fleet is the apex formation (divisions +
+hulls), so its General commands the landing too: the landing IS the fleet's operation). The middle
+rung is ONE capability (division-level command) with TWO theater posts — a warship's complement IS a
+division that floats; your best boarding commander and best ship's captain are interchangeable in
+CAPABILITY but not craft (seamanship still gates hulls). General-at-Sea pedigree (Commonwealth navy,
+Blake) retained; Admiral stays the Marines' word — "they have Admirals; we field Generals." THE THREE-LADDER INTERLOCK: office tier = peacetime rank · command level = proven
+capacity · war-post = wartime assignment — friction between them is deliberate story (the passed-over
+Senior Officer; the young mate handed a division). Marines FUSE rank and command by institutional
+design (a commodore commands because he's a commodore) — navies promote paper; pirate crews promote
+what held at Hollow Point. FUSION REFUSED (2026-07-19, developer floated office=command): fusing =
+LABELS GRANT POWER on people (the rarity law's forbidden wire); resolution = **OFFICE CERTIFIES
+COMMAND, NEVER CREATES IT** (competence-then-ceremony, the grading/rated-able pattern) — offices
+REQUIRE bands so healthy crews mirror (promotion UI surfaces the eligible; the player barely feels two
+systems), while divergence stays possible = the stories (the passed-over officer, the prodigy, the
+emergency succession to unready hands). Marines fusing rank-and-command is THEIR institutional
+personality and weakness (paper admirals exist); crews certify, navies presume. Mechanical teeth:
+the QM's LOOT-SHARE TABLE runs on tiers (warrants draw more shares — pirate articles, historical);
+succession runs down them past the FM; war-posts read tier + command band; dining at the table = a
+promotion you FEEL. **THE LOWER DECK (same date):** Mates → **Able Hands** (the historical competency
+test: "can hand, reef, and steer" — RATINGS ARE SKILL BANDS RECOGNIZED AS RANK, the blade-grading
+pattern on people: the bosun rates you able when you've proven it) → **Hands** → **Green Hands**
+(everyone enters here whatever their sword arm — a duelist recruited in port is still green at sea) →
+**the Boys** (apprentices by department: cabin boy / powder monkey / galley boy — the pipeline with
+built-in arcs: powder monkey → gunner's mate → master gunner; cabin boy = the humble chosen start).
+OUTSIDE the ladder: passengers/captives/stowaways = statuses, not ranks (no station, no share). Share
+fractions extend down: warrants double, hands full, green half, boys quarter (pirate articles).
 
 ## 2. Needs-lite — provisions, fatigue, morale (inside the crew pass)
 **Moat:** needs exist to CREATE JOBS AND STORIES, not chore bars. The cheap version (hunger/thirst meters
@@ -103,6 +200,23 @@ rules (the Moat demands it — enemy ships also carry provisions → starving th
 **Pass when:** with #1 (same doc).
 
 ## 3. Death, injury & the price of defeat
+**Candidate lean (2026-07-18) — THE DEATH STACK (the base-layer answer to "roguelike or checkpoints?"):**
+neither axis — (1) ONE WORLD, ONE TIMELINE: saves pause, never undo (the ledger/news/consequence systems
+assume history is real; reload is poison to the sim premise and dies at multiplayer anyway); (2) DEFEAT
+IS USUALLY NOT DEATH (the Kenshi lesson): unconscious/looted/captured/ransomed/marooned — losing
+GENERATES story (prison arcs, rescues, grudges), which is why this pass waits for crew; (3) WHEN DEATH
+COMES, THE CREW CONTINUES: control-is-a-component means game-over need never exist — the captain was
+mortal, the story isn't (then era-turn beyond the crew); (4) the CURSED opt into true stakes (the
+Dreadline contract below) — hardcore is a curse you sign, not a menu toggle. One line: the world is
+permanent, individuals are mortal, play is immortal. Raw roguelike as BASE rule rejected (our slow-grown
+capability curves price wipes wrong — Deepwoken's work because rebuilds are ~15h).
+**Candidate lean (2026-07-18, refined, from the Dreadline capture — the Deepwoken Depths pattern):**
+death as a PLACE, but ONLY for the CURSED — the curse (earned by entering the Dreadline, ever) IS a
+permanent death-contract: any death → soul to Limbo's shore, claw-back gauntlet; die there → the sea
+keeps you (double-death, cursed-only). The UNCURSED die however THIS pass decides (no spoiler, no
+Dreadline glimpse) — so the candidate splits cleanly: this pass still owns ordinary death; the Dreadline
+owns cursed death. Cursed dead become the Dreadline's ghost population; "cursed" is visible social
+status. See `raw/dreadline-postgame-vision.md` round 3. Respawn stance stays DEFERRED until crew exists.
 **Moat:** defeat that generates story instead of a reload. The current arcade respawn is a placeholder with
 a RECORDED revisit trigger: "when crew exists" — #1 IS that trigger, so this pass rides with it.
 **Hard questions:** what the player loses (position, cargo, crew, body?); injury persistence (RimWorld tend
@@ -356,9 +470,101 @@ what's tradable.
 **Leans:** charts are ITEMS (buyable, stealable, fakeable); the log pose gates Grand Line routes so the
 navigator role stays load-bearing between fights; rumors have RELIABILITY (a lie about a fruit's location is
 still content); identification ties to #4's unidentified fruits.
+**THE NAVIGATION MODEL (2026-07-19, developer + Claude built it across a long session; the LOAD-BEARING
+LAW is #14's seamless-world promise made honest):** the whole model rests on one rule —
+**GATE BY KNOWLEDGE AND STRENGTH, NEVER BY GEOGRAPHY. The world is always fully present and rendered;
+what grows is your ability to SURVIVE it, never the world's willingness to APPEAR.** Consequences, each
+developer-affirmed:
+(1) FRONTIER FORWARD, WAKE OPEN — back-and-forth to explored islands is core gameplay (quests, trade,
+crew, faction calls — the living-world moat REQUIRES revisiting; a sea you can't return to is a diorama);
+the Log Pose governs only the UNKNOWN edge. The Blues navigate normally (open sandbox); the Grand Line's
+magnetic chaos means you can only sail where a pose POINTS (a movement mechanic, not a wall).
+(2) THE CHAIN + THE SKIP — island N's position is revealed only when the Log Pose SETS at island N-1
+(one link at a time; branch-islands offer multiple needles). You CAN'T skip Log-Pose-blind (no heading
+to aim), but an ETERNAL POSE (pre-locked to one island — bought/looted/stolen) lets you LEAP straight
+there. Route-knowledge is thus tradable loot; skipping is EARNED, and it has a cost (miss island N-1's
+content; may land in waters too strong — the lethality gate).
+(3) ACCIDENTAL DISCOVERY IS LEGAL AND GOOD — the world is seamless, so a regular island is always
+physically there; blind sailing is a LOTTERY (chaos scatters you), and if the dice land you on it, that's
+a real discovery (canon: ships blown off course). It doesn't break progression: you get no free
+knowledge, may not survive, may be stranded. E-TIER-IN-THE-GRAND-LINE (developer's example): a nobody CAN
+sail in; the game never says "no," it says "you sure?" — ambient lethal hazards + Marines who are just
+THERE (not scaled to you). The rare survivor writes an emergent legend; the difficulty curve IS the
+geography, self-balancing with zero artificial rule.
+(4) NO HIDING/UN-RENDERING (developer CORRECTED my flag-toggle idea — a pop-in island is a load-gate in
+costume, breaks seamless, feels wrong). Instead gate the CROSSING with an ALWAYS-PRESENT PHYSICAL HAZARD +
+an EARNED ENABLER: Laugh Tale sits ringed by a permanent, visible, deadly barrier (storm-wall / maelstrom /
+Thin Place mist — canon-shaped like Reverse Mountain / Calm Belts), always rendered; the assembled Road
+Poneglyphs produce a physical ENABLER (a beacon/pose that lets the ship hold course through the barrier),
+NOT a revealed coordinate. Same shape everywhere: regular island = magnetic chaos hazard + Eternal Pose
+enabler; deep sea = lethal water + earned strength; Laugh Tale = storm-wall + Poneglyph beacon.
+(5) WIKI-PROOF THE RIGHT WAY (developer raised it: fans WILL datamine/publish the map) — because gates are
+EARNED-STATE (item/flag/stat the game and MP SERVER verify), a wiki reveals the RECIPE (which is the
+intended quest anyway), never a BYPASS: knowing Laugh Tale's coords doesn't forge the beacon, and the
+server-authoritative endgame (openpiece.io) checks possession, not client claims. Knowledge games thrive
+WITH full wikis (Outer Wilds/Tunic/Obra Dinn) because you sell the EARNING, not the fact's scarcity.
 **Pass when:** Grand Line content era; the chart item shape should be sketched in #7's pass (it's cargo).
+The navigation model above wants a design pass jointly with #14 (seamless world) and #20 (SAILING 2.0 /
+currents), since the hazard-as-gate rule lives in the sailing/currents layer.
 
 ## 10. Island & world content generation
+**Raw input (2026-07-18):** `docs/design/raw/canon-route-location-archetypes.md` — the source's story
+route translated into ~35 island ARCHETYPES (setting + org shape + tension + hooks) for world-gen to
+skin with original names per moat #8; its order also validates the region difficulty ladder.
+**Stance (2026-07-18, developer-stated) — AUTHORED-FIRST world building.** The developer hand-builds
+islands with a MAP-BUILDER authoring tool (chunk tile layers + structure placement + spawn/org markers,
+exported as external data files per ARCHITECTURE_SCALE pillar #1 — the JSON door already landed);
+procedural generation demotes to filler/variation/far-future. Consequences: the compression triad's
+BASELINE has two sources (authored file OR seed — chunks don't care; deltas and entities layer
+identically on either); the canon-route archetype catalog serves the AUTHOR as a design checklist, not
+a generator as input; the map-builder tool itself is a real deliverable (the asset-tools family:
+sprite pipeline, preview.html, this). #10's pass scope shifts accordingly: island CONTENT design +
+placement/region layout + what (if anything) stays procedural. AND THE CAST IS AUTHORED TOO
+(2026-07-18, developer-extended): the world-seed includes hand-placed apex/named characters with
+territories, routines, and agendas — all existing machinery: a territorial emperor = a campaign brain +
+org assets (holdings, standing patrols, doctrine); a roving admiral = #15 rank duties on a TIME
+schedule (his mobility is a calendar); and THE ERA'S RISING STAR(s) = authored agenda-domain NPCs
+chasing the summit — the protagonist-shaped niche EXISTS whether or not the player occupies it (watch
+this era's legend rise, race him, join him, hunt him, or be him — the Moat's final proof: the era
+doesn't need you; it invites you). THE LAW: AUTHORED SEED, EMERGENT FATE — the author places the
+opening position (names, homes, routines, agendas); the sim owns their lives after tick one. No plot
+armor (moat #7): if the world kills the emperor-echo in year two, the era genuinely changed. Names are
+niches skinned original per moat #8. THE AUTHORED/GENERATED LINE (2026-07-18, developer-asked): THE
+AUTHOR WRITES THE NOUNS; THE SEED WRITES THE PLURALS. Authored: region layout, island placement +
+interiors (map-builder files), named cast/homes/routines, placed treasures/named instances, geographic
+wind/current FEATURES (straits, gyres), backstory skeleton, event DEFS. Generated (seeded): open-sea
+chunks, population individuals WITHIN authored markers ("~20 fisherfolk, marines ×8" → the seed rolls
+names/faces/stats-in-band), shop stocks via economy ledgers, base weather fields, runtime events (the
+director). Mechanics: authored chunks are FLAGGED as belonging to an island file; unclaimed chunks fall
+to the seed; both baselines equally deterministic, identical downstream machinery (deltas/dehydration/
+replay never care which they stand on). After tick one, everything is emergent regardless of source.
+REFINED (same date): the line applies FRACTALLY inside islands — three brushes: AUTHORED ANCHORS
+(the island's meaning: fortress, harbor mouth, town heart — ~5% of tiles, 95% of memory), STAMPED
+STRUCTURES (structures.ts prefabs: author a tavern once, stamp fifty towns — engines-not-content
+applied to carpentry), SEEDED TEXTURE (tree scatter, transitions, paths — nobody hand-places a shrub).
+So the MAP BUILDER is a DIRECTOR'S TOOL, not a tile painter: paint biome regions, stamp prefabs, mark
+spawn/org zones, generate fill, hand-override where it matters. Meaning authored, texture generated —
+decided PER LAYER, not per island.
+**Lean (2026-07-18, developer-stated) — the CAREER-ARC region map.** Early game = spawn in one of the
+FOUR GENTLE SEAS (the Blues echo — chosen starts distribute across them; MVP builds one); mid game = the
+Paradise band (the crew era); late game = the BEGINNING New World band (command altitudes, org peaks);
+END GAME = the FINAL New World (the tier table's own 5/5 band region, SS+→SSS+ waters) leading to TWO
+SUMMITS, one per ladder: the summit of POWER (the holy-land echo — the seat of the world's
+government, reached by becoming undeniable: territory or admiralty) and the summit of SECRETS (the
+final-island echo — NOT level-gated but KNOWLEDGE-gated: its location is the ultimate knowledge artifact,
+assembled from world-scattered pieces, #9's crown). No post-game: eras TURN (world-ledger continuity; a
+new life on the sea your last life shaped). Boundaries are GRADIENTS (tier-region bands), never gates.
+THE AREA FUNNEL (2026-07-18, developer-observed from the canon map, ratified): each phase's sea is
+roughly HALF the previous one's area — correct, because area tracks POPULATION (the pyramid narrows; the
+New World is small BECAUSE it's a collision engine — scarce islands fuel territory wars), content
+economics (early breadth from cheap world-gen variety, late depth from few rich islands), and sim-LOD
+(expensive beings concentrate in small regions). Balancing rules: per phase, island COUNT halves, island
+DEPTH doubles, CROSSING COST rises (the map shrinks; the hours must not); a career sees ONE Blue, not
+four (quadrants are parallel starts, not sequential content); gates stay SOFT (the sea argues, never
+walls) — except ONE ceremonial threshold: a Reverse-Mountain-echo one-way current into the Grand Line
+(the gateway-port archetype + Sailing 2.0 currents), the commitment moment a career remembers. The
+funnel CONTINUES into the post-game (#22): the Dreadline is a whole ARC, not a point — Limbo (its
+Paradise) → Abyss End (its New World), halving again, with the serpent's absence as its summit.
 **Moat:** many islands need to feel AUTHORED without hand-authoring each. Cheap version refused: N copies of
 one village layout with palette swaps.
 **Hard questions:** island archetype def shape (village/fort/grove/ruin/sky/winter…); how much procedural vs
@@ -370,6 +576,73 @@ one thin generated-history pass per island naming its past = relics + rivalries 
 **Pass when:** before the sea gets its next 10 islands (content scaling moment, near external-data loading).
 
 ## 11. Custom ship building (the recorded intent: ships are PLAYER-BUILT)
+**THE HULL ROSTER (2026-07-19, developer-ratified):** two FACTION-NATIVE lines, each size-ordered.
+PIRATE line (taken, inherited, built — hulls developer-listed, order Claude-judged): Rowboat →
+Sailboat → Sloop → Ketch → Schooner → Caravel → Brig → Carrack → **Galleon** → **REGENT** (+ open
+"etc": junks, fire ships, barges, the Dreadline's bellships). REGENT = the rung above galleon
+(2026-07-19 naming saga: Sovereign proposed → developer caught the collision with the Dreadline's
+Three Sovereigns → Regent — real pedigree, the *Regent* of 1487 was a thousand-ton Tudor great ship,
+and the meaning is the sharper pirate irony: a regent WIELDS THE CROWN'S POWER WITHOUT WEARING IT —
+the apex hull of the throneless, named beside the throne-words, never in them). Judgment calls: ketch under schooner (averages
+smaller); GALLEON ABOVE CARRACK — with the honest axis stated (developer probed it): raw tonnage is a
+WASH (ranges overlap; era giants traded the crown), and the carrack even LOOKS bigger (towering
+castles, round belly) — the galleon sits higher because it's the CAPABILITY apex, invented as the
+carrack's successor (castles cut, faster, steadier gun platform; it killed the carrack at equal size).
+Role split: carrack = the fat treasure-hauler (deepest holds per foot, holds bought with slowness),
+galleon = the war flagship a Yonko flies. The ladder's top rung is "better ship," not "more tons" — a
+very pirate lesson. Rough crews:
+1-2 / 1-3 / ~10 / ~12 / ~15-20 / ~30 / ~50 / ~100 / ~150+ / ~300 (regent). MARINE line
+(yard-standard steel): Corvette → Destroyer → Frigate → Cruiser → Battlecruiser → Battleship →
+**Dreadnought** — developer-ruled ordering: corvette smallest, dreadnought biggest, FRIGATE ABOVE
+DESTROYER. **THE SHADOW TABLE (developer-shaped: STRICT 1:1, no doubled or fused pairings):** the
+three dinghy rungs sit below the Marine floor (no yard builds a rowboat; institutions don't do
+dinghies — "start a nobody with a rowboat" is the literal bottom rung, in water the Marines don't
+patrol), leaving EXACTLY SEVEN fighting hulls a side: Ketch↔Corvette (Lieutenant) ·
+Schooner↔Destroyer (Commander — the two speed-ships of their lines) · Caravel↔Frigate (Captain; both
+~30 crew) · Brig↔Cruiser (Commodore) · Carrack↔Battlecruiser (Rear Admiral) · Galleon↔Battleship
+(Vice Admiral; both ~150) · **Regent↔Dreadnought (Admiral)** — and the Fleet Admiral pairs with NO
+hull; he pairs with the ORG. Crew numbers recorded before the table existed already agreed with it
+(caravel/frigate ~30, galleon/battleship ~150) — convergence as evidence. CEILING LAW (amended from
+"nothing answers a dreadnought"): the pirate answer EXISTS and is MYTHICAL — dreadnought =
+institutional rarity (a budget line; "a fourth laid down" is era news), regent = A SINGULAR EVENT
+(one crew, grown into an institution per #1's grown fleets, doing what history says only navies can —
+~300 hands, forest-scale timber; building one ends in a coronation or a Buster-Call-sized visit).
+PAIR LAW: pair for pair the STEEL hull is the better ship (armor + broadside = what a state yard
+buys); wood buys HANDLING (the schooner outruns the corvette that outguns it; the brig turns inside
+the frigate; the caravel goes shallow) — every pair is the institution's standard vs the pirate's
+wildcard, and the crew aboard decides. YOUR HULL IS YOUR DOSSIER: the shadow column IS #6's
+scope-matched dispatch made visible — buy a bigger ship, requisition a better class of enemy.
+**THE SPEC TABLE (2026-07-19, tiles L×B / decks / masts / stock guns):** PIRATE: rowboat 3×1/0/0/0 ·
+sailboat 4×2/0/1/0 · sloop 8×3/1/1/4 · ketch 10×4/1/2/4 (first GALLEY) · schooner 13×4/1/2/6 (first
+CHART ROOM) · caravel 16×5/2/3/8 (FIRST HULL WITH ALL FIVE PROFESSION ROOMS — the crew era made
+floor plan) · brig 20×6/2/2/12 (first gundeck + first CELL, hence the name) · carrack 28×8/3/4/16
+(two holds, castles) · galleon 36×9/3/4/28 (office cabins ×4, war room) · regent 56×12/4/5/48
+(council room, forge). MARINE: corvette 10×3/1/2/6 · destroyer 14×4/1/2/8+bow-chaser · frigate
+18×5/2/3/12 · cruiser 24×7/2/3/18+mortar (marine barracks — boarding troops) · battlecruiser
+32×8/3/4/28+2 mortars · battleship 40×10/3/4/40 · **dreadnought 64×14/4/5/64 — EXACTLY ONE CHUNK
+LONG** (the 64-tile war-ship ceiling the developer set = #14's chunk size; resonance, not
+coincidence). Marines carry a cell + armory from corvette up (institutions take prisoners; pirates
+take prizes). GENERATING LAWS (the knobs, not hand-picked rows): AREA LAW ~3-4 walkable tiles per
+crew (boarding fights need footwork); GUN LAW pirate guns ≈ crew/5, Marine ≈ crew/4 (the pair law's
+receipt: steel crews more gunners); FIT LAW every gun count fits at 2-tile station spacing. PART
+PALETTE (the units, PartDef footprints): cannon station 2×3 (gun + recoil + loader's lane) · mortar
+3×3 · mast socket 2×2 (feeds sailCurve) · helm 2×2 · chart room 3×3 · galley 4×4 · sickbay 4×4 ·
+workshop 4×5 · magazine 3×3 (MUST sit below waterline — a magazine hit is the kill) · hold 4×4+
+(#21's Hold container, tileable) · cabin 3×3 / berth 1×2 · cell 3×3. ARCHITECTURE: hull class =
+HullDef (footprint, deck count, socket limits, minimum-seaworthiness room set); stock layouts =
+DEFAULT part arrangements; the player's yard fills the same envelope freely (custom-building canon:
+class is the envelope, the build is yours — nothing hard-codes a layout). Each class = a point on NAVAL's axes with the upgrade
+law enforced (galleon = fat holds bought with slowness; battlecruiser = guns + speed bought with armor;
+sloop flees everything, fights nothing). Integrations: CREW COMPLEMENTS bind hulls to the fractal-crew
+eras (sloop ~10, frigate ~30, battleship ~150 — under-crewed = the crew-requirement axis bites);
+**DREADNOUGHT = MYTHICAL-rarity hull-class** (a named, world-tracked few — "a fourth dreadnought laid
+down" is an era headline; rarity extended to architecture); RESPONSE DISPATCH sends CLASSES (your
+flotilla draws a Commodore in a cruiser; your fleet draws a battleship group — escalation readable by
+silhouette); FACTION-NATIVE LINES (developer-corrected 2026-07-19 from my earlier "vocabulary split"
+read): the romantic line IS the pirate fleet and the steel line IS the Marine yard's — a hull carries
+its allegiance in its silhouette, and a captured cross-faction hull is NEWS (a pirate-run destroyer is
+a statement the whole sea reads). The Marine line is RANK-GATED — the full rank → hull → base authority
+table lives in #15.
 **Moat:** your ship IS your naval identity — and the mechanics already exist to make building matter:
 masts/rig feed the sailCurve, weight feeds handling, stations feed crew requirements. YOUR BUILD IS YOUR
 SAIL CURVE. Cheap version refused: buying hull #4 from a list.
@@ -385,14 +658,192 @@ boot-style validators (fail loud in the dock UI, not at sea); every part obeys t
 economy (#7) and orders that speak the PATHFINDING region/frame language (already reserved there).
 **Hard questions:** claim/upkeep/income loop; what happens in your ABSENCE (the world-sim answers, never
 timers); division/fleet order grammar; delegation UI; when does the game "end"?
+**Lean (2026-07-18, from the developer's fleet-war scenario — 12 battleships vs 15) — ZOOM = SIM TIER.**
+The strategic/fleet view is NOT a new mode: it's the COARSE TIER MADE VISIBLE (the sail-on-horizon rule
+generalized — a fleet war renders as a chart of tokens because at that altitude the sim IS tokens:
+coarse engagements via the same headless combat engine, positions as clock math). Three view altitudes =
+three sim resolutions: deck (full) / tactical (hot zone) / strategic chart (ledger). Orders at chart
+level = the SAME fleet verbs AI admirals score (the Moat at command, per AI_FOUNDATION §5); the zoom-in
+gesture IS possession (click a token → possess its captain → the hot zone moves to her deck while 26
+ships keep resolving coarsely) — which is also WHY 12v15 is affordable: one hot engagement + arithmetic.
+Diegetic dressing (capture-level): the chart as the flagship's MAP TABLE, orders by signal flag — and
+later, command FRICTION as gameplay (signals misread in smoke; captains who improvise by INT when the
+line breaks). War at the top is intent, distance, and trust — never total control. FEASIBILITY VERDICT
+(same date, developer-asked "achievable and fun?"): ACHIEVABLE — cost math holds (one hot engagement +
+coarse arithmetic; every prerequisite roadmapped and independently valuable); the ONE novel hard problem
+is COARSE↔HOT RECONCILIATION (an unpossessed battle must end statistically as if possessed — absence
+must never penalize; the GYM calibrates it: run 12v15 both ways until distributions match). FUN — strong
+prior (Mount & Blade's order-then-fight loop is the genre-proven ancestor; our upgrades: possession of
+any token + losses are PEOPLE with shared logs); named risks all tunable (chart passivity → possession
+loop + 30-60s cadence; readability → chunky decisions + the map table; friction → playtest). THE
+TEST-SMALL RULE: the entire war loop exists in miniature at 2v2 the moment ship combat + one coarse ally
+land — validate the loop for the price of a skirmish, years before 12v15; if 2v2 isn't fun, re-open
+cheap. WAR-TIER ARCHITECTURE (same date, from the developer's 500-actor scenario — geppo boarders,
+ice-fruit decks, captain-hunters, scared crew): SHIPS CARRY THEIR OWN TILE GRIDS (mobile 64-tile
+buildings — chunks count only water: battle footprint ~400-600 tiles ≈ 36-81 chunks; HOT bubble stays
+~3×3-4×4 ≈ 2-5 ships ≈ 60-150 full actors — the real budget). The tier ladder applies INSIDE the war:
+nameless crew → per-ship CREW POOLS (headcount/morale/quality; a pool can BREAK and hydrates as routing
+individuals); NOTABLE ACTORS (named/officer/high-band — the ace, the Logia, every captain) stay
+individual LEDGER-ACTORS at coarse, agendas firing events (the risers-vs-townsfolk split, war-dense).
+THE UNIFIER — ONE EVENT LANGUAGE, TWO SPEAKERS: the hot sim EMITS battle events natively (boardings,
+duels, breaks, world-effects like an ice bridge = #16 tile-state at ledger resolution); the coarse
+resolver SAMPLES the same vocabulary — so the chart feed is honest narration at any tier, and
+possession hydrates scenes consistent with their own event log (mid-battle alibi). OPEN QUESTIONS
+exposed: war-time hot-bubble size knob (expansion vs ship-anchored bubbles); the notable-actor
+threshold; cross-boundary projectiles (resolve as events, never half-trajectories); mid-battle
+hydration fairness rules; morale/#1 must land early enough for crew pools. THE LAND-WAR CASE (2026-07-19,
+developer-asked: 500 actors INSIDE 3×3 chunks — do all run full AI?): YES, all 500 run the real pipeline
+— affordably because "full" is a PYRAMID by design: cadence staggering (~8-16 decisions/frame, not 500),
+the COMMAND HIERARCHY as perf structure (squads think tactics at ~2s, divisions at ~10s, individuals
+shrink to pursue-intent + local micro), INT-AS-COST (fodder runs minimal consideration sets; the ~20
+notables burn real thought — the power pyramid IS the CPU budget), shared flow-paths per objective
+(battles are when units share destinations), pooled projectiles/FX. HONEST FALLBACK, named in advance:
+if playtest breaks frame budget, camera-far melees drop to CROWD-LOCK (locked pairs resolving by pooled
+exchange, same event language — the M&B/Total War trick): degrade presentation density, never fantasy or
+outcome. Determinism untouched (fixed timestep: heavy frames slow the clock, never change the war).
+CLARIFYING LAW (2026-07-19, developer caught the ambiguity in "zoom = sim tier"): THE CAMERA NEVER
+CHANGES THE SIMULATION; POSITION DOES. The hot bubble anchors to the CONTROLLED BODY, not the camera —
+zoom to the chart and your flagship's melee keeps resolving frame-true underneath the map (return to
+find your bodyguard genuinely won or lost); the chart merely DRAWS everything as tokens, including your
+own hot fight. Resolution moves only by possession (relocates the bubble) and the perf fallback
+(frame-budget-triggered, never zoom-triggered). "Zoom = sim tier" means the view RENDERS FROM that
+tier's data, never that zooming changes tiers. Observation renders; it never rolls — presence is the
+only currency the sim accepts. PERFORMANCE VERDICT (2026-07-19, developer's target: 8GB / i7-2600K /
+GT 1030): the SIM thinks the 500-war in ~3-4ms even on that CPU (the pyramid paying cash); the RENDER
+is the real fight (procedural multi-part bodies on Canvas) — but the viewport shows 100-200 not 500,
+and the mitigation ladder is standard: SPRITE CACHING (pre-render poses to offscreen canvases — the big
+Canvas win) → dirty-region terrain → crowd-lock (saves draw AND cpu). Expected: 30-60fps in peak
+battle on that machine, 60 elsewhere; fixed timestep means lag slows the clock, never corrupts the war.
+ADOPTED: "a decade-old office PC" as the OFFICIAL min-spec design target (the free game's real
+audience). DISCIPLINE: determinism enables a HEADLESS BENCHMARK SCENE (synthetic war at 50/150/500
+actors, profiled on cheap hardware) long before real wars exist — the test-small rule applied to perf.
+CORRECTED (2026-07-19, the wind-streak audit): headless proves the SIM only — the suite also needs a
+VISUAL benchmark scene (full storm + max battle, on the floor machine) or render claims are folklore.
+Streak audit result: current streaks are BOUNDED BY DESIGN (STREAK_MAX 9/cell ≈ ~108 visible at full
+storm ≈ 1-2ms Canvas — the cap IS the storm signal; guard it like canon). The render killer is the SUM
+(streaks + swell + bodies + FX), never one system. LAW for future drama: density beyond the cap comes
+from BAKED SCROLLING LAYERS (the sea's own Tier-1/Tier-2 pattern), never more live paths — raising
+STREAK_MAX past ~12 instead of baking is a foundation bug wearing a weather costume.
 **Pass when:** deep-sim era — LAST of the big passes; everything above feeds it.
 
 ## 13. Multiplayer gameplay design (before netcode work, after PlayerIntent)
 **Moat:** openpiece.io — the same sim, server-authoritative. The STACK is settled (`DEEP_SIMULATION §7`);
 the GAMEPLAY design isn't.
+**THE HOSTING MODEL (2026-07-21, developer probed .io/Roblox economics; the lean that survived):**
+**player-hosted persistent seas + openpiece.io as the front door.** The .io model's UX is adopted
+(quick-join button, live server browser, per-server player caps) but its ECONOMICS are rejected: a
+developer-hosted fleet scales cost with success (~$50/mo per 100-player box × N instances — the exact
+curve the free-forever law forbids, same law that banned developer-hosted LLM dialogue), and .io games
+only afford it because their sims are trivial and monetized (ads / Roblox's ~70% cut) — ours is a deep
+persistent sim and free. Also a DESIGN mismatch: .io instances are disposable arenas; openpiece seas are
+persistent worlds (quick-join-a-fresh-world deletes bounty/history/three-year-test). The shape that fits
+every law: the server is a FREE BINARY anyone runs (Necesse/Valheim/Minecraft tradition — Necesse is on
+the inspiration list) — a friend's PC ($0, ~10 players), a community's $6 VPS (10-30), a $50 dedicated
+box (~100); the cap is a HOST KNOB matched to hardware, shown in the directory. Developer's fixed costs:
+domain + static wasm site (~$0) + a tiny directory service + an OPTIONAL donation-funded flagship sea.
+Success spawns more community servers, never more developer bills — multiplayer stays free forever
+STRUCTURALLY. Quick Join = auto-pick the healthiest public sea with room (matchmaker logic over servers
+other people pay for). Characters are PER-SEA (no cross-server transfer — it's a dupe/cheat vector).
+**THE ARCHITECTURE (2026-07-21, Bevy-era shape):** ONE SIM, TWO TARGETS — the same Rust sim crate
+compiles native (the headless Bevy server, no render plugins, ALL cores) and to wasm (the browser client
+at openpiece.io, ~1 core — which is FINE because the client only renders its bubble + sends intents +
+predicts; the sim never runs in the browser in MP). Kills the classic MMO disease (server/client logic
+written twice, drifting). Browser transport = WebTransport/WebSocket (no raw UDP — fine for this genre).
+Netcode via the Bevy crates (lightyear-class: prediction, replication, interest management). THE TIER
+PYRAMID IS THE NETCODE: hot bubble = interest-management/replication area (per player, merged when
+overlapping — server cost scales with PLAYERS, never map size); tracked tier = server-only, never
+replicated until it enters a bubble; statistical tier never touches the network. World size ≈ free (the
+world at rest = the painted map ~64KB + seed + deltas; a $6 box hosts the ENTIRE 256×256-chunk world
+because only ~0.5-1.5% of chunks are ever loaded).
+**SCENARIO LEDGERS (2026-07-21, derived with the developer):** 100 mixed players ≈ ~45 merged bubbles,
+~3,000 hot actors, ~420 loaded chunks (0.6%), ~25MB chunk RAM, ~3MB/s total bandwidth — a $50 box.
+100 SCATTERED explorers = EASIER (half the hot actors — empty ocean is empty; only cost that rises is
+chunk-gen churn, ~23 gens/s server-wide, a few % of one core): spreading players costs WATER (nearly
+free), stacking players costs ACTORS (the only real bill). TRUE WORST CASE = CONVERGENCE: the 50v50
+Yonko war (100 players × fleets ≈ 30-50k combatants) runs as a THEATER not a bubble — ~20-30 flashpoint
+clusters hold 5-8k hot actors (crowd-lock capping each); the rest fight at #12's war tier (squad = one
+entity, same event language); the COMMAND PYRAMID is the CPU budget (of 500 in a division ~15 decide,
+485 follow); tier-rehydration lets a player board a distant deck and decompress a squad into named
+notables + pool-drawn hands mid-battle (the camera never changes the sim; position does). Scheduled
+great wars justify event-tier hosting (~$100 box) and MUST exist as #12's visual benchmark scenes
+long before a real one fires.
+**MP EDGE CASES + OPEN RULINGS (2026-07-21 stress-test):** (a) **THE OFFLINE RAID — the one pure design
+ruling only the developer can make:** your logged-off ship is a tracked dot; attacked while you sleep,
+resolution is statistical and you wake to consequences you never got to contest. Candidate softeners:
+harbor-safety zones, offline crews defending at war-tier competence, #3's defeat-not-death. UNRULED.
+(b) login-mid-event: rehydrate into a half-resolved war-tier battle — same machinery as the Yonko
+boarding, one rule covers both. (c) spectator flood (80 players watching one duel): sim cost tiny,
+replication ×80 — interest management handles it, wants a benchmark scene. (d) alt sprawl (one human,
+5 accounts spread to keep area hot): per-connection bubble budget as a HOST knob. (e) EXPLOIT-CLASS
+LAWS (shared with #14, recorded here where they bite MP): chunk-cycling farming dies because
+EVALUATION IS A PURE FUNCTION OF (SEED, ABSOLUTE TIME) — re-entering without elapsed time yields
+bit-identical state, same question same answer; border dupes die by ONE-OWNER-CHUNK per entity
+(#21's boundary law surviving into the chunk system — the OSRS dupe-class research paying off).
+**THE COMMUNITY-FUNDED SEA (2026-07-21, developer's model, adopted):** official/regional servers are
+CROWDFUNDED WITH A PUBLIC METER — "$73/$100, EU-West, July" visible to all; meter fills → that sea runs
+that month. Pillars, each load-bearing: (1) DONATIONS BUY NOTHING PERSONAL — the funded sea is open to
+everyone, donor or not (keeps the support-page law intact; no in-game donor perks EVER, website ledger
+recognition at most); (2) FREEZE, NOT DIE — an unfilled month archives the world save (paint + deltas =
+megabytes) and the sea resumes exactly where it froze when refunded (evaluate-don't-tick doesn't care
+about the gap — same machinery as any absence), or any community member ADOPTS the frozen world via the
+free server binary: money can pause a sea, never kill one; (3) SURPLUS ROLLS OVER, publicly ledgered,
+prepay never debt; (4) COST-PRICED, ZERO MARGIN — also the legal posture: infrastructure-at-cost with a
+public ledger is the most defensible donation shape a fan project can have (money near the IP is the
+C&D-sharpening zone — community-hosted seas running their OWN funding pages, money never touching the
+developer, is the safest tier). **THE SCALABILITY PROPERTY (developer named it):** the meter is funding
+AND demand-signal in one — few players → few meters fill → few servers; a surge fills more, regionally,
+automatically; and it shrinks as painlessly as it grows (freeze-not-die makes downscaling costless,
+where a developer-funded fleet only ratchets up). Supply tracks demand because the players ARE the supply.
+**SAVES & IDENTITY (2026-07-21):** OFFLINE solo = a plain file the player owns (world = paint + deltas +
+character; multiple worlds; desktop = disk, browser = local storage + a MANDATORY export/import-file
+button since browser storage is wipeable). ONLINE = the character lives IN that sea's world save on the
+server (log off → tracked dot; log in from anywhere; a frozen sea's characters sleep inside the archive
+and resume with it). THE LINE THAT NEVER CROSSES: no offline character enters an online sea, no
+character moves between seas — an offline save is owner-editable (their world, their rules), so import =
+every sword online is fake (Terraria/Valheim pay for import with rampant cheating; a bounty-and-war game
+can't). Per-sea natives also fit the fiction (every sea has its own legends, you start a nobody in each)
+and cost nothing (a character = plain serializable components — ids-at-rest makes the save system fall
+out of the ECS for free). EVEN OFFICIAL→OFFICIAL (developer probed EU-2→NA-1, where anti-cheat is weak
+since both saves are authoritative): still NO — the DEEPER law is that progression is RELATIONAL:
+bounty/legend/relations/harbor-rights live in the WORLD'S ledgers about you, not on the character, so a
+transfer delivers a husk (S-tier stats, total anonymity — impossible muscles, no name), and imported
+items break the destination's SCARCITY LEDGER (rarity = that world's actual scarcity; a fourth copy of
+a three-in-the-world blade is a lie). Regions are LATENCY LABELS, NOT WALLS — anyone may join any sea
+as a fresh native (~100ms cross-region is playable). Portable: the ZERO-POWER identity layer
+(account-level name/flag/appearance) + everything in the player's head (the knowledge economy's real
+currency crosses every ocean). "Sail into a new sea and nobody's heard of you" is the fiction agreeing
+with the architecture. **SEA OPERATIONS (2026-07-21, developer probed gone/reset/full):** FULL = a login
+queue (your character lives IN the world; your ship keeps sailing its standing orders meanwhile) + the
+meter model's self-relief: a nightly-full sea is a demand signal that funds the upgrade or EU-3
+automatically — success funds its own relief. GONE: funded/official seas MUST off-site-backup (the
+world is megabytes; unlosable-by-policy); community seas carry the honest Minecraft-deal limit — the
+host owns the save, so the binary AUTO-EXPORTS periodic backups (any co-admin can resurrect via
+adoption) and the DIRECTORY SHOWS TRUST SIGNALS (world age, uptime, host tenure — reputation for
+servers in a game about reputation; players route around bad harbors). NO dead-sea transfer mercy rule
+— "my server died" is unverifiable and becomes the character-laundering exploit; characters share
+their sea's fate, and choosing whose sea gets your years IS choosing whom you trust. RESET AS POLICY,
+NOT ONLY DISASTER: seasonal seas (Rust-style wipe cycles) suit the rise-from-nobody identity unusually
+well — the directory carries each sea's DECLARED policy (persistent / seasonal / hardcore / house
+rules); a scheduled season and a hostile surprise-wipe are the same event with opposite legitimacy,
+separated by the label, with repeat offenders wearing their young world-age publicly.
+**THE HOPPING TRILEMMA (2026-07-21, developer probed free server-hopping as a design):** pick two of
+three, never all: (1) persistent living worlds, (2) community-hosted servers, (3) free character
+hopping. Every shipped hopping game gave up a leg: Sea of Thieves = stateless disposable worlds (no
+world-memory = no moat); Roblox/megaserver MMOs = one central authority owning all state (developer
+hosts/certifies everything — the forbidden cost curve, and an untrusted community host writing to a
+central character DB is the cheat machine); Valheim/Terraria = accept the cheating (fine for stakeless
+co-op, fatal with bounties + scarcity economy). Openpiece spent its two picks on the moat, so hopping
+is out BY ARITHMETIC, not taste — hopping IS transfer with better marketing. **THE ROSTER ANSWER (what
+hopping actually wants, delivered free):** THE PLAYER HOPS FREELY, THE CHARACTER NEVER DOES — "one
+sailor, many captains": the account holds a roster of per-sea natives (login screen = your fleet of
+lives, ten seconds to switch); join any region tonight as its native; the zero-power identity layer
+(name/flag/face) + account-level friends/cross-sea chat make you recognizably YOU everywhere (social
+layer carries no power, needs no trust); the Sea-of-Thieves itch = a declared-policy session sea
+(fast-progression house rules, wipe monthly — a directory label, not an engine change). The only thing
+lost vs true hopping is carrying POWER between seas — which is the thing the law exists to forbid.
 **Hard questions:** possession rules among players (who may possess what — the Moat meets other humans);
 crew sharing; sharding by sea region (reuses sim-LOD); economy/persistence in a shared world; PvP consent
-and the bounty system as its social contract.
+and the bounty system as its social contract; the offline-raid ruling above.
 **Pass when:** when netcode work starts (CLAUDE.md: PlayerIntent/ControlSystem is the keystone first).
 
 ## 14. Seamless world — the REAL pass (the decision exists; the design doesn't)
@@ -416,7 +867,34 @@ invariants in the code. That is a direction, not a design. **This pass is claime
   real as it closes. Done right, the world-sim is literally visible from your deck — that's the moat shot.
 - Geometry: world size, region layout (C1–C4), travel-time targets as a DESIGN variable (how long should a
   sea feel?), landmark visibility (navigate by sight — feeds the navigator role and #9's charts).
+  CHUNK SIZE (2026-07-18, derived not inherited — the developer rejected codebase-precedent as an
+  argument, correctly): **64×64 recommended default** (a named constant; final lock at seamless-build
+  playtest). The deciding cost is HOT-ZONE QUANTIZATION: chunks are the sim-LOD granularity, so the
+  minimum 3×3 loaded ring runs full-sim — 64→~37k tiles hot, 96→~83k, 128→~147k (4× of 64, bursty 16k-
+  tile hydrations, zero player-visible gain). Factorio (the closest shipped analog: 2D deterministic
+  chunk-LOD sim) uses 32; we stop at 64 because our per-chunk overhead is JS objects, not C structs.
+  Power-of-two bit-mask indexing is a minor free bonus. Island FILES span chunks freely — authoring
+  never cares about chunk edges, so authoring convenience anchors nothing.
 - Wind/weather fields over chunks (SAILING's seeded streams at world scale, forecast skill intact).
+- **THE EXTREME-CASE AGENDA (2026-07-21 stress-test with the developer — each OPEN until this pass
+  rules it):** (1) the SPEEDSTER: top travel speed must be bounded by chunk-generation throughput (or
+  headings pre-generate async) — a light-speed fruit can't outrun the world's loom; (2) MERGED-ZONE
+  CAP: players daisy-chained under bubble-merge distance must not weld one map-wide hot zone;
+  (3) IDLE DECAY: an AFK bubble parked on a 300-NPC port decays to observation-only; (4) the DECADE
+  RETURN: catch-up is CLOSED-FORM — cost never scales with absence length; (5) CROSSING AGENDAS (the
+  hardest single problem): two compressed dots whose paths would have met while unobserved must
+  resolve ORDER-INDEPENDENTLY or replays diverge; (6) EVALUATION CASCADE: rehydrating town A must not
+  recursively evaluate its whole trade web — depth-cap into statistical closure; (7) the SPYGLASS
+  SEAM: observation radius ≠ sim radius — define what renders when a player OBSERVES compressed space;
+  (8) DELTA-BLOAT: one-hole-per-chunk griefing answered by delta coalescing + ambient healing
+  (untouched-by-owner edits erode back — good fiction too); (9) VERSION-ORPHANED DELTAS: per-chunk
+  lazy save-migration when defs/rules change between versions; (10) PROMOTION BUDGET: talking to every
+  soul in a 2,000-person city must not mint 2,000 tracked individuals — LRU demotion
+  (least-recently-mattered dissolves back to statistics); (11) AGGREGATE↔PROMOTED CONSISTENCY: a war
+  that statistically empties a region must cascade to its promoted individuals (the tracked baker
+  becomes a refugee, not a ghost in a burned bakery); (12) the WORLD-SCAR: a Marineford-scale ability
+  writes deltas LAZILY to unloaded chunks. Plus the two exploit-class laws recorded in #13(e):
+  evaluation = pure fn(seed, absolute time); one-owner-chunk per entity.
 **Pass when:** developer says go — the design can (and should) precede the build trigger by a long margin,
 because #7, #12, and #16 all need its vocabulary (ledgers, deltas, tiers) to design against.
 
@@ -437,6 +915,33 @@ get promoted, disgrace out — Nemesis synergy: the officer who survived you get
 and politics weighs in (favor with superiors; the corruption axis — bribes are heat's back door). Rank-up
 is therefore emergent content: hunt a pirate the papers will credit you for, impress the Admiral inspecting
 your base, or arrange your rival's disgrace.
+**THE MARINE LADDER (2026-07-19, developer-ratified, ten rungs):** Fleet Admiral → Admiral → Vice
+Admiral → Rear Admiral → Commodore → Captain → Commander → Lieutenant → Officer → Cadet — ONE fused
+chain (rank = command = pay = post: the institutional fusion, granular because thousands need paper and
+promotion machinery needs rungs). SCOPE MAPPING vs crews: the ladders TOUCH at Captain (one warship —
+instant cross-faction peer recognition at the gunwale) and diverge both ways: finer below (institutions
+formalize apprenticeship: Cadet ≈ cabin boy with a uniform), five flag ranks above where crews have two
+(the Marines are PERMANENTLY a fleet-of-fleets — top-heaviness IS the World Government's reach as an org
+chart; Commodore ≈ the flotilla era, Vice Admiral ≈ a fleet's General, Admiral ≈ the great-war General).
+MECHANIC WAITING: #6's response ladder dispatches by SCOPE-MATCHING (your flotilla draws a Commodore,
+your fleet a Vice Admiral — the bounty reads your SHAPE and sends your mirror). **THE AUTHORITY TABLE
+(2026-07-19, developer-asked — rank → afloat command / shore hold / assignment power):** Fleet Admiral
+= org fleets + HQ + dreadnought assignment · Admiral = theater + a sea's authority + apex-response
+authorization + THE DREADNOUGHT (developer-ruled: Admiral authority) · Vice Admiral = one fleet + A BRANCH BASE (G-#) + region's
+standing orders, BATTLESHIP flagship · Rear Admiral = battle group + branch deputy + the ROVING relief
+column, BATTLECRUISER group flag · Commodore = squadron + minor base, CRUISER flag · Captain = FRIGATE
+(the classic pairing; seniors a cruiser) · Commander = DESTROYER + small outpost · Lieutenant =
+CORVETTE or a department · Officer = a section · Cadet = himself. THE 1:1 (developer-ratified ordering,
+corvette smallest → dreadnought biggest, frigate above destroyer): seven fighting classes, seven
+command-capable rungs — the fusion made LITERAL: the Marine hull ladder IS the rank ladder; promotion
+is a bigger ship, a career measured in tonnage (pirates obey no such table — a legend in a stolen
+corvette is their side's kind of sentence). LAWS: hull classes are RANK-GATED (silhouette →
+class → rank aboard → authority provoked: the spyglass reads the org chart); BASE AND FLEET AUTHORITY
+ARE ONE LADDER (the G-base is the fleet's home — territory and navy are one asset sheet); FACTIONAL
+ROSTERS: romantic line = pirate-native, steel line = Marine yard (full roster + the capture-is-news
+law: #11). Paper admirals exist in
+those rungs (fusion's cost); crews structurally can't mint one — when the philosophies meet in a bay,
+that's a combat variable.
 **Duties as jobs:** patrol/inspection/raid/escort are the JOB SYSTEM (#1's work model) running on org
 assets — a patrol is a standing order, an inspection is heat's sensor, an escort is #7's economy made
 raidable. Player-as-marine = the same duties as missions; player-as-pirate = those duties are the living
@@ -492,6 +997,40 @@ a rumor, intimidating a weaker crew into standing down, interrogating a captive 
 of Qud prove this is systemic, not scripted. What exists today is a linear typewriter + one yes/no
 (`DialogueSystem`) — a presentation shell with no social MECHANICS behind it. Cheap version refused:
 branching dialogue trees hand-authored per NPC (that's content that doesn't scale and never surprises).
+**Lean (2026-07-18) — LLM DIALOGUE: render, never decide.** The two-layer split: the SIM decides every
+fact of an exchange (what the NPC knows per the knowledge ledger, what they agree to, relationship
+deltas, which verb fires — deterministic, replay-safe); the base RENDERER is grammar-from-state (the
+Qud lens — templated, free, canon-clean; concretely Tracery-style recursive substitution, e.g.
+`greeting = "{time_greeting}, {title}. {mood_line}"` with named fragment pools driven by real sim
+variables — ~30-50 fragments per NPC archetype already yields thousands of deterministic
+combinations); an OPTIONAL LLM renderer plugs into the same structured
+utterances (player-supplied local model — free-forever forbids API costs, AND self-hosted GPU fleets:
+the law is that ANY per-player developer cost fails the free-forever test, since costs scaling with
+success bankrupts a free game; also API drift breaks replay and a fan project must still run in 20
+years — a pinned local model file does, an endpoint doesn't) for richer prose, identical
+game facts. Guards: prompt context assembled FROM the sim's knowledge state (hallucinated knowledge
+breaks the knowledge economy — the tavern keeper must not invent routes), fence canon names (moat #8 by
+hallucination is still moat #8), and free-text INPUT is its own ladder (2026-07-18 sharpening): OPTIONS
+composed from state (verbs valid now × topics YOUR knowledge ledger holds — the knowledge economy on the
+input side) → KEYWORD matching (MUD/Ultima style — deterministic, free, no model) → LLM PARSE (typed
+prose → the same closed verb set + tone tag; the model TRANSLATES, never grants — "give me your sword"
+parses to demand(), which the sim resolves with a laugh; jailbreaking earns nothing because persuasion
+is a sim check). Determinism trick: THE GAME RECORDS THE PARSED VERB, NEVER THE PROSE (replay/server see
+`ask_rumor(topic, tone)` like a keypress — the PlayerIntent architecture doing its job; surface the
+parse back to the player so they see what the sim received).
+**Lean (2026-07-18, developer-insisted) — NPC↔NPC IS THE POINT, not a flavor add.** The Moat makes every
+dialogue verb actor-generic, so NPCs talk to NPCs through the same machinery — and three consequences
+are load-bearing: (1) NPC↔NPC conversation IS the news transport layer (#6/#9): rumors move person to
+person as ledger-to-ledger knowledge transfers — the gossip network is how your bounty travels;
+(2) INTERACTION IS SIM, TEXT IS PRESENTATION: offscreen talk = pure state ops (relation delta +
+knowledge transfer, zero words, evaluate-don't-tick cheap, world-wide); prose renders ONLY WHEN
+OBSERVED — which makes EAVESDROPPING a real intel verb (overheard talk renders from genuine ledgers:
+two marines discussing patrols are leaking real patrols); (3) CREW↔CREW CHEMISTRY: the pairwise
+shared-log generalizes to every pair aboard (watch-mates bond, feuds accrue from real events, mutiny =
+conspirators recruiting each other through the same recruit verb) — the ship is a social simulation
+whether the player is on deck or not. Precedent: cosmetic FX jitter is off-sim BY
+DESIGN — LLM text is the same class. The client asked for this (references/reddit/redditor-idea-1.md:
+"utilizing AI would not be unrealistic for this game's NPCs").
 **The shape (lean):** social actions are ABILITIES in the same engine — persuade / intimidate / bribe /
 interrogate / deceive / recruit-pitch resolve as CHECKS, not scripted branches: your relevant stat + LEGEND
 (#6 — a Yonko's "back off" is not a rookie's) + relationship + the target's disposition/greed/fear (AIProfile
@@ -501,6 +1040,17 @@ not scripts — a line is assembled from who they are, what they know, and how t
 grammar approach), so the same system serves any of thousands of actors (the Moat at the UI layer, like the
 unit-plate view already is). Bribery is heat's back door (#6/#15's corruption axis); intimidation is legend
 made interactive; deception is the player's half of #6's disguise/false-trail play.
+**EXTERNAL CHECK (2026-07-19, developer-brought comparison doc, independently derived from our own pitch
+language): CONVERGENT, not corrective.** Three of its four proposed techniques already match this entry
+verbatim in spirit: grammar/template generation (our base renderer, above), information-gating as the
+real content (already the knowledge-ledger-gated input ladder), and per-NPC witnessed-event memory
+driving lines (already the world-ledger + NPC↔NPC gossip, broader than the doc's version since ours
+covers NPC-to-NPC transfer too, not just player-witnessed events). DECLINED: its fourth technique,
+fixed 4-5 reputation TIERS with hand-authored per-tier dialogue options, reintroduces exactly the
+branching-tree-content problem this entry already refused above; our check-based ability resolution
+(stat + Legend + relationship vs threshold) is the better fit and stays. Its cost objection to LLM
+dialogue (API cost/drift) doesn't land against OUR plan specifically — it assumes a hosted-API design
+we never proposed; the player-supplied-local-model choice already zeroes developer cost.
 **Hard questions:** the check model (opposed roll vs deterministic threshold — lean deterministic + skill
 bands, matching SAILING/combat); relationship state shape (per-pair scalar vs richer); how much is
 generated-from-state vs authored set-pieces (recruitment/quest-givers may want authored beats); refusal &
@@ -689,6 +1239,14 @@ review caught the false bundling: both merely smelled like "big world"). An auth
 two islands could ship on the current architecture.
 
 ## 21. Items & inventory — the substrate half the passes assume (2026-07-18)
+**DONE — `ITEMS.md` (2026-07-18 pass; evidence `docs/research/ITEMS_RESEARCH_PARTIAL.md`).** Verdict:
+two-tier — commons by default (ItemStack {ref, n}, per-def stackLimit, clamp-loud), instance by exception
+(the boundary law: state ⇒ instance-entity; `mythical`+ additionally relic-retained + indexed, in
+SEAMLESS_WORLD's no-second-representation vocabulary — flagged dependency, its gates are unpassed);
+one `Hold` relation for every container (Inventory absorbed at slice 3); one atomic `Items` service (the
+dupe-class defense — [SOURCED] MU/OSRS evidence); ownership on containers, crime-on-the-act for commons,
+evidence-on-the-thing for instances; grants always resolve from defs (per-instance movesets rejected).
+Build slice 1 (stacks) precedes #1 crew provisions per the queue. Entry below kept for history.
 **Moat:** not itself a moat but a SUBSTRATE (the #18 TIME situation repeated): the rarity field (#4) needs
 an `ItemDef` to live on; #7 trades goods; #2 consumes provisions; #19 counts powder and shot; #3's enemies
 loot a downed body; #9's charts are ITEMS; #11 assembles parts; #4's fruit VESSELS are items with grant
@@ -706,3 +1264,13 @@ degradation/upkeep (ships already wear — do blades?); how far equipment slots 
 Combat Potentials "posters" already exist as modifier bundles).
 **Pass when:** EARLY — before #1 (provisions), #7 (goods), and #19 (ammo) need its vocabulary; lightweight
 to design, load-bearing to get right (same argument that won #18 its early pass).
+
+## 22. The Dreadline — the post-game sea (vision capture, 2026-07-18)
+**Capture only — `docs/design/raw/dreadline-postgame-vision.md` holds the full drop.** The Beyond-era sea
+housing the X−/X/X+ apex bands (currently unhoused geography): Limbo → Abyss End inside/beyond the
+Red-Line-as-Jörmungandr, Void Belts, themed hell-seas, fallen-angel law (OrgDef), Three Sovereigns +
+Pirate Overlord niches, MAKI (the cursed mirror power system, priced in curses/insanity), the INSANITY
+track (Willpower's consumer; sensor-corruption not stat-debuff), the ledger's graveyard (dead ships/
+legends resurface), navigation-by-madness. Everything must land as data in existing engines — the pass
+that designs it proves that. **Pass when:** Beyond era (post-Production); until then it only RESERVES
+vocabulary cheaply (Maki as a layer family, hazard levels as def data, insanity as an effect track).

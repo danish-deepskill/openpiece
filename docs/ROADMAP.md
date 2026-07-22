@@ -43,6 +43,8 @@ many fruits, mesh-form bosses); polish, balance, performance, art pass; multipla
 ## Status
 End of **PoC**. Combat feel pass + character UI + the Haki↔Logia capstone are the last PoC items; then we
 enter **Prototype** (find the fun).
+Design pass #21 landed (`ITEMS.md` — the item substrate: stacks/instances/holds/ownership). Its slice 1
+(stacks + the `Items` service + materials) is a Prototype-era build item that precedes crew provisions.
 
 ## Foundation-audit ledger (repo-wide, 2026-07 — baseline d7d5afb)
 
