@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Openpiece World Map Builder</title>
+<style>
+  :root{
+    --bg:#0b1622; --panel:#132234; --panel2:#1b2f45; --line:#25405c;
+    --accent:#3fa7d6; --accent2:#2e86c1; --text:#cdd8e3; --dim:#7f93a8;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font:14px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  header{
+    display:flex; align-items:center; gap:14px; padding:8px 14px;
+    background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  header h1{font-size:15px; margin:0; letter-spacing:.5px; font-weight:600}
+  header h1 span{color:var(--accent)}
+  .scale{color:var(--dim); font-size:12px}
+  .toolbar{
+    display:flex; align-items:center; flex-wrap:wrap; gap:14px;
+    padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  .group{display:flex; align-items:center; gap:6px}
+  .group label{color:var(--dim); font-size:12px}
+  input[type=number]{
+    width:64px; background:var(--bg); color:var(--text);
+    border:1px solid var(--line); border-radius:4px; padding:4px 6px;
+  }
+  button{
+    background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:4px; padding:5px 11px; cursor:pointer; font-size:13px;
+  }
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent2); border-color:var(--accent); color:#fff}
+  button.primary:hover{background:var(--accent)}
+  input[type=range]{accent-color:var(--accent)}
+  .main{flex:1; display:flex; min-height:0}
+  .palette{
+    width:190px; background:var(--panel); border-right:1px solid var(--line);
+    padding:10px; overflow-y:auto; flex-shrink:0;
+  }
+  .palette h2{font-size:11px; text-transform:uppercase; letter-spacing:1px;
+    color:var(--dim); margin:16px 0 7px}
+  .palette h2:first-child{margin-top:2px}
+  .swatch{
+    display:flex; align-items:center; gap:9px; padding:6px 7px; margin-bottom:4px;
+    border:1px solid transparent; border-radius:5px; cursor:pointer; user-select:none;
+  }
+  .swatch:hover{background:var(--panel2)}
+  .swatch.sel{border-color:var(--accent); background:var(--panel2)}
+  .chip{width:22px; height:22px; border-radius:4px; border:1px solid rgba(0,0,0,.4); flex-shrink:0}
+  .swatch .nm{font-size:13px}
+  .swatch .hi{margin-left:auto; color:var(--dim); font-size:11px}
+  .canvas-wrap{flex:1; overflow:auto; background:#060d15; position:relative}
+  #map{image-rendering:pixelated; display:block}
+  footer{
+    display:flex; gap:18px; padding:6px 14px; background:var(--panel);
+    border-top:1px solid var(--line); color:var(--dim); font-size:12px;
+  }
+  footer b{color:var(--text); font-weight:600}
+  .hint{color:var(--dim); font-size:11px; margin-top:12px; line-height:1.5}
+  /* Load gallery (modal) */
+  .modal{
+    position:fixed; inset:0; background:rgba(4,10,18,.78);
+    display:none; align-items:center; justify-content:center; z-index:50;
+  }
+  .modal-panel{
+    width:min(880px,92vw); max-height:84vh; display:flex; flex-direction:column;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden;
+  }
+  .modal-head{display:flex; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line)}
+  .modal-head h2{margin:0; font-size:15px; font-weight:600}
+  .modal-head .x{margin-left:auto}
+  .gallery-grid{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+    gap:14px; padding:16px; overflow-y:auto;
+  }
+  .map-card{
+    background:var(--bg); border:1px solid var(--line); border-radius:8px;
+    overflow:hidden; position:relative; cursor:pointer;
+  }
+  .map-card:hover{border-color:var(--accent)}
+  .map-card img{
+    display:block; width:100%; height:120px; object-fit:contain;
+    background:#060d15; image-rendering:pixelated;
+  }
+  .map-card .meta{padding:8px 10px; display:flex; flex-direction:column; gap:2px}
+  .map-card .meta b{font-size:13px}
+  .map-card .meta span{color:var(--dim); font-size:11px}
+  .map-card .del{
+    position:absolute; top:6px; right:6px; width:24px; height:24px; padding:0;
+    line-height:1; border-radius:50%; background:rgba(4,10,18,.7); font-size:15px;
+  }
+  .map-card .del:hover{background:#c0392b; border-color:#c0392b; color:#fff}
+  .empty{color:var(--dim); padding:30px; text-align:center; grid-column:1/-1}
+  .toast{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+    background:var(--accent2); color:#fff; padding:9px 18px; border-radius:6px;
+    font-size:13px; opacity:0; transition:opacity .25s; pointer-events:none; z-index:60;
+  }
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OPENPIECE <span>World Map Builder</span></h1>
+  <span class="scale">1 tile = 1 chunk &#183; 1 chunk &#8776; 64 m across</span>
+</header>
+
+<div class="toolbar">
+  <div class="group">
+    <label>Width</label><input type="number" id="w" min="1" max="2000" value="120">
+    <label>Height</label><input type="number" id="h" min="1" max="2000" value="120">
+    <button id="resize">Resize</button>
+  </div>
+  <div class="group">
+    <label>Tool</label>
+    <button id="tPaint" class="primary">Paint</button>
+    <button id="tBucket">Bucket</button>
+  </div>
+  <div class="group">
+    <label>Brush</label>
+    <select id="brush" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px">
+      <option value="1">1</option><option value="3">3</option>
+      <option value="5">5</option><option value="9">9</option>
+    </select>
+  </div>
+  <div class="group">
+    <label>Zoom</label><input type="range" id="zoom" min="2" max="24" value="7">
+  </div>
+  <div class="group">
+    <label><input type="checkbox" id="grid" checked> grid</label>
+  </div>
+  <div class="group">
+    <button id="fill">Fill map</button>
+  </div>
+  <div class="group" style="margin-left:auto">
+    <button class="primary" id="save">Save</button>
+    <button id="load">Load</button>
+    <button id="exportJson">Export JSON</button>
+    <button id="png">Export PNG</button>
+    <button id="import">Import</button>
+    <input type="file" id="file" accept="application/json" hidden>
+  </div>
+</div>
+
+<div class="main">
+  <div class="palette">
+    <div id="swatches"></div>
+    <div class="hint">
+      Click a terrain, then paint on the map.<br>
+      Click and drag to fill fast.<br><br>
+      <b>Save</b> keeps the map in your library.<br>
+      <b>Load</b> shows your saved maps as thumbnails.<br>
+      <b>Export</b> writes a file for the repo (JSON or PNG).
+    </div>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="map"></canvas>
+  </div>
+</div>
+
+<footer>
+  <span>Map <b id="dim">120 &#215; 120</b></span>
+  <span>= <b id="km">7.7 &#215; 7.7 km</b></span>
+  <span>Cursor <b id="cur">&#8212;</b></span>
+  <span>Painting <b id="curterr">&#8212;</b></span>
+</footer>
+
+<div class="modal" id="gallery">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <h2>Saved maps</h2>
+      <button class="x" id="galleryClose">Close</button>
+    </div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ---- Terrain palette (edit this list freely: id, name, color, category) ----
+// Terrain is an elevation ramp (deep sea to peak); Features are named world zones.
+// APPEND new tiles at the end so saved maps keep matching indices.
+const TERRAINS = [
+  { id:'deepSea',    name:'Deep Sea',    color:'#0a2036', category:'Sea'  },
+  { id:'sea',        name:'Sea',         color:'#123f6b', category:'Sea'  },
+  { id:'shallowSea', name:'Shallow Sea', color:'#2f7fb5', category:'Sea'  },
+  { id:'beach',      name:'Beach',       color:'#d9c48c', category:'Land' },
+  { id:'land',       name:'Land',        color:'#4f9a4f', category:'Land' },
+  { id:'hill',       name:'Hill',        color:'#6f8a3c', category:'Land' },
+  { id:'mountain',   name:'Mountain',    color:'#7d7166', category:'Land' },
+  { id:'peak',       name:'Peak',        color:'#e7edf1', category:'Land' },
+  { id:'grandLine',       name:'Grand Line',       color:'#1c6e8c', category:'Features' },
+  { id:'calmBelt',        name:'Calm Belt',        color:'#4a6b63', category:'Features' },
+  { id:'redLine',         name:'Red Line',         color:'#8a3b2e', category:'Features' },
+  { id:'reverseMountain', name:'Reverse Mountain', color:'#a86b5c', category:'Features' },
+  { id:'thinPlace',       name:'Thin Place',       color:'#9aa0b8', category:'Features' },
+];
+const CHUNK_M = 64; // metres per chunk, for the readouts
+
+// ---- State ----
+let W = 120, H = 120, cell = 7, brush = 1, showGrid = true, selected = 0, tool = 'paint';
+let grid = new Int16Array(W * H); // values index into TERRAINS; 0 = deep sea
+
+const canvas = document.getElementById('map');
+const ctx = canvas.getContext('2d');
+const $ = id => document.getElementById(id);
+
+// ---- Palette UI (grouped by category) ----
+function buildPalette(){
+  const box = $('swatches'); box.innerHTML = '';
+  const categories = [];
+  TERRAINS.forEach(terrain => {
+    if (!categories.includes(terrain.category)) categories.push(terrain.category);
+  });
+  categories.forEach(category => {
+    const heading = document.createElement('h2');
+    heading.textContent = category;
+    box.appendChild(heading);
+    TERRAINS.forEach((terrain, index) => {
+      if (terrain.category !== category) return;
+      const swatch = document.createElement('div');
+      swatch.className = 'swatch' + (index === selected ? ' sel' : '');
+      swatch.innerHTML = `<span class="chip" style="background:${terrain.color}"></span>`
+        + `<span class="nm">${terrain.name}</span><span class="hi">${index}</span>`;
+      swatch.onclick = () => { selected = index; buildPalette(); $('curterr').textContent = terrain.name; };
+      box.appendChild(swatch);
+    });
+  });
+}
+
+// ---- Rendering ----
+function drawCell(x, y){
+  ctx.fillStyle = TERRAINS[grid[y*W + x]].color;
+  ctx.fillRect(x*cell, y*cell, cell, cell);
+  if (showGrid && cell >= 6){
+    ctx.strokeStyle = 'rgba(0,0,0,.22)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x*cell + .5, y*cell + .5, cell - 1, cell - 1);
+  }
+}
+function fullRender(){
+  canvas.width = W * cell;
+  canvas.height = H * cell;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++)
+      drawCell(x, y);
+  updateReadouts();
+}
+function updateReadouts(){
+  $('dim').textContent = `${W} × ${H}`;
+  const km = n => (n * CHUNK_M / 1000).toFixed(1);
+  $('km').textContent = `${km(W)} × ${km(H)} km`;
+}
+
+// ---- Painting ----
+function paintAt(cx, cy){
+  const half = Math.floor((brush - 1) / 2);
+  for (let dy = 0; dy < brush; dy++)
+    for (let dx = 0; dx < brush; dx++){
+      const x = cx - half + dx, y = cy - half + dy;
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      const idx = y*W + x;
+      if (grid[idx] !== selected){ grid[idx] = selected; drawCell(x, y); }
+    }
+}
+function cellFromEvent(e){
+  const r = canvas.getBoundingClientRect();
+  return [ Math.floor((e.clientX - r.left) / cell),
+           Math.floor((e.clientY - r.top)  / cell) ];
+}
+// Bucket fill: flood the connected region of matching terrain under the click.
+// Iterative (explicit stack) so huge fills never blow the call stack.
+function floodFill(sx, sy){
+  const target = grid[sy*W + sx];
+  if (target === selected) return;
+  const stack = [sx, sy];
+  while (stack.length){
+    const y = stack.pop(), x = stack.pop();
+    if (x < 0 || y < 0 || x >= W || y >= H) continue;
+    const idx = y*W + x;
+    if (grid[idx] !== target) continue;
+    grid[idx] = selected;
+    stack.push(x+1, y,  x-1, y,  x, y+1,  x, y-1);
+  }
+  fullRender();
+}
+let painting = false;
+canvas.addEventListener('mousedown', e => {
+  const [x,y] = cellFromEvent(e);
+  if (!inBounds(x,y)) return;
+  if (tool === 'bucket'){ floodFill(x,y); return; }
+  painting = true; paintAt(x,y);
+});
+canvas.addEventListener('mousemove', e => {
+  const [x,y] = cellFromEvent(e);
+  $('cur').textContent = inBounds(x,y) ? `${x}, ${y}` : '—';
+  if (painting && tool === 'paint' && inBounds(x,y)) paintAt(x,y);
+});
+window.addEventListener('mouseup', () => painting = false);
+canvas.addEventListener('mouseleave', () => $('cur').textContent = '—');
+function inBounds(x,y){ return x>=0 && y>=0 && x<W && y<H; }
+
+// ---- Toolbar ----
+$('resize').onclick = () => {
+  const nw = clamp(parseInt($('w').value)||W, 1, 2000);
+  const nh = clamp(parseInt($('h').value)||H, 1, 2000);
+  const ng = new Int16Array(nw * nh);           // new area defaults to deep sea (0)
+  for (let y = 0; y < Math.min(nh, H); y++)      // preserve existing art on overlap
+    for (let x = 0; x < Math.min(nw, W); x++)
+      ng[y*nw + x] = grid[y*W + x];
+  W = nw; H = nh; grid = ng; fullRender();
+};
+function setTool(t){
+  tool = t;
+  $('tPaint').classList.toggle('primary', t === 'paint');
+  $('tBucket').classList.toggle('primary', t === 'bucket');
+}
+$('tPaint').onclick  = () => setTool('paint');
+$('tBucket').onclick = () => setTool('bucket');
+$('brush').onchange = e => brush = parseInt(e.target.value);
+$('zoom').oninput   = e => { cell = parseInt(e.target.value); fullRender(); };
+$('grid').onchange  = e => { showGrid = e.target.checked; fullRender(); };
+$('fill').onclick   = () => { grid.fill(selected); fullRender(); };
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+// ---- Shared helpers ----
+function download(name, blob){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name; a.click();
+  URL.revokeObjectURL(a.href);
+}
+function hexRgb(h){
+  const n = parseInt(h.slice(1), 16);
+  return [ (n>>16)&255, (n>>8)&255, n&255 ];
+}
+function mapData(){
+  return {
+    format: 'openpiece-worldmap', version: 1,
+    width: W, height: H, chunkTiles: 64,
+    terrains: TERRAINS.map(t => ({ id:t.id, name:t.name, color:t.color })),
+    cells: Array.from(grid),
+  };
+}
+// Paint the current map to a full-size canvas (1px per chunk); reused by PNG export + thumbnails.
+function renderToCanvas(target){
+  target.width = W; target.height = H;
+  const c = target.getContext('2d');
+  const img = c.createImageData(W, H);
+  for (let i = 0; i < grid.length; i++){
+    const rgb = hexRgb(TERRAINS[grid[i]].color);
+    img.data[i*4] = rgb[0]; img.data[i*4+1] = rgb[1]; img.data[i*4+2] = rgb[2]; img.data[i*4+3] = 255;
+  }
+  c.putImageData(img, 0, 0);
+  return target;
+}
+function makeThumbnail(maxSize = 160){
+  const src = renderToCanvas(document.createElement('canvas'));
+  const s = maxSize / Math.max(W, H);
+  const out = document.createElement('canvas');
+  out.width  = Math.max(1, Math.round(W * s));
+  out.height = Math.max(1, Math.round(H * s));
+  const octx = out.getContext('2d');
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(src, 0, 0, out.width, out.height);
+  return out.toDataURL('image/png');
+}
+function escapeHtml(s){
+  return s.replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+}
+let lastName = '';
+let toastTimer = 0;
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1600);
+}
+
+// ---- Library (IndexedDB: saved maps as a thumbnail gallery, no folder picking) ----
+function openDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('openpiece-maps', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('maps', { keyPath:'name' });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror  = () => reject(req.error);
+  });
+}
+function dbRequest(mode, run){
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const req = run(db.transaction('maps', mode).objectStore('maps'));
+    req.onsuccess = () => resolve(req.result);
+    req.onerror  = () => reject(req.error);
+  }));
+}
+const putMap     = rec  => dbRequest('readwrite', s => s.put(rec));
+const getAllMaps = ()   => dbRequest('readonly',  s => s.getAll());
+const deleteMap  = name => dbRequest('readwrite', s => s.delete(name));
+
+$('save').onclick = async () => {
+  const name = (prompt('Name this map:', lastName || 'my-map') || '').trim();
+  if (!name) return;
+  lastName = name;
+  try {
+    await putMap({
+      name, width: W, height: H,
+      cells: Array.from(grid),
+      thumbnail: makeThumbnail(),
+      savedAt: new Date().toLocaleString(),
+    });
+    toast('Saved to library: ' + name);
+  } catch (err){
+    alert('Could not save to the library:\n' + err.message + '\n\nUse Export JSON instead.');
+  }
+};
+
+$('load').onclick = async () => {
+  let maps = [];
+  try { maps = await getAllMaps(); } catch (err){ /* show empty gallery */ }
+  renderGallery(maps);
+  $('gallery').style.display = 'flex';
+};
+$('galleryClose').onclick = () => $('gallery').style.display = 'none';
+$('gallery').onclick = e => { if (e.target === $('gallery')) $('gallery').style.display = 'none'; };
+
+function renderGallery(maps){
+  const box = $('galleryGrid');
+  box.innerHTML = '';
+  if (!maps.length){
+    box.innerHTML = '<p class="empty">No saved maps yet. Draw one and press Save.</p>';
+    return;
+  }
+  maps.sort((a, b) => a.name.localeCompare(b.name));
+  maps.forEach(m => {
+    const card = document.createElement('div');
+    card.className = 'map-card';
+    card.innerHTML =
+      `<img src="${m.thumbnail}" alt="">` +
+      `<div class="meta"><b>${escapeHtml(m.name)}</b>` +
+      `<span>${m.width} × ${m.height} chunks</span>` +
+      `<span>${escapeHtml(m.savedAt || '')}</span></div>` +
+      `<button class="del" title="Delete">×</button>`;
+    card.onclick = () => loadRecord(m);
+    card.querySelector('.del').onclick = async e => {
+      e.stopPropagation();
+      if (!confirm(`Delete "${m.name}"?`)) return;
+      await deleteMap(m.name);
+      renderGallery(await getAllMaps());
+    };
+    box.appendChild(card);
+  });
+}
+function loadRecord(m){
+  W = m.width; H = m.height;
+  grid = Int16Array.from(m.cells);
+  $('w').value = W; $('h').value = H;
+  lastName = m.name;
+  fullRender();
+  $('gallery').style.display = 'none';
+  toast('Loaded: ' + m.name);
+}
+
+// ---- Export / Import files (for the repo, and to hand off for conversion) ----
+$('exportJson').onclick = () =>
+  download('openpiece-map.json', new Blob([JSON.stringify(mapData())], { type:'application/json' }));
+
+$('png').onclick = () =>
+  renderToCanvas(document.createElement('canvas')).toBlob(b => download('openpiece-map.png', b));
+
+$('import').onclick = () => $('file').click();
+$('file').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      W = d.width; H = d.height;
+      grid = Int16Array.from(d.cells);
+      $('w').value = W; $('h').value = H;
+      fullRender();
+      toast('Imported ' + f.name);
+    } catch (err){ alert('Could not load that file:\n' + err.message); }
+  };
+  r.readAsText(f);
+  e.target.value = '';
+};
+
+// ---- Boot ----
+buildPalette();
+fullRender();
+$('curterr').textContent = TERRAINS[selected].name;
+</script>
+</body>
+</html>
