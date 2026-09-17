@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
 import { isRanged, toggleAttackMode } from '../combat/equip';
 import { BLOCK_MOVE_MULT, endGuard, tryGuard } from '../combat/guard';
-import { AIM_MOVE_MULT } from '../config/constants';
+import { AIM_MOVE_MULT, CAMERA_ZOOM, CAMERA_ZOOM_MAX, CAMERA_ZOOM_MIN, CAMERA_ZOOM_STEP } from '../config/constants';
 import { trySprint } from '../combat/stamina';
 import { attackMoveSpeed } from '../combat/attackMove';
 import { FRIENDLY_FIRE_TAG } from '../combat/targeting';
 import { events } from '../core/EventBus';
-import { angleDiff, norm, smoothFactor } from '../core/math';
+import { angleDiff, clamp, norm, smoothFactor } from '../core/math';
 import type { World } from '../ecs/World';
 import type { SpatialQuery } from '../world/SpatialQuery';
 import type { AbilitySystem } from './AbilitySystem';
@@ -57,6 +57,9 @@ export class InputSystem {
   private helmFwdPrev = 0; // W/S axis last sim step at the wheel — sail-state steps are EDGES, backing is the hold
   private helmTurnPrev = 0; // A/D axis last sim step at the wheel — a FRESH grab (edge) unties the lash, a hold doesn't
   get shiftLocked(): boolean { return this.shiftLock; }
+  /** WHEEL ZOOM target — input-owned like shift lock; WorldScene glides the camera toward it each frame. */
+  private zoomTarget = CAMERA_ZOOM;
+  get viewZoomTarget(): number { return this.zoomTarget; }
   /** Edge-taps latched per RENDER frame (sample()) and consumed by exactly one sim step (tap()) — under the
    *  fixed timestep a frame can run 0 sim steps, and Phaser clears JustDown on keyup, so polling JustDown
    *  inside the step could drop a fast tap entirely. */
@@ -82,6 +85,14 @@ export class InputSystem {
     // "last known" value that persists with no new event → it kept spinning after a mouse lift.)
     scene.input.on('pointermove', (p: Phaser.Input.Pointer, _lx: number, _ly: number, ev: MouseEvent) => {
       if (this.shiftLock) this.mouseDX += ev?.movementX ?? p.movementX;
+    });
+    // WHEEL ZOOM: each notch multiplies the target by CAMERA_ZOOM_STEP (wheel UP = closer), clamped to the
+    // range. The SIGN of deltaY is the notch: browsers disagree on magnitude (Chrome 100 px, Firefox 3
+    // lines per notch), so scaling by it would zoom at different speeds per browser. Trackpads fire many
+    // small events → fast zoom, bounded by the clamp.
+    scene.input.on('wheel', (_p: Phaser.Input.Pointer, _over: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {
+      if (dy === 0) return;
+      this.zoomTarget = clamp(this.zoomTarget * (dy < 0 ? CAMERA_ZOOM_STEP : 1 / CAMERA_ZOOM_STEP), CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
     });
   }
 

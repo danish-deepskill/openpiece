@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CAMERA_ZOOM, RegKey, SIM_DT, WORLD_H, WORLD_W, type MinimapDot } from '../config/constants';
+import { CAMERA_ZOOM, CAMERA_ZOOM_SMOOTH, RegKey, SIM_DT, WORLD_H, WORLD_W, type MinimapDot } from '../config/constants';
 import { RENDER_SCALE } from '../config/render';
 import { angleDiff, smoothFactor } from '../core/math';
 import { setBarRotation } from '../draw/actorDraws';
@@ -12,7 +12,6 @@ import { Spawner } from '../ecs/Spawner';
 import { AbilitySystem } from '../systems/AbilitySystem';
 import { AISystem } from '../systems/AISystem';
 import { CombatantSystem } from '../systems/CombatantSystem';
-import { Debug } from '../core/Debug';
 import { DebugOverlay } from '../systems/DebugOverlay';
 import { Damage } from '../systems/Damage';
 import { DoorSystem } from '../systems/DoorSystem';
@@ -94,6 +93,8 @@ export class WorldScene extends Phaser.Scene {
    *  blend so entering/leaving lock glides instead of snapping. InputSystem owns the mode (Alt). */
   private camRot = 0;
   private camBlend = 0;
+  /** WHEEL ZOOM, the smoothed CURRENT value; the wheel moves InputSystem's target, this glides after it. */
+  private viewZoom = CAMERA_ZOOM;
 
   constructor() {
     super('World');
@@ -243,9 +244,10 @@ export class WorldScene extends Phaser.Scene {
     // wraps ±π). At blend 1 it's exactly aimRot → welded to the facing, 1:1 at any turn speed.
     this.camRot = angleDiff(aimRot, 0) * this.camBlend;
     this.cameras.main.setRotation(this.camRot);
-    // DEBUG zoom-out: halve the zoom (see 2× the area — off-screen shooters). Applied per-frame so the flag
-    // toggles live. Off → the normal close CAMERA_ZOOM.
-    this.cameras.main.setZoom((Debug.on('view.zoomOut') ? CAMERA_ZOOM / 2 : CAMERA_ZOOM) * RENDER_SCALE);
+    // WHEEL ZOOM: glide toward the input-owned target (InputSystem.viewZoomTarget) with a per-frame exp ease,
+    // so a notch reads as a camera dolly, not a snap. × the canvas-buffer scale (config/render.ts).
+    this.viewZoom += (this.inputSys.viewZoomTarget - this.viewZoom) * smoothFactor(CAMERA_ZOOM_SMOOTH, dt);
+    this.cameras.main.setZoom(this.viewZoom * RENDER_SCALE);
     // counter-rotate the world-space READOUTS so they stay screen-upright while the view spins: the
     // nameplate + damage-number text, AND the overhead hp/stamina/posture bars (set before renderSys draws
     // the actors below). The actor bodies/sprites still rotate with the world — only the readouts stay level.

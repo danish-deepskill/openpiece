@@ -143,8 +143,20 @@ export const GEPPO_FALL_DUR = 0.3;
  *  (walk-on=INWARD vs walk-off=OUTWARD; leave=AIR vs board=GROUND), so they cannot oscillate. */
 export const FRAME_SWITCH_COOLDOWN = 0.4;
 
-/** Follow-camera zoom — higher = closer (moomoo.io-style). 1.0 showed too much world. */
+/** Follow-camera zoom at boot — higher = closer (moomoo.io-style). 1.0 showed too much world on foot. */
 export const CAMERA_ZOOM = 2;
+/** WHEEL ZOOM range — the mouse wheel steps the view-zoom TARGET (InputSystem owns it, WorldScene glides the
+ *  camera to it). MIN 1 = 1280×720 world px (40×22 tiles), the old debug zoom-out; 0.5 (nearly the whole
+ *  map) was judged too far on foot — it stays SEAMLESS_WORLD §8.2's candidate for the HELM mode's own zoom
+ *  when that lands. MAX = the boot default: the wheel only zooms OUT from the tuned foot view (closer buys
+ *  nothing tactically; the planned ladder past the default is the strategy/dots view — DESIGN_BACKLOG #12). */
+export const CAMERA_ZOOM_MIN = 1;
+export const CAMERA_ZOOM_MAX = CAMERA_ZOOM;
+/** Per wheel notch the target MULTIPLIES by this (zoom is perceptually logarithmic — equal notches, equal
+ *  feel; an additive step would crawl when close and lurch when far). */
+export const CAMERA_ZOOM_STEP = 1.15;
+/** Glide rate (1/s, smoothFactor) from the current zoom toward the target — a dolly, not a slideshow. */
+export const CAMERA_ZOOM_SMOOTH = 12;
 
 export type GameState = 'start' | 'play' | 'paused' | 'dead';
 

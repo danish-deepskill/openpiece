@@ -954,7 +954,7 @@ distance** — the opposite of the premise. The moat shot has no room to exist, 
 | zoom | view (world px) | half-width | tiles | reads as |
 |---|---|---|---|---|
 | 2 (today) | 640×360 | 320 | 20×11 | brawler — right on foot, blind at sea |
-| 1 | 1280×720 | 640 | 40×22 | the `view.zoomOut` debug flag |
+| 1 | 1280×720 | 640 | 40×22 | two wheel notches out |
 | **0.5** | **2560×1440** | **1280** | **80×45** | a sea worth navigating |
 
 At 0.5 a sail appears 1280 px out — **6.4 s** of caravel closing time: enough to see it, read its heading,
@@ -1291,7 +1291,7 @@ it offers.
 ## 15. Open questions for the developer
 
 1. **The sea zoom (§8.2)** — is 0.5 the sea, or further? A feel call, the only one blocking step 0.
-   *(Claude's guess: 0.5 at the helm. Try `view.zoomOut` at the wheel to sanity-check.)*
+   *(Claude's guess: 0.5 at the helm. The mouse wheel floors at `CAMERA_ZOOM_MIN` = 1 on foot — 0.5 was tried on 2026-09-17 and judged too far for the foot view; drop the floor to 0.5 temporarily to sanity-check at the wheel.)*
 2. **How long should C1 FEEL to cross (§10)?** All world geometry falls out of this number. 8 minutes is a
    placeholder, not a recommendation.
 3. **★ The wind-field legibility bet (§9.4).** Nobody ships an evaluated field; everyone ships global wind,

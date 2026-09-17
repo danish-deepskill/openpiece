@@ -145,7 +145,7 @@ export class DebugOverlay {
     const any = Debug.any();
     this.gfx.setVisible(any);
     this.hint.setVisible(any);
-    // screen-pinned readouts, re-pinned every frame: the camera's zoom (debug zoom-out) and rotation
+    // screen-pinned readouts, re-pinned every frame: the camera's zoom (mouse wheel) and rotation
     // (shift-lock) both change live, and each moves where a scrollFactor-0 object lands
     this.pin(this.hint, GAME_W / 2, 6);
     this.pin(this.perf, 8, 24);
