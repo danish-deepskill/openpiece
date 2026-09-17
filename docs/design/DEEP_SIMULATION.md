@@ -179,6 +179,13 @@ the client sim). A local single-player build always feels more instant for your 
 the gap, never fully erase it for cross-player interaction.
 
 ### Recommended stack for openpiece.io
+
+> **Superseded on HOSTING (2026-07-21, `DESIGN_BACKLOG.md` #13 — the multiplayer doctrine):** the server is a
+> FREE BINARY anyone runs (player-hosted persistent seas; openpiece.io is the directory + quick-join front door);
+> official seas are crowdfunded AT COST with a public meter; there is NO revenue model — the free-forever law.
+> The client/engine lines below stand; the developer-hosted fleet and "needs a revenue model" lines are history.
+> The Rust/Bevy "one sim, two targets" shape sketched in #13 is a GATED CANDIDATE with named triggers, not a
+> replacement for "stay Phaser" above — the engine-agnostic TS sim running headless on Node is the shape today.
 - **Client:** Phaser + TS → **Cloudflare Pages** (free CDN).
 - **Game server:** Node + TS + **Colyseus** (authoritative rooms = zones) → **Fly.io** (start) → **Hetzner**
   (scale; cheap bandwidth).
@@ -189,7 +196,7 @@ the gap, never fully erase it for cross-player interaction.
   later for specific managed services only.
 - **Cost reality:** a persistent world is **always-on** (can't scale to zero) — bandwidth + always-on compute are
   the drivers. MVP ~$10–40/mo; thousands concurrent = $100s–$1000s/mo. It's a **live service** → needs a revenue
-  model (cosmetics/battle-pass/ads).
+  model (cosmetics/battle-pass/ads). *(Superseded — see the hosting note above: the players are the supply.)*
 
 ### Roblox vs web — the fork, and why web
 Deepwoken/Arcane Odyssey/Starscape are all **Roblox** — which hands you multiplayer/auth/persistence/hosting +

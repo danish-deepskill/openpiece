@@ -232,10 +232,11 @@ spatial hash when entity counts climb — single chokepoint).
 ## 8. Frame loop (WorldScene.update → GameDirector → systems, fixed order)
 
 ```
-doors → input → squads → AI → movement → body-collision → ships → melee → abilities → combatant → effects → director (fixed SIM_DT steps), then presentation: sea/dialogue/fx/render/accessories/nameplates
-→ (WorldScene publishes registry)
+wind → doors → input → squads → AI → movement → swim → body-collision → ships → hull-collision → melee → projectiles → abilities → combatant → effects → director   (fixed SIM_DT steps)
+then presentation, once per render frame: structures/doors (dirty rebake) → sea → fx → render → weapon sprites → projectile sprites → accessories → nameplates → stun → inspect → reticle → possess button → debug; dialogue steps per render frame
+→ (WorldScene publishes registry + the inventory view-model on change)
 ```
-dt clamped (≤ 1/30). `GameDirector` gates updates by game state and owns win/lose/respawn + objectives.
+The accumulator's carry-in is clamped to 0.25 s (a suspended tab slows time, never spirals). `GameDirector` gates updates by game state and owns win/lose/respawn + objectives. The order is stated as inline comments in `stepSim()` — keep both true when reordering.
 
 ---
 

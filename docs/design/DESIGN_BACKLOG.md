@@ -724,6 +724,9 @@ storm ≈ 1-2ms Canvas — the cap IS the storm signal; guard it like canon). Th
 (streaks + swell + bodies + FX), never one system. LAW for future drama: density beyond the cap comes
 from BAKED SCROLLING LAYERS (the sea's own Tier-1/Tier-2 pattern), never more live paths — raising
 STREAK_MAX past ~12 instead of baking is a foundation bug wearing a weather costume.
+**INPUT LANDED (2026-09-17):** the mouse-wheel view zoom (InputSystem owns the target, WorldScene glides;
+range 1–2 on foot, `CAMERA_ZOOM_*` knobs) is the continuous input THIS render ladder keys on: the dots tier is
+a threshold + hysteresis on that value, picked INSIDE presentation — the camera still never changes the sim.
 **Pass when:** deep-sim era — LAST of the big passes; everything above feeds it.
 
 ## 13. Multiplayer gameplay design (before netcode work, after PlayerIntent)
@@ -744,7 +747,7 @@ domain + static wasm site (~$0) + a tiny directory service + an OPTIONAL donatio
 Success spawns more community servers, never more developer bills — multiplayer stays free forever
 STRUCTURALLY. Quick Join = auto-pick the healthiest public sea with room (matchmaker logic over servers
 other people pay for). Characters are PER-SEA (no cross-server transfer — it's a dupe/cheat vector).
-**THE ARCHITECTURE (2026-07-21, Bevy-era shape):** ONE SIM, TWO TARGETS — the same Rust sim crate
+**THE ARCHITECTURE — a GATED CANDIDATE, not the settled stack (2026-07-21 sketch; status below):** ONE SIM, TWO TARGETS — the same Rust sim crate
 compiles native (the headless Bevy server, no render plugins, ALL cores) and to wasm (the browser client
 at openpiece.io, ~1 core — which is FINE because the client only renders its bubble + sends intents +
 predicts; the sim never runs in the browser in MP). Kills the classic MMO disease (server/client logic
@@ -755,6 +758,17 @@ overlapping — server cost scales with PLAYERS, never map size); tracked tier =
 replicated until it enters a bubble; statistical tier never touches the network. World size ≈ free (the
 world at rest = the painted map ~64KB + seed + deltas; a $6 box hosts the ENTIRE 256×256-chunk world
 because only ~0.5-1.5% of chunks are ever loaded).
+**STATUS (2026-09-17, re-judged):** a candidate, NOT a decision — `DEEP_SIMULATION §7` (stay Phaser; the
+engine-agnostic TS sim runs headless on Node) and `AI_FOUNDATION §11` (architecture is the lever; language
+migration is the last resort) both stand, and the code IS that shape today (16k lines, 8k of pure sim, 500+
+headless tests). Three triggers, any of which REOPENS it: (1) the headless 500-actor benchmark blows its
+~3–4 ms budget AFTER the typed-array + Workers rungs are climbed — profiler evidence, never a mood; (2) netcode
+work starts (after THIS pass lands) — "one sim, two targets" is then judged against TS-on-Node, with the same
+port surface either way (defs as JSON, the fixed tick, snapshots, the intent pipe); (3) cross-machine lockstep
+becomes load-bearing (`SEAMLESS_WORLD §11.2`: compile the sim to wasm — Rust is one of two candidates). Until a
+trigger fires, the discipline that keeps ANY port cheap is already the roadmap: external-data defs,
+PlayerIntent, plain-data components. The tier-pyramid-is-the-netcode + scenario-ledger reasoning above holds
+in either language.
 **SCENARIO LEDGERS (2026-07-21, derived with the developer):** 100 mixed players ≈ ~45 merged bubbles,
 ~3,000 hot actors, ~420 loaded chunks (0.6%), ~25MB chunk RAM, ~3MB/s total bandwidth — a $50 box.
 100 SCATTERED explorers = EASIER (half the hot actors — empty ocean is empty; only cost that rises is
