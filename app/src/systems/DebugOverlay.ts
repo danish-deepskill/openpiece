@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { visionOf } from '../ai/perception';
 import { GAME_W, TILE, WIND_REF } from '../config/constants';
+import { RENDER_SCALE } from '../config/render';
 import { angleDiff } from '../core/math';
 import { Debug } from '../core/Debug';
 import { events } from '../core/EventBus';
@@ -16,6 +17,7 @@ import type { WindSystem } from './WindSystem';
 import { hullDebugMasks } from '../world/deckCollision';
 import { Q_NE, Q_NW, Q_SE, Q_SW, type MoveCtx } from '../world/GridCollider';
 import { TileGrid } from '../world/TileGrid';
+import { addText } from '../ui/text';
 
 /** Phase → debug tint: the tell reads warning-yellow, the live strike red, the punishable tail gray. */
 const PHASE_COLORS = { windup: '#ffd24a', active: '#ff5a5a', recover: '#9aa6b2' } as const;
@@ -42,6 +44,10 @@ export class DebugOverlay {
   /** Per-walker MEASURED-speed samples for the frames readout (last frame-local position + smoothed px/s).
    *  Presentation-side only; `frame` (shipId or −1 for world) resets the sample across frame hops. */
   private readonly walkSpd = new Map<number, { x: number; y: number; at: number; frame: number; v: number }>();
+  /** The follow camera's rotation (shift-lock), pushed by WorldScene each frame — the pinned readouts invert it.
+   *  Handed over rather than read off the camera because Phaser's Camera TYPE lacks the `rotation` getter its
+   *  JS has; the owner already does the same for nameplates (setTextRotation). */
+  private viewRot = 0;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -53,14 +59,12 @@ export class DebugOverlay {
     events.on('debug:aoe', ({ x, y, radius }) => {
       this.aoes.push({ x, y, radius, until: scene.time.now + 500 }); // linger 0.5s
     });
-    this.hint = scene.add
-      .text(GAME_W / 2, 6, '● DEBUG   [ ` panel ]', { fontFamily: 'monospace', fontSize: '11px', color: '#00e0ff' })
+    this.hint = addText(scene, GAME_W / 2, 6, '● DEBUG   [ ` panel ]', { fontFamily: 'monospace', fontSize: '11px', color: '#00e0ff' })
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
       .setDepth(DEPTH)
       .setVisible(false);
-    this.perf = scene.add
-      .text(8, 24, '', { fontFamily: 'monospace', fontSize: '11px', color: '#9cf' })
+    this.perf = addText(scene, 8, 24, '', { fontFamily: 'monospace', fontSize: '11px', color: '#9cf' })
       .setScrollFactor(0)
       .setDepth(DEPTH)
       .setVisible(false);
@@ -93,11 +97,32 @@ export class DebugOverlay {
   private label(x: number, y: number, text: string, color: string): void {
     let t = this.labels[this.used];
     if (!t) {
-      t = this.scene.add.text(0, 0, '', { fontFamily: 'monospace', fontSize: '10px' }).setDepth(DEPTH).setOrigin(0.5, 1);
+      t = addText(this.scene, 0, 0, '', { fontFamily: 'monospace', fontSize: '10px' }).setDepth(DEPTH).setOrigin(0.5, 1);
       this.labels.push(t);
     }
     t.setText(text).setColor(color).setPosition(x, y).setVisible(true);
     this.used++;
+  }
+
+  /** Place a scrollFactor-0 readout at LOGICAL screen point (sx, sy) whatever the camera's zoom/rotation. Phaser
+   *  projects such an object as screen = origin + R(rot)·zoom·(p − origin) (Camera.preRender; origin = the
+   *  viewport center) — NOT at (x, y) — so a raw (8, 24) sits off-screen at any zoom > 1; invert the transform.
+   *  Scale RENDER_SCALE/zoom keeps the font at its logical px; the counter-rotation keeps it upright. */
+  private pin(o: Phaser.GameObjects.Text, sx: number, sy: number): void {
+    const cam = this.scene.cameras.main;
+    const ox = cam.x + cam.width * cam.originX; // Phaser's own rotation/zoom origin (preRender), not an assumed half-viewport
+    const oy = cam.y + cam.height * cam.originY;
+    const dx = (sx * RENDER_SCALE - ox) / cam.zoom;
+    const dy = (sy * RENDER_SCALE - oy) / cam.zoom;
+    const c = Math.cos(this.viewRot);
+    const s = Math.sin(this.viewRot);
+    o.setPosition(ox + dx * c + dy * s, oy - dx * s + dy * c) // (dx, dy) rotated by −rotation
+      .setRotation(-this.viewRot)
+      .setScale(RENDER_SCALE / cam.zoom);
+  }
+
+  setViewRotation(rot: number): void {
+    this.viewRot = rot;
   }
 
   update(): void {
@@ -120,6 +145,10 @@ export class DebugOverlay {
     const any = Debug.any();
     this.gfx.setVisible(any);
     this.hint.setVisible(any);
+    // screen-pinned readouts, re-pinned every frame: the camera's zoom (debug zoom-out) and rotation
+    // (shift-lock) both change live, and each moves where a scrollFactor-0 object lands
+    this.pin(this.hint, GAME_W / 2, 6);
+    this.pin(this.perf, 8, 24);
     if (!any) {
       for (const l of this.labels) l.setVisible(false);
       this.perf.setVisible(false);
@@ -498,7 +527,7 @@ export class DebugOverlay {
     }
 
     if (Debug.on('perf.hud')) {
-      this.perf.setVisible(true).setText(`fps ${Math.round(this.scene.game.loop.actualFps)}  entities ${this.world.count}`);
+      this.perf.setVisible(true).setText(`fps ${Math.round(this.scene.game.loop.actualFps)}  entities ${this.world.count}  render ×${RENDER_SCALE.toFixed(2)}`);
     } else {
       this.perf.setVisible(false);
     }

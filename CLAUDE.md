@@ -48,7 +48,7 @@ knobs + playtest list → gates).
 
 ## Tech stack
 - Phaser **3.90** (Canvas), **TypeScript**, **Vite 5**, **Vitest**. Procedural Graphics (no sprite assets).
-- Fixed 1280×720, `Scale.FIT`. Everything under `app/`.
+- Fixed 1280×720 logical, `Scale.FIT`; the canvas buffer scales to the screen (`config/render.ts`). Everything under `app/`.
 
 ## Key architecture decisions (don't violate)
 - **Content is data, code is generic.** Fruits/weapons/items/abilities/zones/events/… are Defs in typed

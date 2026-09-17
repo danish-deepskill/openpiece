@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Effects, TAG_STUNNED } from '../combat/Effect';
 import type { World } from '../ecs/World';
+import { addText } from '../ui/text';
 
 /** Depth: above nameplates/actors so the tell is never hidden behind a body. */
 const DEPTH = 9500;
@@ -43,8 +44,7 @@ export class StunIndicator {
       const t = e.transform;
       let label = this.labels.get(e.id);
       if (!label) {
-        label = this.scene.add
-          .text(0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '9px', stroke: '#000000', strokeThickness: 2 })
+        label = addText(this.scene, 0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '9px', stroke: '#000000', strokeThickness: 2 })
           .setOrigin(0.5)
           .setDepth(DEPTH);
         this.labels.set(e.id, label);

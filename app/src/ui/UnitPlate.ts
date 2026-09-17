@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { clamp } from '../core/math';
 import type { UnitPlateView } from './plateView';
+import { addText } from './text';
 
 /** Content height of the plate (name + bars + meta + stat rows + gear/bag rows). Cards may be taller — the
  *  player's plate reserves extra space below for the ability bar — but the readout block itself is fixed. */
@@ -34,7 +35,7 @@ export class UnitPlate {
     readonly h: number = PLATE_CONTENT_H,
   ) {
     const mk = (tx: number, ty: number, style: Phaser.Types.GameObjects.Text.TextStyle) =>
-      scene.add.text(tx, ty, '', style).setDepth(2).setVisible(false);
+      addText(scene, tx, ty, '', style).setDepth(2).setVisible(false);
     this.name = mk(x + 12, y + 8, { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '13px', color: '#ffffff' });
     this.tier = mk(0, y + 9, { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '12px', color: '#ffffff' });
     this.faction = mk(x + w - 12, y + 10, { fontFamily: 'Trebuchet MS', fontSize: '10px', color: '#9a9a9a' }).setOrigin(1, 0);

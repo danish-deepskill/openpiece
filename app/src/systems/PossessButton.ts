@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { World } from '../ecs/World';
 import type { GameDirector } from './GameDirector';
 import type { InspectSystem } from './InspectSystem';
+import { addText } from '../ui/text';
 
 /**
  * The POSSESS button (debug). Rides the EXISTING inspect flow — no new key/pick: V+click a unit (InspectSystem
@@ -29,8 +30,7 @@ export class PossessButton {
       .setDepth(9002)
       .setVisible(false)
       .setInteractive({ useHandCursor: true });
-    this.label = scene.add
-      .text(0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '13px', color: '#d8ffe0' })
+    this.label = addText(scene, 0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '13px', color: '#d8ffe0' })
       .setOrigin(0.5)
       .setDepth(9003)
       .setVisible(false);

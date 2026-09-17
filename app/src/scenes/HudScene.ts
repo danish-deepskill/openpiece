@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { Abilities } from '../combat/Ability';
 import { GAME_H, GAME_W, MAPH, MAPW, RegKey, WORLD_H, WORLD_W, type AbilityBarEntry, type MinimapDot } from '../config/constants';
+import { BAKE_FILTER, RENDER_SCALE } from '../config/render';
 import { events } from '../core/EventBus';
 import { clamp } from '../core/math';
 import type { DialogueView } from '../systems/DialogueSystem';
 import { PLATE_CONTENT_H, UnitPlate } from '../ui/UnitPlate';
 import type { UnitPlateView } from '../ui/plateView';
+import { addText } from '../ui/text';
 
 /** Ability-slot box size (px) — sized so 6 fit the 290px plate width below it (LMB/RMB/Q + slots 1/2/3): a
  *  full fruit kit fills all six (primary, heavy, dash, 3 specials). (6×38 + 5×6 gap = 258 ≤ the inner width.) */
@@ -40,9 +42,13 @@ export class HudScene extends Phaser.Scene {
   }
 
   create(): void {
+    // The HUD is laid out in LOGICAL 1280×720 units while the canvas buffer is RENDER_SCALE× that
+    // (config/render.ts): zoom this camera by the same factor around the logical center, so logical (x, y)
+    // lands on buffer pixel (x, y) × RENDER_SCALE — every existing coordinate below stays true.
+    this.cameras.main.setZoom(RENDER_SCALE).centerOn(GAME_W / 2, GAME_H / 2);
     this.g = this.add.graphics().setDepth(1);
     const mk = (x: number, y: number, style: Phaser.Types.GameObjects.Text.TextStyle) =>
-      this.add.text(x, y, '', style).setDepth(2);
+      addText(this, x, y, '', style).setDepth(2);
     const P = this.panel;
 
     // --- bottom-left player card: the SAME UnitPlate any unit gets; badges sit ABOVE the card ---
@@ -68,22 +74,22 @@ export class HudScene extends Phaser.Scene {
     this.inspectPlate = new UnitPlate(this, GAME_W - 18 - P.w, this.mm.y - PLATE_CONTENT_H - 10, P.w);
 
     this.cardBg = this.add.graphics().setDepth(5).setVisible(false);
-    this.cardTitle = this.add.text(GAME_W / 2, GAME_H / 2 - 10, '', { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '42px', color: '#ffffff' }).setOrigin(0.5).setDepth(6).setVisible(false);
-    this.cardMsg = this.add.text(GAME_W / 2, GAME_H / 2 + 28, '', { fontFamily: 'Trebuchet MS', fontSize: '16px', color: '#f3e7c9' }).setOrigin(0.5).setDepth(6).setVisible(false);
+    this.cardTitle = addText(this, GAME_W / 2, GAME_H / 2 - 10, '', { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '42px', color: '#ffffff' }).setOrigin(0.5).setDepth(6).setVisible(false);
+    this.cardMsg = addText(this, GAME_W / 2, GAME_H / 2 + 28, '', { fontFamily: 'Trebuchet MS', fontSize: '16px', color: '#f3e7c9' }).setOrigin(0.5).setDepth(6).setVisible(false);
 
     // dialogue box texts (the box graphics are drawn on `g` each frame in drawDialogue)
     this.dlg = {
-      name: this.add.text(0, 0, '', { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '15px', color: '#f0b429' }).setDepth(4).setVisible(false),
-      text: this.add.text(0, 0, '', { fontFamily: 'Trebuchet MS', fontSize: '14px', color: '#f3e7c9', wordWrap: { width: 486 } }).setDepth(4).setVisible(false),
-      hint: this.add.text(0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '12px', color: '#f0b429' }).setOrigin(1, 1).setDepth(4).setVisible(false),
+      name: addText(this, 0, 0, '', { fontFamily: 'Georgia', fontStyle: 'bold', fontSize: '15px', color: '#f0b429' }).setDepth(4).setVisible(false),
+      text: addText(this, 0, 0, '', { fontFamily: 'Trebuchet MS', fontSize: '14px', color: '#f3e7c9', wordWrap: { width: 486 } }).setDepth(4).setVisible(false),
+      hint: addText(this, 0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '12px', color: '#f0b429' }).setOrigin(1, 1).setDepth(4).setVisible(false),
     };
 
     // ability bar (player-only row, below the shared readout block): one box per equipped/granted ability
     this.barY = P.y + PLATE_CONTENT_H + 4;
     for (let i = 0; i < 6; i++) {
       const bx = this.barX + i * (ABIL_W + 6) + ABIL_W / 2;
-      const key = this.add.text(bx, this.barY + 4, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#f0b429' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
-      const name = this.add.text(bx, this.barY + 21, '', { fontFamily: 'Trebuchet MS', fontSize: '10px', color: '#f3e7c9' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
+      const key = addText(this, bx, this.barY + 4, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#f0b429' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
+      const name = addText(this, bx, this.barY + 21, '', { fontFamily: 'Trebuchet MS', fontSize: '10px', color: '#f3e7c9' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
       this.abilSlots.push({ key, name });
     }
 
@@ -193,6 +199,8 @@ export class HudScene extends Phaser.Scene {
     // minimap (texture is baked by WorldScene; create the image lazily once it exists)
     if (!this.minimap && this.textures.exists('minimap')) {
       this.minimap = this.add.image(this.mm.x, this.mm.y, 'minimap').setOrigin(0, 0).setDepth(0);
+      // 1 px per tile: magnify to hard blocks, not smeared ones (the same knob as the terrain bake)
+      if (BAKE_FILTER === 'nearest') this.textures.get('minimap').setFilter(Phaser.Textures.FilterMode.NEAREST);
       this.minimap.setDisplaySize(this.mm.w, this.mm.h);
     }
     const dots = r.get(RegKey.Minimap) as MinimapDot[] | undefined;

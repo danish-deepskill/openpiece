@@ -186,6 +186,10 @@ Three channels, never confused:
 - Presentation colors live in `config/palette.ts` (one literal per meaning); tile colors have one source.
 - HUD reads only `RegKey` + events. Accessories load via a presentation-side asset manifest — defs hold plain
   path strings, never bundler imports.
+- **Render scale:** the canvas buffer is the logical 1280×720 × `RENDER_SCALE` (`config/render.ts`, presentation-only —
+  it reads the window); every camera zooms by it, and Phaser text is created ONLY through `ui/text.addText` (it
+  stamps the resolution; `test/render-text.test.ts` enforces the door). Screen-pinned text under a zoomed world
+  camera inverts the camera transform (`DebugOverlay.pin`), never raw coordinates.
 
 ## 10. Comments, docs & voice
 

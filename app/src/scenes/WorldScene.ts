@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { CAMERA_ZOOM, RegKey, SIM_DT, WORLD_H, WORLD_W, type MinimapDot } from '../config/constants';
+import { RENDER_SCALE } from '../config/render';
 import { angleDiff, smoothFactor } from '../core/math';
 import { setBarRotation } from '../draw/actorDraws';
 import { factions } from '../defs/factions';
@@ -202,7 +203,7 @@ export class WorldScene extends Phaser.Scene {
     this.camTarget.x = hero.transform!.x;
     this.camTarget.y = hero.transform!.y;
     this.cameras.main.startFollow(this.camTarget, false, 0.16, 0.16);
-    this.cameras.main.setZoom(CAMERA_ZOOM); // closer view (moomoo.io-style), not the far-out default
+    this.cameras.main.setZoom(CAMERA_ZOOM * RENDER_SCALE); // closer view (moomoo.io-style) × the canvas-buffer scale (config/render.ts)
 
     if (import.meta.env.DEV) {
       (window as Window & { __bp?: unknown }).__bp = { world, director: this.director, hero, abilities };
@@ -244,11 +245,12 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setRotation(this.camRot);
     // DEBUG zoom-out: halve the zoom (see 2× the area — off-screen shooters). Applied per-frame so the flag
     // toggles live. Off → the normal close CAMERA_ZOOM.
-    this.cameras.main.setZoom(Debug.on('view.zoomOut') ? CAMERA_ZOOM / 2 : CAMERA_ZOOM);
+    this.cameras.main.setZoom((Debug.on('view.zoomOut') ? CAMERA_ZOOM / 2 : CAMERA_ZOOM) * RENDER_SCALE);
     // counter-rotate the world-space READOUTS so they stay screen-upright while the view spins: the
     // nameplate + damage-number text, AND the overhead hp/stamina/posture bars (set before renderSys draws
     // the actors below). The actor bodies/sprites still rotate with the world — only the readouts stay level.
     this.nameplateSys.setTextRotation(-this.camRot);
+    this.debug.setViewRotation(this.camRot); // the pinned debug readouts invert the camera transform, rotation included
     this.fx.setTextRotation(-this.camRot);
     setBarRotation(-this.camRot);
     this.aimReticle.setRotation(-this.camRot); // the '+' stays screen-upright while the shift-lock view spins

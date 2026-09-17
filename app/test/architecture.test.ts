@@ -1,6 +1,7 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { PRESENTATION_SYSTEMS, SIM_DIRS, SRC, baseName, tsFiles } from './boundary';
 
 /**
  * The sim/presentation boundary as an EXECUTABLE contract (DESIGN_PATTERNS §3/§5): the simulation must run
@@ -9,36 +10,8 @@ import { describe, expect, it } from 'vitest';
  * or route through an event/side-table, NOT to extend the allowlist.
  */
 
-const SRC = join(__dirname, '..', 'src');
-
-/** Folders that are 100% simulation — zero 'phaser' imports allowed. */
-const SIM_DIRS = ['ai', 'combat', 'core', 'defs', 'ecs', 'world'];
-
-/** The only systems/ files allowed to import Phaser (they take `scene` first — the presentation marker). */
-const PRESENTATION_SYSTEMS = new Set([
-  'AccessorySystem.ts',
-  'AimReticle.ts',
-  'DebugOverlay.ts',
-  'FxSystem.ts',
-  'InputSystem.ts',
-  'InspectSystem.ts',
-  'NameplateSystem.ts',
-  'PossessButton.ts',
-  'ProjectileRenderer.ts',
-  'RenderSystem.ts',
-  'StunIndicator.ts',
-  'WeaponSpriteSystem.ts',
-]);
-
-function tsFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) out.push(...tsFiles(p));
-    else if (name.endsWith('.ts')) out.push(p);
-  }
-  return out;
-}
+// SIM_DIRS + PRESENTATION_SYSTEMS + tsFiles live in test/boundary.ts — shared with render-text.test so the
+// allowlist is ONE list (a system added here but not there would pass one contract and fail the server).
 
 const importsPhaser = (file: string): boolean => /from 'phaser'/.test(readFileSync(file, 'utf8'));
 
@@ -53,7 +26,7 @@ describe('architecture — the sim/presentation boundary holds', () => {
   it('only the allowlisted presentation systems import phaser', () => {
     const offenders = tsFiles(join(SRC, 'systems'))
       .filter(importsPhaser)
-      .map((p) => p.split(/[\\/]/).pop() ?? p)
+      .map(baseName)
       .filter((name) => !PRESENTATION_SYSTEMS.has(name));
     expect(offenders).toEqual([]);
   });

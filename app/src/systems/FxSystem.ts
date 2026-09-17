@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
 import { Depth, FX_COLOR } from '../config/constants';
+import { RENDER_SCALE } from '../config/render';
 import { events, type SwingFx } from '../core/EventBus';
 import { clamp, rand } from '../core/math';
 import { Pool } from '../core/Pool';
+import { addText } from '../ui/text';
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: number; r: number }
 interface Corpse { x: number; y: number; r: number; color: number; life: number; max: number }
@@ -43,8 +45,7 @@ export class FxSystem {
     );
     this.textPool = new Pool<Phaser.GameObjects.Text>(
       () =>
-        scene.add
-          .text(0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '14px' })
+        addText(scene, 0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '14px' })
           .setDepth(Depth.DmgText)
           .setOrigin(0.5),
       (txt) => txt.setVisible(false),
@@ -86,7 +87,12 @@ export class FxSystem {
   }
 
   shake(amount: number): void {
-    this.scene.cameras.main.shake(90, Math.min(0.012, amount * 0.0014));
+    // Phaser computes the shake offset as intensity × camera WIDTH × zoom, then applies it THROUGH the camera's
+    // already-zoomed matrix (Shake.preRender → matrix.translate), so in buffer px it scales with zoom². Width
+    // and zoom each grew by RENDER_SCALE (config/render.ts) → RENDER_SCALE³ in the buffer; the buffer→screen
+    // mapping absorbs one → divide by RENDER_SCALE² to keep the on-screen amplitude the tuned one. (The cap is
+    // in the tuned units too.) Pre-existing + unchanged: amplitude also follows the VIEW zoom² — tuned at 2.
+    this.scene.cameras.main.shake(90, Math.min(0.012, amount * 0.0014) / (RENDER_SCALE * RENDER_SCALE));
   }
 
   update(dt: number): void {

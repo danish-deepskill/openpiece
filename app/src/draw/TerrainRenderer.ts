@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Depth, MAPW, MAPH, TILE, WORLD_H, WORLD_W } from '../config/constants';
+import { BAKE_FILTER } from '../config/render';
 import { Structures } from '../defs/structures';
 import { Terrains, terrainByOrdinal } from '../defs/terrains';
 import { terrainBakes } from './terrainBakes';
@@ -35,6 +36,9 @@ export class TerrainRenderer {
     const rt = scene.add.renderTexture(0, 0, WORLD_W, WORLD_H).setOrigin(0, 0);
     rt.setDepth(Depth.Terrain);
     rt.draw(g);
+    // the ground is axis-aligned flat fills: nearest sampling magnifies to HARD tile edges under the zoomed
+    // camera, where linear smears each edge across 2×RENDER_SCALE px (config/render.ts BAKE_FILTER: trade-off)
+    if (BAKE_FILTER === 'nearest') rt.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     g.destroy();
   }
 

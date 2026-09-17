@@ -3,6 +3,7 @@ import { tierColor } from '../combat/PowerTier';
 import { entityHostile } from '../combat/targeting';
 import { Depth } from '../config/constants';
 import type { World } from '../ecs/World';
+import { addText } from '../ui/text';
 
 const COLOR_SELF = '#ffd24a'; // the body you control
 const COLOR_HOSTILE = '#ff6b5a'; // hostile to your faction
@@ -73,8 +74,7 @@ export class NameplateSystem {
   private slot(pool: Phaser.GameObjects.Text[], i: number): Phaser.GameObjects.Text {
     let o = pool[i];
     if (!o) {
-      o = this.scene.add
-        .text(0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#ffffff', stroke: '#20242a', strokeThickness: 3 })
+      o = addText(this.scene, 0, 0, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#ffffff', stroke: '#20242a', strokeThickness: 3 })
         .setOrigin(0, 1) // left-bottom, so the two segments lay out left-to-right on one baseline
         .setDepth(Depth.Prompt);
       pool[i] = o;

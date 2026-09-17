@@ -45,7 +45,7 @@ which is exactly us.
 | Build     | **Vite 5**                                              |
 | Tests     | **Vitest** — pure logic only (ECS, collision, AI, defs) |
 | Art       | **Procedural Graphics** draw fns — no sprite assets     |
-| Resolution| Fixed **1280×720**, `Scale.FIT` + `CENTER_BOTH`         |
+| Resolution| Fixed **1280×720** LOGICAL, `Scale.FIT` + `CENTER_BOTH`; the canvas BUFFER is that × `RENDER_SCALE` (`config/render.ts`) so a 4K screen gets 1 buffer px per screen px |
 
 > Phaser `Graphics` supports `fillCircle/fillEllipse/strokeEllipse/fillRect/arc/lineBetween/fillStyle/
 > lineStyle`. **No** `ellipse()` or `quadraticCurveTo()`.
@@ -70,6 +70,7 @@ openpiece/
       config/
         constants.ts            # TILE/MAP sizes, SIM_DT, combat-feel consts, RegKey, HUD view-model types
         GameConfig.ts           # Phaser.Game config + scene list
+        render.ts               # (presentation) RENDER_SCALE — canvas buffer = logical 1280×720 × physical px per logical px; BAKE_FILTER
       core/
         EventBus.ts             # typed event bus (singleton `events`) incl. the fx: channel
         Rng.ts                  # seeded mulberry32 streams (worldgen/ai/combat) — sim determinism
@@ -123,6 +124,10 @@ openpiece/
       draw/                     # (presentation) procedural draw fns + DrawFn type + world renderers
         actorDraws.ts / accessoryDraws.ts / shipDraws.ts / terrainBakes.ts / structureDraws.ts / TerrainRenderer.ts / StructureRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
         projectileProc.ts       # generated projectile textures (the lead ball + per-proc-color charged variants)
+      ui/                       # (presentation) DOM overlays + HUD widgets
+        overlay.ts / debugPanel.ts   # the start/help overlay + the ` debug-flag panel (DOM, EventBus-driven)
+        UnitPlate.ts / plateView.ts  # the shared unit readout card + its pure view-model (tested headless)
+        text.ts                 # addText — THE door for Phaser text (stamps the RENDER_SCALE resolution; test-enforced)
       scripts/                  # dev tools run via vite-node (art:template — the artist mannequin SVG)
       scenes/
         BootScene.ts            # asset manifest (import.meta.glob) -> launch World + Hud
