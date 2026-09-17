@@ -84,7 +84,8 @@ openpiece/
         Spawner.ts              # sim-side factory: spawnHero/spawnUnit/spawnPickup/spawnShip from Defs
         snapshot.ts             # world ↔ plain-JSON snapshots (persistence seed + the replay-test state hash)
       defs/                     # content rows: units, bodies, factions, aiProfiles, layers, ships, terrains,
-        ...                     #   structures, decks, accessories, visual, items (ItemRef spine; BASE_KIT in units.ts) — data only
+        ...                     #   structures, decks, accessories, visual, items (ItemRef spine + ItemStack; BASE_KIT in units.ts),
+        ...                     #   materials (the first stackable commons; per-def stackLimit) — data only
       combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier,
         ...                     #   swing (motion registry + shared geom), hitVolume (timed strike volumes),
         ...                     #   phases (windup/active/recover clock), guard (block/parry/feint + posture),
@@ -112,6 +113,9 @@ openpiece/
         ProjectileSystem.ts     # travelling shots (musket ball): swept path vs bodies + solid cells -> StrikeResolver
         AbilitySystem.ts        # the single attack path: costs, cooldowns, swings, shots, launches
         StrikeResolver.ts       # (service) a confirmed hit -> damage/combo/stun; Damage.ts applies it
+        Items.ts                # (service) THE item mutation site: give/take/move/split/drop/equipFromHold — merge, clamp to
+        ...                     #   stackLimit, refuse past Hold.slots, atomic two-hold moves; apply(intent) = the seam's authority; reachableHold = the
+        ...                     #   ONE container in reach: a chest beside you, the ship's hold from its deck HATCH tile (ITEMS.md §3–4)
         BodyCollisionSystem.ts  # body-vs-body shove (mass-weighted)
         CombatantSystem.ts      # stamina delayed-regen, combo decay, hitstun
         WindSystem.ts           # the weather clock over the pure wind FIELD windAt(x,y,t) — stepped FIRST (environment before intent)
@@ -128,6 +132,8 @@ openpiece/
         overlay.ts / debugPanel.ts   # the start/help overlay + the ` debug-flag panel (DOM, EventBus-driven)
         UnitPlate.ts / plateView.ts  # the shared unit readout card + its pure view-model (tested headless)
         text.ts                 # addText — THE door for Phaser text (stamps the RENDER_SCALE resolution; test-enforced)
+        inventoryView.ts        # the inventory panel's pure VIEW-MODEL (holds, doll, icons-as-data) + its change key
+        InventoryPanel.ts       # (DOM) the inventory panel: renders the view-model on change, sends ITEM INTENTS into InputSystem (Items.apply resolves them)
       scripts/                  # dev tools run via vite-node (art:template — the artist mannequin SVG)
       scenes/
         BootScene.ts            # asset manifest (import.meta.glob) -> launch World + Hud
@@ -159,8 +165,10 @@ style). Structural changes (add/remove component/entity) are cheap; queries iter
 | `crew`           | stance:'follow'\|'hold', slot, cmd{attack,t}                 | |
 | `npc`            | dialogue:string[], recruit?:{name,hp,dmg}                    | |
 | `loot`           | gold                                                          | drop on death |
+| `pickup`         | item:ItemRef, n, label                                        | a thing (or a commons PILE with a count) on the ground; the take verb stows what fits |
+| `hold`           | stacks:ItemStack[], slots                                     | THE container — a unit's bag (UnitDef.bagSlots), a hull's hold (ShipDef.holdSlots), a chest (StructureDef.holdSlots); mutated ONLY via the `Items` service (ITEMS.md §3–4) |
 | `grudge`         | ids:Set&lt;number&gt;                                        | per-entity personal hostility ON TOP of the faction matrix (friendly-fire betrayal); mutual, permanent |
-| *(reserved)*     | `inventory`, `needs`, `job`, `rideable`, `vehicle`, `reputation`, `devilFruit`, `haki`, `rank` | sim / One Piece — not built yet (§12) |
+| *(reserved)*     | `needs`, `job`, `rideable`, `vehicle`, `reputation`, `devilFruit`, `haki`, `rank` | sim / One Piece — not built yet (§12) |
 
 **Boundary:** gameplay actors live in the ECS. **Transient FX (particles, damage text, swing arcs,
 corpses) do NOT** — they churn every frame and are pure presentation, so `FxSystem` keeps them in

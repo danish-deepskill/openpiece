@@ -52,5 +52,16 @@
     "minimap": "#6b5f4e",
     "bake": "windmill",
     "overlay": "windmillBlades"
+  },
+  {
+    "id": "structure.chest",
+    "name": "Chest",
+    "size": { "w": 1, "h": 1 },
+    "blocksFoot": true,
+    "blocksAir": false,
+    "color": "#6b4a2a",
+    "minimap": "#8a6a3a",
+    "bake": "chest",
+    "holdSlots": 12
   }
 ]

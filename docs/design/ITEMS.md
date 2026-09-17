@@ -1,6 +1,7 @@
 # Items & Inventory — the substrate (Design)
 
-> **Stage:** designed — commons+instance two-tier model; judged 2026-07-18 (pass #21). Evidence is
+> **Stage:** designed — commons+instance two-tier model; judged 2026-07-18 (pass #21); slices 1 (stacks) + 3
+> (holds) built 2026-09-17. Evidence is
 > PARTIAL (research run killed mid-pipeline; salvaged) — no decision rests on the unverified angles
 > (reviewer-checked), but re-running them may sharpen §ownership/§containers.
 
@@ -207,13 +208,16 @@ the bounty system wants. Nothing here is player-only.
 
 ## Build order (triggers, not dates)
 
-1. **Slice 1 — stacks:** `ItemStack` + `stackLimit` + the `Items` service + materials family; pickup and
+1. **Slice 1 — stacks (BUILT 2026-09-17):** `ItemStack` + `stackLimit` + the `Items` service + materials family; pickup and
    bag stack correctly (pick up 30 powder → one stack). *Trigger: before #1 crew builds provisions —
    the queue's reason this pass ran first.*
 2. **Slice 2 — instances:** `ItemInstance` + `containedBy` + promotion (first graded blade drop);
    conservation test lands with it. *Trigger: first content that needs per-item state (a graded weapon
    or the first fruit vessel).*
-3. **Slice 3 — holds:** unify bag/corpse/chest/ship-hold on `Hold`; loot-a-body falls out. *Trigger:
+3. **Slice 3 — holds (BUILT 2026-09-17: bag/chest/ship hold on one `Hold`; move/split/drop/equip verbs; the DOM
+   panel; loot-a-body WAITS on corpses persisting as entities — the director destroys the dead today):** unify
+   bag/corpse/chest/ship-hold on `Hold`; loot-a-body falls out. The ship hold is reached from its deck HATCH tile
+   (embodied, like the helm) — capacity stays hull data. *Trigger:
    ship cargo or corpse looting, whichever content lands first.*
 4. **Slice 4 — ownership + theft events:** `Hold.owner` + the theft event + instance marks. *Trigger:
    with #6's heat pass (it consumes the event).*

@@ -51,6 +51,22 @@ export const structureDraws: Record<string, StructureDrawFn> = {
     g.fillStyle(0x6d6a63, 1);
     g.fillRect(x * TILE, y * TILE + TILE / 2 - 1, TILE + 1, 2);
   },
+  // a CHEST: a dark plank box with a lit lid band + a brass clasp — squat inside its tile so it reads as a thing
+  // you stand BESIDE (not a wall segment)
+  chest: (g, x, y) => {
+    const px = x * TILE + 4;
+    const py = y * TILE + 6;
+    const w = TILE - 8;
+    const h = TILE - 10;
+    g.fillStyle(0x4a3018, 1); // box
+    g.fillRect(px, py, w, h);
+    g.fillStyle(0x8a6a3a, 1); // lid band
+    g.fillRect(px, py, w, 7);
+    g.fillStyle(0x000000, 0.28); // base shadow
+    g.fillRect(px, py + h - 4, w, 4);
+    g.fillStyle(0xd8b04a, 1); // clasp
+    g.fillRect(px + w / 2 - 2, py + 5, 4, 6);
+  },
   // GROUND half of a tree only: root shadow + trunk on the 1-tile blocker (the crown is the treeCrown
   // OVERLAY row, baked above actors, so units walk UNDER the leaves)
   tree: (g, x, y) => {

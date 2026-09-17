@@ -7,11 +7,18 @@ import { TileGrid } from './TileGrid';
 
 export interface EnemySpawn { x: number; y: number; boss: boolean; unit: string }
 
-export interface PickupSpawn { item: ItemRef; x: number; y: number }
+export interface PickupSpawn { item: ItemRef; x: number; y: number; /** pile count (materials); absent = a single thing */ n?: number }
 
 /** WHAT to build at WHICH anchor cell — plain data, like EnemySpawn. Worldgen stays a pure function of the
  *  seed; the scene turns each record into a structure ENTITY (placeStructure) at world start. */
-export interface StructureSpawn { def: string; tx: number; ty: number }
+export interface StructureSpawn {
+  def: string;
+  tx: number;
+  ty: number;
+  /** Pre-stocked contents for a CONTAINER structure (a chest's starting stash) — stowed at spawn through the Items
+   *  service, so worldgen never writes a hold by hand. */
+  stash?: { item: ItemRef; n: number }[];
+}
 
 export interface LevelLayout {
   grid: TileGrid;
@@ -31,7 +38,7 @@ export interface LevelLayout {
 interface GenCtx {
   grid: TileGrid;
   occupied(tx: number, ty: number): boolean;
-  build(def: string, tx: number, ty: number): void;
+  build(def: string, tx: number, ty: number, stash?: StructureSpawn['stash']): void;
 }
 
 const px = (tx: number) => tx * TILE;
@@ -225,8 +232,8 @@ export function generateLevel(rng: Rng): LevelLayout {
   const gen: GenCtx = {
     grid,
     occupied: (tx, ty) => occ.has(ty * grid.w + tx),
-    build: (def, tx, ty) => {
-      structures.push({ def, tx, ty });
+    build: (def, tx, ty, stash) => {
+      structures.push(stash ? { def, tx, ty, stash } : { def, tx, ty });
       // claim the FULL footprint, not just the anchor — a later pass probing any cell of a 3×2 windmill
       // must see it as taken (the anchor-only version under-claimed multi-tile defs)
       const { w, h } = Structures.get(def).size;
@@ -261,6 +268,12 @@ export function generateLevel(rng: Rng): LevelLayout {
     { tx: HOME.cx, ty: HOME.cy + 4, tw: 6, th: 4 }, // the tavern (biggest) — recognizable by size + interior
   ];
   for (const h of houses) stampHouse(h.tx, h.ty, h.tw, h.th);
+  // the STOREHOUSE (house 1, otherwise empty): a chest in its top-left interior corner, clear of the door lane,
+  // pre-stocked with timber + powder — the first CONTAINER to reach into (stand beside it, open the bag).
+  gen.build('structure.chest', houses[1]!.tx + 1, houses[1]!.ty + 1, [
+    { item: { cat: 'material', id: 'material.plank' }, n: 10 },
+    { item: { cat: 'material', id: 'material.powder' }, n: 8 },
+  ]);
   // the village windmill — ONE entity, SIX cells (3×2): the multi-tile structure the entity layer exists for.
   // NE of the village on open grass, clear of every house/spawn; blocks foot AND air (a roofed landmark you
   // route around, not over), blade sweep baked above actors. Placement knob: the anchor cell below.
@@ -277,6 +290,11 @@ export function generateLevel(rng: Rng): LevelLayout {
     { item: { cat: 'weapon', id: 'weapon.sword' }, x: cutlassHouse.x - 22, y: cutlassHouse.y }, // the 2H combo blade, left of the cutlass
     { item: { cat: 'weapon', id: 'weapon.musket' }, x: cutlassHouse.x, y: cutlassHouse.y + 22 }, // the first RANGED weapon (#19) — travelling shot; below the cutlass
     { item: { cat: 'accessory', id: 'accessory.strawHat' }, x: cutlassHouse.x + 22, y: cutlassHouse.y }, // beside the cutlass
+    // two 20-piles of powder flanking the musket: taking both MERGES into one stack of 40 — ITEMS.md slice 1's
+    // acceptance ("pick up 30 powder → one stack"), visible in play on the bag readout; a plank bundle above
+    { item: { cat: 'material', id: 'material.powder' }, n: 20, x: cutlassHouse.x - 22, y: cutlassHouse.y + 22 },
+    { item: { cat: 'material', id: 'material.powder' }, n: 20, x: cutlassHouse.x + 22, y: cutlassHouse.y + 22 },
+    { item: { cat: 'material', id: 'material.plank' }, n: 10, x: cutlassHouse.x - 22, y: cutlassHouse.y - 22 },
     { item: { cat: 'fruit', id: 'fruit.gomu' }, ...inside(houses[2]) },
     { item: { cat: 'manual', id: 'manual.geppo' }, x: inside(houses[2]).x + 24, y: inside(houses[2]).y }, // the Geppo book, beside the Gomu fruit — Read (E) to learn the hover
   ];

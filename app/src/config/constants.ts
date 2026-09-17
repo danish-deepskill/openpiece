@@ -143,6 +143,13 @@ export const GEPPO_FALL_DUR = 0.3;
  *  (walk-on=INWARD vs walk-off=OUTWARD; leave=AIR vs board=GROUND), so they cannot oscillate. */
 export const FRAME_SWITCH_COOLDOWN = 0.4;
 
+/** A ground pile's collision radius (px) — the pickup's transform.r (Spawner) AND the footprint a drop must clear. */
+export const PICKUP_R = 12;
+
+/** CONTAINER REACH (px) beyond the two body radii — how close you stand to a chest (or a corpse, later) to
+ *  reach into it (Items.reachableHold). Same idea as VerbDef.reach; a knob so a big chest can feel arm's-length. */
+export const HOLD_REACH = 28;
+
 /** Follow-camera zoom at boot — higher = closer (moomoo.io-style). 1.0 showed too much world on foot. */
 export const CAMERA_ZOOM = 2;
 /** WHEEL ZOOM range — the mouse wheel steps the view-zoom TARGET (InputSystem owns it, WorldScene glides the

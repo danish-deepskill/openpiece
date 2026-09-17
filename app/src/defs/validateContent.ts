@@ -17,6 +17,7 @@ import './races';
 import './sizes';
 import './terrains';
 import './structures';
+import './materials';
 
 /** The minimal registry surface a cross-ref check needs (any Registry<T> satisfies it structurally). */
 interface AnyRegistry {

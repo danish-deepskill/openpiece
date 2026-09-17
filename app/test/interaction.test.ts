@@ -3,8 +3,12 @@ import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';
 import { DialogueSystem } from '../src/systems/DialogueSystem';
 import { InteractionSystem } from '../src/systems/InteractionSystem';
+import { Items } from '../src/systems/Items';
+import { Rng } from '../src/core/Rng';
+import { Spawner } from '../src/ecs/Spawner';
+import { SpatialQuery } from '../src/world/SpatialQuery';
 
-const sysFor = (world: World, dlg = new DialogueSystem()) => new InteractionSystem(world, dlg);
+const sysFor = (world: World, dlg = new DialogueSystem()) => new InteractionSystem(world, dlg, new Items(world, new Spawner(world, new Rng(1)), new SpatialQuery(world)));
 
 function actorAt(world: World, x: number, y: number): Entity {
   return world.create({ transform: { x, y, angle: 0, r: 12 } });

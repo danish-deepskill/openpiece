@@ -30,6 +30,7 @@ import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { SwimSystem } from '../systems/SwimSystem';
 import { BodyCollisionSystem } from '../systems/BodyCollisionSystem';
 import { InteractionSystem } from '../systems/InteractionSystem';
+import { Items } from '../systems/Items';
 import { DialogueSystem } from '../systems/DialogueSystem';
 import { NameplateSystem } from '../systems/NameplateSystem';
 import { StunIndicator } from '../systems/StunIndicator';
@@ -49,7 +50,10 @@ import { placeStructure } from '../world/StructureIndex';
 import { SeaRenderer } from '../draw/SeaRenderer';
 import { StructureRenderer } from '../draw/StructureRenderer';
 import { TerrainRenderer } from '../draw/TerrainRenderer';
-import { generateLevel } from '../world/WorldGen';
+import { generateLevel, type StructureSpawn } from '../world/WorldGen';
+import type { Entity } from '../ecs/components';
+import { InventoryPanel } from '../ui/InventoryPanel';
+import { inventoryKey, inventoryView } from '../ui/inventoryView';
 import { unitPlateView } from '../ui/plateView';
 
 /** Owns the ECS world + systems, drives the fixed update order, and publishes HUD state. */
@@ -87,6 +91,9 @@ export class WorldScene extends Phaser.Scene {
   private possessButton!: PossessButton;
   private fx!: FxSystem;
   private sea!: SeaRenderer;
+  private items!: Items;
+  private inventoryPanel!: InventoryPanel;
+  private invKey = ''; // the last-published inventory view's change key — the panel re-renders only on a change
   private readonly camTarget = { x: 0, y: 0 }; // camera follows the CONTROLLED entity (possession-safe)
   /** Shift-lock view. `camRot` is applied to the camera each frame. `camBlend` (0→1) eases ONLY the toggle
    *  (Alt on/off): the rotation itself always tracks the facing 1:1 (no lag at any turn speed), scaled by the
@@ -119,7 +126,11 @@ export class WorldScene extends Phaser.Scene {
     this.world = world;
     // the STRUCTURE layer: worldgen's pure records become entities + grid occupancy, BEFORE anything
     // (minimap, colliders' first queries, door sweep) reads the composed world
-    for (const s of level.structures) placeStructure(world, level.grid.structures, s.def, s.tx, s.ty);
+    const stashed: Array<{ e: Entity; stash: NonNullable<StructureSpawn['stash']> }> = [];
+    for (const s of level.structures) {
+      const placed = placeStructure(world, level.grid.structures, s.def, s.tx, s.ty);
+      if (s.stash) stashed.push({ e: placed, stash: s.stash }); // stocked below, once the Items service exists
+    }
     TerrainRenderer.bakeMinimap(this, level.grid); // composes BOTH layers — after placement, by contract
     this.structureRenderer = new StructureRenderer(this, level.grid);
     const collision = new Collision(level.grid);
@@ -135,10 +146,19 @@ export class WorldScene extends Phaser.Scene {
     const hulls = new HullCollisionSystem(world, query); // boarding handoffs (gangplank / leap-on) + embedded-in-hull eject fallback
     const squads = new SquadSystem(world, query);
     const spawner = new Spawner(world, worldgenRng);
+    const items = new Items(world, spawner, query, collision); // THE item mutation site (ITEMS.md §4) — injected, never stepped; collision = where a drop may land
+    this.items = items;
+    // worldgen's pre-stocked containers, through the one site — a stash that doesn't FIT is a content bug (a
+    // lowered holdSlots, an oversized row): boot fails loud instead of silently truncating the author's numbers
+    for (const { e, stash } of stashed) {
+      for (const st of stash) {
+        if (items.give(e, st.item, st.n) !== st.n) throw new Error(`WorldGen stash: ${st.n}× ${st.item.id} does not fit ${e.structure?.def ?? 'the container'}`);
+      }
+    }
 
     const hero = spawner.spawnHero(level.playerSpawn.x, level.playerSpawn.y);
     // loot stashed in the village houses — walk in and press E (a Cutlass in one, the Gomu fruit in another)
-    for (const pk of level.pickups) spawner.spawnPickup(pk.item, pk.x, pk.y);
+    for (const pk of level.pickups) spawner.spawnPickup(pk.item, pk.x, pk.y, pk.n);
     // townsfolk — FULL units (same stack as everyone): they wander, can be Talked to (E), can be attacked, and
     // self-defend. Allied to the player; hostile to bandits (factions). Lead a bandit into town to see them fight.
     // a townsfolk Soldier (faction override → civilians): allied to you + the villagers, hostile to bandits.
@@ -182,9 +202,12 @@ export class WorldScene extends Phaser.Scene {
     this.doorRenderer = new DoorRenderer(this, world);
     this.debug = new DebugOverlay(this, world, level.grid, wind);
     this.dialogueSys = new DialogueSystem();
-    this.interactionSys = new InteractionSystem(world, this.dialogueSys);
+    this.interactionSys = new InteractionSystem(world, this.dialogueSys, items);
     this.inspectSys = new InspectSystem(this, world, query);
-    this.inputSys = new InputSystem(this, world, query, abilities, ships, this.director, this.interactionSys, this.dialogueSys, this.inspectSys);
+    this.inputSys = new InputSystem(this, world, query, abilities, ships, this.director, this.interactionSys, this.dialogueSys, this.inspectSys, items);
+    // the DOM inventory panel: reads a view-model published below, sends INTENTS into the one input seam
+    this.inventoryPanel = new InventoryPanel((i) => this.inputSys.queueItemIntent(i));
+    this.events.once('shutdown', () => this.inventoryPanel.destroy()); // a scene restart must not leak window listeners + a DOM root
     this.aiSys = new AISystem(world, ctx);
     this.moveSys = new MovementSystem(world, collision);
     this.swimSys = new SwimSystem(world, damage);
@@ -309,6 +332,14 @@ export class WorldScene extends Phaser.Scene {
     // ONE view-model for the controlled unit — the same shape InspectSystem publishes for any clicked
     // unit, so the player HUD can never drift from the universal unit readout (the Moat at the UI layer)
     r.set(RegKey.Player, e ? unitPlateView(e) : null);
+    // the inventory panel's view-model — published ON CHANGE only (a cheap key: service version + who/where),
+    // never per frame; the panel is DOM, so a re-render is a real cost
+    const other = e ? this.items.reachableHold(e) : undefined;
+    const key = e ? inventoryKey(e, other, this.items.version) : '';
+    if (key !== this.invKey) {
+      this.invKey = key;
+      this.inventoryPanel.render(e ? inventoryView(e, other) : null);
+    }
     if (e?.combatant) r.set(RegKey.Combo, e.combatant.combo);
     if (e?.loadout) {
       const lo = e.loadout;

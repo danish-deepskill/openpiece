@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { equipItem, equippedIn } from '../src/combat/equip';
 import { Rng } from '../src/core/Rng';
-import { equippedLabels, inventoryLabels, itemName, itemProblem, itemSlot, type ItemRef } from '../src/defs/items';
+import { equippedLabels, holdLabels, itemName, itemProblem, itemSlot, type ItemRef } from '../src/defs/items';
 import { Spawner } from '../src/ecs/Spawner';
+import { SpatialQuery } from '../src/world/SpatialQuery';
 import { World } from '../src/ecs/World';
 import type { DialogueSystem } from '../src/systems/DialogueSystem';
 import { InteractionSystem } from '../src/systems/InteractionSystem';
+import { Items } from '../src/systems/Items';
 
 const HAT: ItemRef = { cat: 'accessory', id: 'accessory.strawHat' };
 const CUTLASS: ItemRef = { cat: 'weapon', id: 'weapon.cutlass' };
@@ -16,7 +18,7 @@ const GOMU: ItemRef = { cat: 'fruit', id: 'fruit.gomu' };
  *  dialogue is stubbed — takePickup never touches it (safe: {} as T with this note). */
 function take(world: World, sp: Spawner, hero: ReturnType<Spawner['spawnHero']>, ref: ItemRef): void {
   sp.spawnPickup(ref, hero.transform!.x, hero.transform!.y);
-  new InteractionSystem(world, {} as DialogueSystem).interact(hero);
+  new InteractionSystem(world, {} as DialogueSystem, new Items(world, sp, new SpatialQuery(world))).interact(hero);
 }
 
 describe('ItemRef — one reference resolves across all three registries', () => {
@@ -41,7 +43,7 @@ describe('inventory — pickup enters the bag then auto-equips', () => {
 
     take(w, sp, hero, HAT);
     expect(hero.accessories!.slots.head).toBe('accessory.strawHat'); // equipped onto the head
-    expect(inventoryLabels(hero)).not.toContain('Straw Hat'); // worn, so NOT sitting in the bag
+    expect(holdLabels(hero)).not.toContain('Straw Hat'); // worn, so NOT sitting in the bag
     expect([...w.entities].some((e) => e.pickup)).toBe(false); // the floor pickup was consumed
   });
 
@@ -54,7 +56,7 @@ describe('inventory — pickup enters the bag then auto-equips', () => {
 
     take(w, sp, hero, DAGGER);
     expect(hero.equipment!.weapon).toBe('weapon.dagger'); // newer gear wins (good UX)
-    expect(inventoryLabels(hero)).toContain('Cutlass'); // the displaced weapon dropped to the bag
+    expect(holdLabels(hero)).toContain('Cutlass'); // the displaced weapon dropped to the bag
   });
 
   it('different slots coexist — a hat and a weapon do not displace each other', () => {
@@ -65,7 +67,7 @@ describe('inventory — pickup enters the bag then auto-equips', () => {
     take(w, sp, hero, CUTLASS);
     expect(hero.accessories!.slots.head).toBe('accessory.strawHat');
     expect(hero.equipment!.weapon).toBe('weapon.cutlass');
-    expect(inventoryLabels(hero)).toEqual([]); // both worn, bag empty
+    expect(holdLabels(hero)).toEqual([]); // both worn, bag empty
   });
 
   it('equippedLabels reports each named slot, filled or empty', () => {

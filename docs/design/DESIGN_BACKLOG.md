@@ -1247,6 +1247,17 @@ one `Hold` relation for every container (Inventory absorbed at slice 3); one ato
 dupe-class defense — [SOURCED] MU/OSRS evidence); ownership on containers, crime-on-the-act for commons,
 evidence-on-the-thing for instances; grants always resolve from defs (per-instance movesets rejected).
 Build slice 1 (stacks) precedes #1 crew provisions per the queue. Entry below kept for history.
+**THE UI HALF (2026-09-17, judged + built with slices 1/3):** the SYSTEM verdict is "the bag is your pockets, the
+ship is your inventory" — slots of stacks (bag 10; holds 6/24/60 per hull), NO grid-Tetris (AI can't play it,
+possession would hand you a puzzle), NO weight (the decision is what stays on the ship, not grams), a HANDS tier
+for big instances later (crates/barrels carried visibly — embodied hauling, needs slice 2). The world never
+pauses for the panel and no container is reachable from anywhere: a chest opens by standing beside it, the
+ship's hold by standing ON its deck HATCH tile — the wheel-is-the-helm-tile rule applied to cargo (the
+developer's call, 2026-09-17: storage is an OBJECT/place, never a radius; the capacity stays hull data). The PANEL is a DOM layer (crisp text, native
+hover/drag/tooltips/scroll), fed a pure view-model ON CHANGE and speaking back ONLY in intents through
+InputSystem → the Items service inside the tick, re-validated at apply time — the multiplayer intent seam
+rehearsed locally. One hold component rendered twice (bag + the reachable container), a paper-doll strip,
+shift-click/double-click as the fast paths, drag as the fallback, right-click for the rest.
 **Moat:** not itself a moat but a SUBSTRATE (the #18 TIME situation repeated): the rarity field (#4) needs
 an `ItemDef` to live on; #7 trades goods; #2 consumes provisions; #19 counts powder and shot; #3's enemies
 loot a downed body; #9's charts are ITEMS; #11 assembles parts; #4's fruit VESSELS are items with grant

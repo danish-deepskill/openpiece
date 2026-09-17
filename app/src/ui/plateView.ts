@@ -1,7 +1,7 @@
 import { ATTRIBUTE_IDS, type AttributeId } from '../combat/attributes';
 import { tierColor } from '../combat/PowerTier';
 import { FactionDefs } from '../defs/factions';
-import { equippedLabels, inventoryLabels } from '../defs/items';
+import { equippedLabels, holdLabels } from '../defs/items';
 import type { Entity } from '../ecs/components';
 
 /**
@@ -44,6 +44,8 @@ export interface UnitPlateView {
   equipped: string[];
   /** Owned-unequipped items (the bag); empty for most units. */
   inventory: string[];
+  /** Bag capacity in stacks (0 = carries nothing — fauna); the plate shows "Bag 2/10". */
+  bagSlots: number;
 }
 
 /** Project any unit to its plate view; null for non-units (pickups, bare ships — no identity/health). */
@@ -76,6 +78,7 @@ export function unitPlateView(e: Entity): UnitPlateView | null {
     atkSpeed: sb?.get('atkSpeed') ?? 0,
     reach: sb?.get('reach') ?? 0,
     equipped: equippedLabels(e),
-    inventory: inventoryLabels(e),
+    inventory: holdLabels(e),
+    bagSlots: e.hold?.slots ?? 0,
   };
 }

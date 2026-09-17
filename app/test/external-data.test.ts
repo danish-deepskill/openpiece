@@ -14,7 +14,7 @@ const parseToy = (r: RowReader): ToyDef => ({ id: r.str('id'), n: r.num('n'), c:
 describe('external data (pillar-1 pilot: terrains + structures load from data/*.json)', () => {
   it('both families load with parsed values — colors decoded, nested size intact, unions narrowed', () => {
     expect(Terrains.size).toBe(6);
-    expect(Structures.size).toBe(5);
+    expect(Structures.size).toBe(6); // wall, door, stoneWall, tree, windmill, chest
     expect(Terrains.get('terrain.grass').color).toBe(0x4f8a45); // '#4f8a45' string → the number defs carry
     expect(Terrains.get('terrain.water').aiFootAvoid).toBe(true);
     expect(Structures.get('structure.windmill').size).toEqual({ w: 3, h: 2 }); // nested object field

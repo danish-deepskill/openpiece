@@ -147,13 +147,13 @@ export function equippedIn(e: Entity, ref: ItemRef): ItemRef | undefined {
 }
 
 /** Equip any ItemRef by dispatching to the right existing path (weapon/fruit → equip(); accessory →
- *  wearAccessory). The ONE generic entry point pickups + a future inventory-equip verb call. A 'manual' is NOT
- *  equippable (it's consumed on read → grants an ability); takePickup routes it to the learn branch, so it must
- *  never reach here. */
+ *  wearAccessory). The ONE generic entry point pickups + a future inventory-equip verb call. A 'manual' (consumed
+ *  on read) and a 'material' (stowed, never worn) are NOT equippable — takePickup routes on isEquippable() first,
+ *  so they must never reach here (the POSITIVE narrow below is what keeps a new category from leaking into equip). */
 export function equipItem(e: Entity, ref: ItemRef): void {
   if (ref.cat === 'accessory') wearAccessory(e, ref.id);
-  else if (ref.cat === 'manual') throw new Error(`equipItem: '${ref.id}' is a manual (consumed on read) — not equippable`);
-  else equip(e, ref.cat, ref.id); // 'weapon' | 'fruit'
+  else if (ref.cat === 'weapon' || ref.cat === 'fruit') equip(e, ref.cat, ref.id);
+  else throw new Error(`equipItem: '${ref.id}' is a ${ref.cat} — not equippable (takePickup routes by isEquippable() first)`);
 }
 
 /** Unequip whatever holds the slot `ref` targets, returning it as an ItemRef (for the bag) or undefined.
@@ -162,7 +162,7 @@ export function unequipToBag(e: Entity, ref: ItemRef): ItemRef | undefined {
   const cur = equippedIn(e, ref);
   if (!cur) return undefined;
   if (cur.cat === 'accessory') removeAccessory(e, Accessories.get(cur.id).slot);
-  else if (cur.cat !== 'manual') unequip(e, cur.cat, cur.id); // equippedIn never returns a manual (they aren't equipped); the guard narrows the union for TS
+  else if (cur.cat === 'weapon' || cur.cat === 'fruit') unequip(e, cur.cat, cur.id); // equippedIn only returns a WORN kind (never manual/material); the positive narrow is for TS
   return cur;
 }
 

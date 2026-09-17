@@ -6,6 +6,7 @@ import { trySprint } from '../combat/stamina';
 import { attackMoveSpeed } from '../combat/attackMove';
 import { FRIENDLY_FIRE_TAG } from '../combat/targeting';
 import { events } from '../core/EventBus';
+import type { Entity } from '../ecs/components';
 import { angleDiff, clamp, norm, smoothFactor } from '../core/math';
 import type { World } from '../ecs/World';
 import type { SpatialQuery } from '../world/SpatialQuery';
@@ -14,6 +15,7 @@ import type { DialogueSystem } from './DialogueSystem';
 import type { GameDirector } from './GameDirector';
 import type { InspectSystem } from './InspectSystem';
 import type { InteractionSystem } from './InteractionSystem';
+import type { ItemIntent, Items } from './Items';
 import type { ShipSystem } from './ShipSystem';
 
 interface Keys {
@@ -64,6 +66,10 @@ export class InputSystem {
    *  fixed timestep a frame can run 0 sim steps, and Phaser clears JustDown on keyup, so polling JustDown
    *  inside the step could drop a fast tap entirely. */
   private readonly tapped = new Set<TapKey>();
+  /** ITEM INTENTS queued by the inventory panel (DOM, any render frame) — applied in exactly one sim step, in
+   *  arrival order, for the CONTROLLED entity, each re-validated then (see applyItemIntents). The panel never
+   *  mutates a component: it names an intent, the sim resolves it — the multiplayer stance, rehearsed locally. */
+  private readonly itemIntents: ItemIntent[] = [];
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -75,6 +81,7 @@ export class InputSystem {
     private readonly interactions: InteractionSystem,
     private readonly dialogue: DialogueSystem,
     private readonly inspect: InspectSystem,
+    private readonly items: Items,
   ) {
     this.keys = scene.input.keyboard!.addKeys(
       'W,A,S,D,J,K,L,U,I,Q,F,E,G,C,B,R,T,SHIFT,ALT,Y,N,SPACE,ONE,TWO,THREE,UP,DOWN,LEFT,RIGHT',
@@ -118,6 +125,23 @@ export class InputSystem {
     }
   }
 
+  /** The panel's channel in: queue an intent for the next sim step (a direct typed call — presentation → the
+   *  ONE input seam — not an event: one producer, one consumer, ordered). */
+  queueItemIntent(i: ItemIntent): void {
+    this.itemIntents.push(i);
+  }
+
+  /** Drain the queued ITEM INTENTS for the controlled entity inside the sim tick, in arrival order. The Items
+   *  service is the AUTHORITY (Items.apply re-validates every field against the world now and returns the
+   *  refusal reason); this seam only orders them and surfaces a refusal as a notice — never a silent no-op. */
+  private applyItemIntents(e: Entity): void {
+    for (const it of this.itemIntents) {
+      const refused = this.items.apply(e, it);
+      if (refused) events.emit('notify', { msg: refused });
+    }
+    this.itemIntents.length = 0;
+  }
+
   /** Consume a latched tap (fires in exactly ONE sim step). */
   private tap(k: TapKey): boolean {
     return this.tapped.delete(k);
@@ -138,8 +162,10 @@ export class InputSystem {
       if (ePressed && this.director.state === 'dead') this.director.respawn();
       m.vx = 0;
       m.vy = 0;
+      this.itemIntents.length = 0; // a paused/dead world drops queued intents — nothing stale applies on resume
       return;
     }
+    this.applyItemIntents(e); // the panel's queued item intents, resolved in this step
 
     // a pending recruit choice: Y accepts / N declines (checked before the E/verb path so keys don't leak)
     if (this.dialogue.choosing) {

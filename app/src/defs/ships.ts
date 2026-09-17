@@ -63,6 +63,10 @@ export interface ShipHullDef extends Def {
   /** How many can RIDE (pilot + passengers) — the crew capacity. Boarding is refused once full, so a bigger
    *  hull carries more of your crew across. */
   seats: number;
+  /** HOLD capacity in STACKS (ITEMS.md §3): rowboat 6 · sloop 24 · caravel 60 — provisioning pressure is hull
+   *  data. Reached by STANDING ON the deck's hatch tile ('T' in `deck`, exactly one — boot-validated), the way the
+   *  wheel is the helm tile: the cargo is the hull's, the access is a place on deck (Items.reachableHold). */
+  holdSlots: number;
   color: number;
   /** WALKABLE DECK layout — the GRID IS the hull (docs/design/features/big-walkable-ship.md). Compact string rows,
    *  one char per tile, parsed into a ship-LOCAL grid (bow = the row's +x/right end). Glyphs: '.' = deck, '#' =
@@ -114,6 +118,11 @@ export const validateHull = (s: ShipHullDef): string | null => {
   }
   const helms = grid.cells.filter((c) => c.tile === 'helm').length;
   if (helms !== 1) return `deck must have exactly ONE helm ('H') tile (got ${helms})`;
+  // a hull WITH a hold needs exactly one hatch to reach it from (no hatch = cargo nobody can touch; two = an
+  // ambiguous "the" hatch for the stow job); a holdless hull must not draw a trapdoor to nothing
+  const hatches = grid.cells.filter((c) => c.tile === 'hatch').length;
+  if (s.holdSlots > 0 && hatches !== 1) return `a hull with holdSlots needs exactly ONE hatch ('T') tile (got ${hatches})`;
+  if (s.holdSlots <= 0 && hatches > 0) return `a hatch ('T') tile on a hull with no holdSlots leads nowhere`;
   // a sail rig with no mast tile would silently draw NO canvas — the "my sails are invisible" bug as a data
   // slip, so it fails at boot (oars may go mastless: a pure rowboat is legal)
   if (s.rig === 'sail' && !grid.cells.some((c) => c.tile === 'mast')) return `a 'sail' rig needs at least one mast ('M') tile in the deck grid`;
@@ -155,7 +164,7 @@ export const ShipHulls = new Registry<ShipHullDef>('ShipHulls', validateHull);
 const ROWBOAT_DECK = [
   '######', // 6 cols (bow↔stern) × 4 rows (beam) → a 4×2 walkable interior
   '#H.MC#',
-  'GC...#', // gangplank on the aft port corner
+  'GC.T.#', // gangplank on the aft port corner; the hold HATCH ('T') amidships — stand on it to reach the cargo
   '######',
 ];
 // sloop: an actual BOAT silhouette, not a barge — bow/stern shoulders pull in a tile (spaces = open sea;
@@ -165,7 +174,7 @@ const SLOOP_DECK = [
   ' ##G#### ',
   '#...C..##',
   '#.H...M.#', // helm on the CENTERLINE aft (the wheel commands the deck, not a rail); mast forward of the wheel
-  '#...C..##',
+  '#..TC..##', // the hold hatch aft of the starboard gun
   ' ##G#### ',
 ];
 const CARAVEL_DECK = [
@@ -173,7 +182,7 @@ const CARAVEL_DECK = [
   '#H...C....#',
   '#C.......C#',
   'G..M.C.M..#', // gangplank amidships-port; TWO masts on the centerline — the first multi-master, purely deck data
-  '#C.......C#',
+  '#C...T...C#', // the hold hatch on the centerline, between the guns
   '#....C...C#',
   '###########',
 ];
@@ -195,13 +204,13 @@ ShipHulls.registerAll([
   // hand-tuned yaw feel (deg/s) survives; turning circles tighten ~20% in px as the price.
   // the starter boat — a humble Rowboat (the 2026-07 re-scale gave it its honest id, ending the ship.sloop squat);
   // oars: flat curve, high driftEase (a light hull grips the water), and the ONLY rig that truly backs
-  { id: 'ship.rowboat', name: 'Rowboat', shipClass: 'rowboat', rig: 'oars', hp: 220, maxSpeed: 120, accel: 56, reverseFrac: 0.25, turnBrake: 0.3, turnRate: 1.2, minTurnFrac: 0, sailCurve: OARS_FLAT, driftEase: 3.5, helmEase: 6, hoistT: 0.6, sailKind: 'foreAft', r: 56, length: 192, width: 128, cannonSlots: 2, seats: 2, color: 0x8a5a2c, deck: ROWBOAT_DECK },
+  { id: 'ship.rowboat', name: 'Rowboat', shipClass: 'rowboat', rig: 'oars', hp: 220, maxSpeed: 120, accel: 56, reverseFrac: 0.25, turnBrake: 0.3, turnRate: 1.2, minTurnFrac: 0, sailCurve: OARS_FLAT, driftEase: 3.5, helmEase: 6, hoistT: 0.6, sailKind: 'foreAft', r: 56, length: 192, width: 128, cannonSlots: 2, seats: 2, holdSlots: 6, color: 0x8a5a2c, deck: ROWBOAT_DECK },
   // sail rigs: reverseFrac 0 (sails can't back) — the in-irons escape is BARE STEERAGE (minTurnFrac 0.15,
   // the EDGE_CASES softlock-ladder re-proof) + falling off the wind until the curve pulls again
-  { id: 'ship.sloop', name: 'Sloop', shipClass: 'sloop', rig: 'sail', hp: 430, maxSpeed: 160, accel: 64, reverseFrac: 0, turnBrake: 0.3, turnRate: 0.6, minTurnFrac: 0.15, sailCurve: FORE_AND_AFT, driftEase: 2.2, helmEase: 3, hoistT: 1.6, sailKind: 'foreAft', r: 72, length: 288, width: 160, cannonSlots: 4, seats: 4, color: 0x7a4a22, deck: SLOOP_DECK },
+  { id: 'ship.sloop', name: 'Sloop', shipClass: 'sloop', rig: 'sail', hp: 430, maxSpeed: 160, accel: 64, reverseFrac: 0, turnBrake: 0.3, turnRate: 0.6, minTurnFrac: 0.15, sailCurve: FORE_AND_AFT, driftEase: 2.2, helmEase: 3, hoistT: 1.6, sailKind: 'foreAft', r: 72, length: 288, width: 160, cannonSlots: 4, seats: 4, holdSlots: 24, color: 0x7a4a22, deck: SLOOP_DECK },
   // the heavy flagship (the re-scale's Caravel — a real one dwarfed a sloop; the Galleon class returns later,
   // bigger still): LOW driftEase — it carves wide arcs and gets caught sideways mid-turn (the feel goal)
-  { id: 'ship.caravel', name: 'Caravel', shipClass: 'caravel', rig: 'sail', hp: 820, maxSpeed: 132, accel: 44, reverseFrac: 0, turnBrake: 0.3, turnRate: 0.35, minTurnFrac: 0.15, sailCurve: SQUARE_RIG, driftEase: 1.2, helmEase: 1.6, hoistT: 3.2, sailKind: 'square', r: 100, length: 352, width: 224, cannonSlots: 8, seats: 8, color: 0x6a3f1c, deck: CARAVEL_DECK },
+  { id: 'ship.caravel', name: 'Caravel', shipClass: 'caravel', rig: 'sail', hp: 820, maxSpeed: 132, accel: 44, reverseFrac: 0, turnBrake: 0.3, turnRate: 0.35, minTurnFrac: 0.15, sailCurve: SQUARE_RIG, driftEase: 1.2, helmEase: 1.6, hoistT: 3.2, sailKind: 'square', r: 100, length: 352, width: 224, cannonSlots: 8, seats: 8, holdSlots: 60, color: 0x6a3f1c, deck: CARAVEL_DECK },
 ]);
 
 /** Sample a hull's points-of-sail curve at an angle-off-wind (rad; 0 = bow dead INTO the wind's source).

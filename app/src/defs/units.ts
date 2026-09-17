@@ -67,6 +67,9 @@ export interface UnitDef extends Def {
   /** RECRUITABLE — after the talk dialogue, offer a yes/no to bring this unit into your crew (faction →
    *  straw_hat + follows you, fighting enemies on sight). Needs `dialogue` (talk is the trigger). */
   recruitable?: boolean;
+  /** BAG capacity in STACKS (ITEMS.md §3): omitted ⇒ BAG_SLOTS (10). 0 = carries nothing (fauna). The ship's
+   *  hold is where wealth lives (ShipDef.holdSlots); the bag is your pockets — a deliberate small number. */
+  bagSlots?: number;
   /** HP bloat multiplier on top of the tier baseline (elites/bosses are tankier than their power tier). */
   hpMult?: number;
   /** Opt OUT of the fundamental guard grant (GUARD_KIT) — a non-fighter (villager, wildlife) can't block or
@@ -84,6 +87,9 @@ export interface UnitDef extends Def {
  */
 export const DASH_MIN_TIER: PowerTier = 'E+';
 
+/** Default bag capacity in stacks (ITEMS.md §3's starting number) — per-unit override via UnitDef.bagSlots. */
+export const BAG_SLOTS = 10;
+
 /** The base kit EVERY actor falls back to (the bare-handed loadout) — the ONE home for these ids; equip.ts
  *  and spawns reference this, never string literals (CLAUDE.md: no hardcoded content lists in code). */
 export const BASE_KIT = { primary: 'ability.punch', heavy: 'ability.kick', dash: 'ability.roll' } as const;
@@ -97,6 +103,7 @@ export const Units = new Registry<UnitDef>('Units', (u) => {
   for (const [k, v] of Object.entries(u.attributes ?? {}))
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return `attributes.${k} must be a finite number ≥ 0 (got ${v})`;
   if (u.hpMult !== undefined && !(u.hpMult > 0)) return `hpMult must be > 0 (got ${u.hpMult})`; // ≤0 would spawn a corpse
+  if (u.bagSlots !== undefined && (!Number.isInteger(u.bagSlots) || u.bagSlots < 0)) return `bagSlots must be an integer ≥ 0 (got ${u.bagSlots})`;
   if (u.betrayHpFrac !== undefined && (u.betrayHpFrac < 0 || u.betrayHpFrac > 1)) return `betrayHpFrac must be in [0, 1] (got ${u.betrayHpFrac})`;
   return null;
 });
@@ -161,12 +168,12 @@ Units.registerAll([
   // need no outfit and default race.human (×1). HP is a real `health` attribute (not hpMult) — a direct number,
   // ordered by BULK so it reads intuitively: pig (110) < cow (150) < bull (240). Enough that a kill takes a few
   // swings, not one.
-  { id: 'unit.cow', name: 'Cow', body: 'body.cow', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attributes: { health: 300 }, noGuard: true },
-  { id: 'unit.pig', name: 'Pig', body: 'body.pig', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attributes: { health: 220 }, noGuard: true },
+  { id: 'unit.cow', name: 'Cow', body: 'body.cow', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attributes: { health: 300 }, noGuard: true, bagSlots: 0 },
+  { id: 'unit.pig', name: 'Pig', body: 'body.pig', tier: 'F', faction: 'wildlife', aiProfile: 'ai.critter', attributes: { health: 220 }, noGuard: true, bagSlots: 0 },
   // the BULL — a TERRITORIAL beast (wildlife faction, so it's calm + huntable UNTIL you strike it, then it holds
   // a grudge and CHARGES). Tier E- = a real (weak) COMBATANT band (can sprint/charge, gets atk/def), and its
   // toughness is a big `health` attribute (240 HP — the tankiest animal, above the pig's ~207), NOT hpMult: a
   // bull's bulk is real stats. `health` REPLACES the tier's hp seed (registry canon: spread values replace), so
   // set it ABOVE the band, not below. Attack = the headbutt gore (style.gore). noGuard: animals don't block. gold = bounty.
-  { id: 'unit.bull', name: 'Bull', body: 'body.bull', tier: 'E-', faction: 'wildlife', aiProfile: 'ai.bull', style: 'style.gore', attributes: { health: 480 }, gold: 40, noGuard: true, traits: ['trait.sprinter'] }, // sprinter: the charge burst needs it
+  { id: 'unit.bull', name: 'Bull', body: 'body.bull', tier: 'E-', faction: 'wildlife', aiProfile: 'ai.bull', style: 'style.gore', attributes: { health: 480 }, gold: 40, noGuard: true, bagSlots: 0, traits: ['trait.sprinter'] }, // sprinter: the charge burst needs it
 ]);

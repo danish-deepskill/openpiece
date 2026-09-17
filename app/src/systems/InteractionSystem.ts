@@ -1,16 +1,19 @@
 import { equipItem, unequipToBag } from '../combat/equip';
 import { events } from '../core/EventBus';
 import { dist2 } from '../core/math';
-import { itemName } from '../defs/items';
+import { countedName, isEquippable, itemName } from '../defs/items';
 import { Manuals } from '../defs/manuals';
 import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { DialogueSystem } from './DialogueSystem';
+import type { Items } from './Items';
 
 /** Services a verb's `run` may need to carry out its effect. */
 export interface VerbCtx {
   world: World;
   dialogue: DialogueSystem;
+  /** The single item-quantity mutation site — every stow/displace-to-bag goes through it (ITEMS.md §4). */
+  items: Items;
 }
 
 /**
@@ -33,12 +36,14 @@ export interface VerbDef {
 }
 
 /**
- * Take any world item: it enters the actor's BAG, then auto-equips. If its slot is already occupied the
- * displaced item stays in the bag (a pickup always swaps you into the newer gear — the "good UX" rule).
- * One generic path for weapon/fruit/accessory — no per-kind branch (itemName/equipItem do the dispatch).
+ * Take any world item, dispatching on its KIND (a category rule, never a per-id branch): a manual is READ, an
+ * equippable is WORN (a displaced occupant drops into the bag — a pickup always swaps you into the newer gear,
+ * the "good UX" rule), and commons (materials) are STOWED as a counted stack. Every bag write goes through
+ * `ctx.items` — the one mutation site.
  */
 function takePickup(actor: Entity, target: Entity | undefined, ctx: VerbCtx): void {
-  const ref = target!.pickup!.item;
+  const pk = target!.pickup!;
+  const ref = pk.item;
   // MANUAL (a skill book): READ it → grant the taught ability, then consume. NOT an equip (no slot, no displace,
   // no bag) — so it routes here BEFORE the equip path (which would throw on a manual's absent slot). The Moat:
   // any actor that reads it learns the technique; the grant lands in its loadout like any capability.
@@ -49,9 +54,16 @@ function takePickup(actor: Entity, target: Entity | undefined, ctx: VerbCtx): vo
     ctx.world.destroy(target!);
     return;
   }
-  const bag = (actor.inventory ??= { items: [] }); // any actor can own a bag (the Moat)
+  if (!isEquippable(ref)) {
+    // COMMONS (a material pile): stow through the service — it merges into a matching stack and clamps per
+    // stack. `give` returns what FIT; with no slot cap yet that is all of it, but the remainder-stays-on-the-
+    // ground path below is the contract slice 3's capacity will exercise (a smaller, honestly labelled pile).
+    const stowed = ctx.items.takeFromPile(actor, target!); // stow what fits; the pile shrinks, relabels, or vanishes INSIDE the service
+    events.emit('notify', { msg: stowed > 0 ? `Took ${countedName(ref, stowed)}.` : `No room for ${itemName(ref)}.` });
+    return;
+  }
   const displaced = unequipToBag(actor, ref); // vacate the target slot; returns the old occupant (or undefined)
-  if (displaced) bag.items.push(displaced); // the swapped-out item drops into the bag
+  if (displaced) ctx.items.give(actor, displaced, 1); // the swapped-out item drops into the bag as a stack of 1
   equipItem(actor, ref); // wear the new one (equip's own displace path sees an already-empty slot now)
   const eaten = ref.cat === 'fruit';
   events.emit('notify', { msg: `${eaten ? 'Ate the' : 'Equipped'} ${itemName(ref)}${eaten ? '!' : '.'}` });
@@ -68,7 +80,7 @@ export const Verbs: VerbDef[] = [
     reach: 20,
     label: (_a, t) => {
       const cat = t!.pickup!.item.cat;
-      return `${cat === 'fruit' ? 'Eat' : cat === 'manual' ? 'Read' : 'Take'} ${itemName(t!.pickup!.item)}`;
+      return `${cat === 'fruit' ? 'Eat' : cat === 'manual' ? 'Read' : 'Take'} ${t!.pickup!.label}`; // the label carries the count ("Powder ×20")
     },
     can: (a, t) => !a.onDeck && !!t?.pickup,
     run: takePickup,
@@ -115,9 +127,10 @@ export class InteractionSystem {
   constructor(
     private readonly world: World,
     dialogue: DialogueSystem,
+    items: Items,
     private readonly verbs: VerbDef[] = [...Verbs],
   ) {
-    this.ctx = { world, dialogue };
+    this.ctx = { world, dialogue, items };
   }
 
   /** Register another verb (e.g. a content pack's 'talk' / 'open'). */

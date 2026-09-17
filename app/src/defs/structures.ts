@@ -31,6 +31,9 @@ export interface StructureDef extends Def {
    *  clears while open, and AI PLANS through it as passable even while it physically blocks (it opens on
    *  arrival — so pursuers follow you inside instead of being walled out). */
   door?: boolean;
+  /** A CONTAINER: placing this structure attaches a `hold` of this many stack-slots to the entity (a chest, a
+   *  stall, a warehouse) — reach into it by standing beside it (Items.reachableHold). Integer ≥ 1 when set. */
+  holdSlots?: number;
   // ---- presentation (plain data; draw FUNCTIONS live in draw/structureDraws.ts keyed by `bake`/`overlay`) ----
   /** Base fill painted over every footprint cell before the bake detail; ABSENT = the terrain underneath
    *  shows through (a tree trunk stands on visible grass; a wall replaces its ground entirely). */
@@ -53,6 +56,7 @@ export const Structures = new Registry<StructureDef>('Structures', (s) => {
   }
   if (s.blocksAir && !s.blocksFoot) return 'blocksAir implies blocksFoot (a roof needs a wall)';
   if (s.door && !s.blocksFoot) return 'a door must block while closed (blocksFoot)';
+  if (s.holdSlots !== undefined && (!Number.isInteger(s.holdSlots) || s.holdSlots < 1)) return `holdSlots must be an integer ≥ 1 (got ${s.holdSlots})`;
   return null;
 });
 
@@ -61,7 +65,8 @@ export const Structures = new Registry<StructureDef>('Structures', (s) => {
  *  field (size). Per-row rationale (JSON carries no comments): wall = TALL roofed shell, blocks vision ·
  *  door = blocks while closed, DoorSystem opens, AI plans through · stoneWall = LOW freestanding (jump or
  *  perch, see-through) · tree = LOW blocker on visible grass, crown overlaid above actors · windmill = the
- *  first MULTI-TILE structure (one entity, six occupied cells, blades overlaid above actors). */
+ *  first MULTI-TILE structure (one entity, six occupied cells, blades overlaid above actors) · chest = a LOW
+ *  1-tile CONTAINER (holdSlots — a `hold` is attached at placement; reach in from beside it). */
 const parseStructure = (r: RowReader): StructureDef => {
   const size = r.obj('size');
   return {
@@ -72,6 +77,7 @@ const parseStructure = (r: RowReader): StructureDef => {
     blocksAir: r.bool('blocksAir'),
     opaque: r.optBool('opaque'),
     door: r.optBool('door'),
+    holdSlots: r.optNum('holdSlots'),
     color: r.optColor('color'),
     minimap: r.optColor('minimap'),
     bake: r.optStr('bake'),

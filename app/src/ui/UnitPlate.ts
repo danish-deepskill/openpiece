@@ -75,7 +75,7 @@ export class UnitPlate {
     // gear: the worn slots (labels already read "Hat: X") on two lines so 4 slots fit the plate width;
     // bag: the owned-unequipped items
     this.gear.setText(`${v.equipped.slice(0, 2).join('   ')}\n${v.equipped.slice(2).join('   ')}`);
-    this.bag.setText(`Bag: ${v.inventory.length ? v.inventory.join(', ') : '—'}`);
+    this.bag.setText(`Bag ${v.inventory.length}/${v.bagSlots}: ${v.inventory.length ? v.inventory.join(', ') : '—'}`);
     for (const t of texts) t.setVisible(true);
   }
 

@@ -44,7 +44,9 @@ many fruits, mesh-form bosses); polish, balance, performance, art pass; multipla
 End of **PoC**. Combat feel pass + character UI + the Haki↔Logia capstone are the last PoC items; then we
 enter **Prototype** (find the fun).
 Design pass #21 landed (`ITEMS.md` — the item substrate: stacks/instances/holds/ownership). Its slice 1
-(stacks + the `Items` service + materials) is a Prototype-era build item that precedes crew provisions.
+(stacks + the `Items` service + materials) and slice 3 (bag/chest/ship hold unified on one `Hold`, the
+transfer/drop/split/equip verbs, the DOM inventory panel speaking INTENTS into InputSystem) LANDED 2026-09-17;
+slice 2 (instances) + 4 (ownership) wait on their triggers; loot-a-body waits on corpses persisting as entities.
 
 ## Foundation-audit ledger (repo-wide, 2026-07 — baseline d7d5afb)
 

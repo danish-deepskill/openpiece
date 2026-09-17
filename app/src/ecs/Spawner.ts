@@ -6,6 +6,7 @@ import { TagSet } from '../combat/TagSet';
 import { wearAccessory } from '../combat/apparel';
 import { equip, refreshLoadout } from '../combat/equip';
 import type { Rng } from '../core/Rng';
+import { PICKUP_R } from '../config/constants';
 import { Bodies } from '../defs/bodies';
 import { Races } from '../defs/races';
 import { DEFAULT_SIZE, Sizes } from '../defs/sizes';
@@ -13,10 +14,10 @@ import { AIProfiles } from '../defs/aiProfiles';
 import { ShipHulls } from '../defs/ships';
 import type { FactionId } from '../defs/factions';
 import { Accessories } from '../defs/accessories';
-import { itemName, type ItemRef } from '../defs/items';
+import { countedName, type ItemRef } from '../defs/items';
 import { MULTIPLIER_STAT_SEEDS, Traits } from '../defs/traits';
 import { Weapons } from '../defs/layers';
-import { BASE_KIT, DASH_MIN_TIER, GUARD_KIT, Units } from '../defs/units';
+import { BAG_SLOTS, BASE_KIT, DASH_MIN_TIER, GUARD_KIT, Units } from '../defs/units';
 import type { Combatant, Entity } from './components';
 import type { World } from './World';
 
@@ -120,6 +121,7 @@ export class Spawner {
       // draw darkens the skin as a fallback (see actorDraws). hatColor is a per-unit accent (dialogue ring).
       render: { draw: body.draw, baseColor: body.skin, garbColor: u.garb, accentColor: u.accent, rankStripes: u.rankStripes, hatColor: u.hatColor, bob: 0, showHpBar: true },
       identity: { name: u.name, tier: u.tier },
+      hold: { stacks: [], slots: u.bagSlots ?? BAG_SLOTS }, // the bag — sized by the def, mutated only via Items
     });
     if (u.gold != null) e.loot = { gold: u.gold }; // only lootable units carry gold (townsfolk don't)
     if (u.dialogue) e.npc = { dialogue: u.dialogue, recruitable: u.recruitable }; // conversable (verb.talk); may offer recruit
@@ -144,15 +146,16 @@ export class Spawner {
     return e;
   }
 
-  spawnPickup(item: ItemRef, x: number, y: number): Entity {
+  /** `n` = the pile's count (materials); anything non-stackable is a single thing (the default). */
+  spawnPickup(item: ItemRef, x: number, y: number, n = 1): Entity {
     // an item with real sprite art (a sprite-visual accessory OR weapon) shows THAT sprite on the ground —
     // its texture is loaded by id in BootScene. Procedural items fall back to the pickup glyph.
     const acc = item.cat === 'accessory' ? Accessories.get(item.id) : undefined;
     const wpn = item.cat === 'weapon' ? Weapons.get(item.id) : undefined;
     const sprite = acc?.visual.kind === 'sprite' || wpn?.visual?.kind === 'sprite' ? item.id : undefined;
     return this.world.create({
-      transform: { x, y, angle: 0, r: 12 },
-      pickup: { item, label: itemName(item) },
+      transform: { x, y, angle: 0, r: PICKUP_R },
+      pickup: { item, n, label: countedName(item, n) },
       render: sprite
         ? { draw: 'pickup', sprite, spriteScale: 1.5, baseColor: 0xffffff, bob: 0 }
         : { draw: 'pickup', baseColor: 0xffffff, bob: 0 },
@@ -166,6 +169,7 @@ export class Spawner {
       health: { hp: d.hp, maxHp: d.hp, dead: false, hitFlash: 0, iframes: 0 },
       faction: { id: faction },
       ship: { hull: hullId, mode: 'exploration', sail: 'furled', anchor: anchored ? 'dropped' : 'up', anchorT: 0, back: 0, lash: false, helmOrder: 0, rudder: 0, yaw: 0, speed: 0, vx: 0, vy: 0 },
+      hold: { stacks: [], slots: d.holdSlots }, // the ship's HOLD — where wealth lives; reachable from anywhere on deck
       render: { draw: 'ship', baseColor: d.color, bob: 0, rotateToAngle: true, depthBias: -4 },
     });
   }

@@ -16,8 +16,9 @@ import { TILE } from '../config/constants';
  *  the edge; `hole` is a gap (falls through to a lower deck later — blocks for now); `mast` is where a sail
  *  hangs (drawShipRig draws one rig PER mast cell — multi-masted ships are pure deck data, and the future
  *  ship-building palette places 'M' parts). Walkable for now; becoming a solid post + a per-mast damage
- *  target is the SAILING.md step-5 remainder. Extend by adding a GLYPH. */
-export type DeckTile = 'deck' | 'rail' | 'helm' | 'cannon' | 'hole' | 'gangplank' | 'mast';
+ *  target is the SAILING.md step-5 remainder. `hatch` is the HOLD's access point: stand on it to reach the
+ *  ship's cargo (Items.reachableHold) — the wheel-is-the-helm-tile rule applied to storage. Extend by adding a GLYPH. */
+export type DeckTile = 'deck' | 'rail' | 'helm' | 'cannon' | 'hole' | 'gangplank' | 'mast' | 'hatch';
 
 /** Char → tile. '.' = plain deck (the common case). 'G' = GANGPLANK: a walkable seam in the rail where a
  *  world-space walker steps ON/OFF the ship (boarding = walking across it) — a hull may carry several
@@ -30,6 +31,7 @@ const GLYPH: Record<string, DeckTile> = {
   O: 'hole',
   G: 'gangplank',
   M: 'mast',
+  T: 'hatch', // the cargo TRAPDOOR — 'O' was already the hole
 };
 
 /** SPACE (and any ragged-row padding past a row's end) = OFF-HULL: no cell at all — open sea. This is how a deck
@@ -105,7 +107,7 @@ export function parseDeck(rows: readonly string[], tilePx = DECK_TILE_PX): DeckG
 /** True if a tile kind is walkable (you can stand on it). Stations (helm/cannon) + the gangplank ARE walkable
  *  deck; rail/hole block. The one authority for "can an on-deck actor occupy this cell" — deck collision reads it. */
 export function deckWalkable(tile: DeckTile): boolean {
-  return tile === 'deck' || tile === 'helm' || tile === 'cannon' || tile === 'gangplank' || tile === 'mast';
+  return tile === 'deck' || tile === 'helm' || tile === 'cannon' || tile === 'gangplank' || tile === 'mast' || tile === 'hatch';
 }
 
 /** The tile kind at a grid coord, or `undefined` if off-grid OR an off-hull (empty) cell — either way "open sea".
@@ -247,6 +249,14 @@ export function helmSpot(grid: DeckGrid): { lx: number; ly: number } {
   const helm = grid.cells.find((c) => c.tile === 'helm');
   if (!helm) throw new Error('helmSpot: deck has no helm (hull validation should have caught this)');
   return { lx: helm.lx, ly: helm.ly };
+}
+
+/** The HATCH cell's local center — where you stand to reach the hold (exactly one per hull with a hold; the hull
+ *  validator guarantees it). Tests + a future stow-cargo job path here. */
+export function hatchSpot(grid: DeckGrid): { lx: number; ly: number } {
+  const hatch = grid.cells.find((c) => c.tile === 'hatch');
+  if (!hatch) throw new Error('hatchSpot: deck has no hatch (hull validation should have caught this)');
+  return { lx: hatch.lx, ly: hatch.ly };
 }
 
 /** Walkable deck cells other than a given one — used to spread boarding crew across the deck so they don't stack

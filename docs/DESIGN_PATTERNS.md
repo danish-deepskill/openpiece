@@ -190,6 +190,11 @@ Three channels, never confused:
   it reads the window); every camera zooms by it, and Phaser text is created ONLY through `ui/text.addText` (it
   stamps the resolution; `test/render-text.test.ts` enforces the door). Screen-pinned text under a zoomed world
   camera inverts the camera transform (`DebugOverlay.pin`), never raw coordinates.
+- **DOM panels:** UI that needs hover/drag/tooltips/scroll (the inventory) lives in the DOM (`ui/InventoryPanel`),
+  fed a PURE view-model (`ui/inventoryView`) on change — never per frame — and speaking back ONLY in typed
+  intents through InputSystem (queued, applied inside the sim tick; the SERVICE re-validates and names each
+  refusal — `Items.apply` — so the contracts are tested headless). A DOM handler never touches a component; the
+  panel would work unchanged over a wire.
 
 ## 10. Comments, docs & voice
 

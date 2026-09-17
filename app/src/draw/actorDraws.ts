@@ -4,6 +4,7 @@ import { HAND_R_FRAC, activeSide, guardHand, restHand, swingGeomOf, swingPose } 
 import { clamp } from '../core/math';
 import type { AccessorySlot } from '../defs/accessories';
 import { Weapons, type WeaponVisual } from '../defs/layers';
+import { Materials } from '../defs/materials';
 import type { Entity } from '../ecs/components';
 import { rollProgress } from './rollAnim';
 
@@ -842,7 +843,37 @@ function drawOverheadBars(g: Phaser.GameObjects.Graphics, e: Entity): void {
   g.restore(); // end the bar counter-rotation
 }
 
-/** A ground pickup with a glow so it reads as collectible — a per-category glyph (blade / fruit / hat). */
+/** Ground glyphs for MATERIAL piles, keyed by the def's procedural `visual.draw` — one strategy row per look
+ *  (content-is-data: a new material picks an existing key or adds one here), tinted by the def's `visual.color`. */
+export const materialDraws: Record<string, (g: Phaser.GameObjects.Graphics, r: number, color: number) => void> = {
+  // a tied sack: a squat body on the ground + a gathered neck + a pale tie
+  pouch: (g, r, color) => {
+    g.fillStyle(color, 1);
+    g.fillEllipse(0, r * 0.25, r * 1.7, r * 1.4);
+    g.lineStyle(2, OUTLINE, 0.95);
+    g.strokeEllipse(0, r * 0.25, r * 1.7, r * 1.4);
+    g.fillStyle(color, 1);
+    g.fillRect(-r * 0.3, -r * 0.95, r * 0.6, r * 0.5);
+    g.strokeRect(-r * 0.3, -r * 0.95, r * 0.6, r * 0.5);
+    g.lineStyle(2, 0xd8c890, 1);
+    g.lineBetween(-r * 0.42, -r * 0.5, r * 0.42, -r * 0.5);
+  },
+  // a lashed bundle: three planks side by side + two dark lashings across them
+  bundle: (g, r, color) => {
+    g.lineStyle(2, OUTLINE, 0.95);
+    for (let i = -1; i <= 1; i++) {
+      g.fillStyle(color, 1);
+      g.fillRect(-r * 1.1, i * r * 0.5 - r * 0.2, r * 2.2, r * 0.4);
+      g.strokeRect(-r * 1.1, i * r * 0.5 - r * 0.2, r * 2.2, r * 0.4);
+    }
+    g.lineStyle(2, 0x5a4020, 1);
+    g.lineBetween(-r * 0.6, -r * 0.8, -r * 0.6, r * 0.8);
+    g.lineBetween(r * 0.6, -r * 0.8, r * 0.6, r * 0.8);
+  },
+};
+const MATERIAL_TINT = 0x8a6a3a; // burlap — the tint when a def's visual carries none
+
+/** A ground pickup with a glow so it reads as collectible — a per-category glyph (blade / book / pile / fruit). */
 export const drawPickup: DrawFn = (g, e) => {
   const cat = e.pickup!.item.cat;
   const r = e.transform!.r;
@@ -881,6 +912,15 @@ export const drawPickup: DrawFn = (g, e) => {
     g.fillRect(bw - r * 0.28, -bh + 2, r * 0.28, bh * 2 - 4);
     g.lineStyle(2, 0x3a2a18, 0.9); // spine line (left)
     g.lineBetween(-bw + r * 0.28, -bh + 2, -bw + r * 0.28, bh - 2);
+  } else if (cat === 'material') {
+    // a MATERIAL pile — its def names the glyph; 'auto' is the pouch placeholder (zero art decisions, by
+    // definition). Every def's key is swept against this table in item-stacks.test (a dropped pile may be the
+    // FIRST draw of a material, so first-draw is not boot); the throw below is the last line, not the net.
+    const v = Materials.get(e.pickup!.item.id).visual;
+    const key = v.kind === 'procedural' ? v.draw : 'pouch';
+    const draw = materialDraws[key];
+    if (!draw) throw new Error(`drawPickup: material visual.draw '${key}' has no glyph in materialDraws`);
+    draw(g, r, v.kind === 'procedural' && v.color !== undefined ? v.color : MATERIAL_TINT);
   } else {
     // fruit (and any category without its own sprite): the collectible orb. Sprite-backed items (accessories
     // with art) never reach here — they render their own texture via Render.sprite (see Spawner.spawnPickup).

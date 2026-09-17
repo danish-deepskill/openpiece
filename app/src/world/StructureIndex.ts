@@ -126,6 +126,7 @@ export function placeStructure(world: World, index: StructureIndex, def: Content
     transform: { x: (tx + d.size.w / 2) * TILE, y: (ty + d.size.h / 2) * TILE, angle: 0, r: (Math.min(d.size.w, d.size.h) * TILE) / 2 },
     structure: { def, tx, ty },
   });
+  if (d.holdSlots !== undefined) e.hold = { stacks: [], slots: d.holdSlots }; // a container structure (a chest) is born with its hold
   index.place(e);
   return e;
 }

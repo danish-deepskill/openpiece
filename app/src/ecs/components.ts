@@ -1,7 +1,7 @@
 import type { Brain } from '../ai/Brain';
 import type { AttackPhases } from '../combat/phases';
 import type { AccessorySlot } from '../defs/accessories';
-import type { ItemRef } from '../defs/items';
+import type { ItemRef, ItemStack } from '../defs/items';
 import type { FactionId } from '../defs/factions';
 import type { StatBlock } from '../combat/StatBlock';
 import type { TagSet } from '../combat/TagSet';
@@ -397,13 +397,23 @@ export interface Squad {
  *  text; the verb reads the live name off the ref. */
 export interface Pickup {
   item: ItemRef;
+  /** How many of `item` lie here (a commons quantity — ITEMS.md §1): 1 for anything non-stackable; a material
+   *  pile is ONE pickup with a count, never N entities. Taking stows what fits and leaves the rest here. */
+  n: number;
+  /** The counted display name ("Powder ×20") — kept in sync with `n` by the take verb. */
   label: string;
 }
 
-/** Owned-but-not-necessarily-equipped items — the bag. Plain ItemRef list (ids at rest, any actor may hold
- *  one: the Moat). Grows to stacking/weight/sorting later as list ops, with no change to its consumers. */
-export interface Inventory {
-  items: ItemRef[];
+/** THE container (ITEMS.md §3): one relation for every "inside" — a body's bag, a chest, a ship's hold (and a
+ *  corpse / stall / warehouse when those exist). `stacks` are commons quantities (ids at rest + a count);
+ *  `slots` is capacity in STACKS, not units — capacity × stackLimit is the volume knob (the quartermaster's
+ *  arithmetic). Every mutation goes through the `Items` service (systems/Items), the single site that merges,
+ *  clamps each stack to its def's stackLimit, refuses past `slots`, and never wraps (§4 — the dupe defense).
+ *  Any actor may carry one (the Moat); a unit's is sized by UnitDef.bagSlots, a hull's by ShipDef.holdSlots,
+ *  a chest's by StructureDef.holdSlots. Ownership/theft marks arrive with slice 4. */
+export interface Hold {
+  stacks: ItemStack[];
+  slots: number;
 }
 
 /** Granted abilities + per-ability cooldowns + the keybound routing (primary / dash / extra slots). */
@@ -515,7 +525,7 @@ export interface Components {
   loot: Loot;
   squad: Squad;
   pickup: Pickup;
-  inventory: Inventory;
+  hold: Hold;
   // combat engine (GAS-lite)
   attributes: StatBlock;
   tags: TagSet;

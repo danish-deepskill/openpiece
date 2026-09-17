@@ -41,7 +41,7 @@ const GANGPLANK_WOOD = 0x9a7038; // the gangplank board — a distinct darker pl
 
 /** Per-tile deck-surface fill for the WALKABLE tiles only (rail is drawn separately as the full-tile gunwale, so
  *  it is NOT in here — a rail tile gets no deck floor). Stations tint over the plank; the gangplank is its own board. */
-const SURFACE_FILL: Partial<Record<DeckTile, number>> = { deck: DECK_PLANK, helm: HELM_TINT, cannon: CANNON_TILE, hole: 0x241a10, gangplank: GANGPLANK_WOOD, mast: DECK_PLANK };
+const SURFACE_FILL: Partial<Record<DeckTile, number>> = { deck: DECK_PLANK, helm: HELM_TINT, cannon: CANNON_TILE, hole: 0x241a10, gangplank: GANGPLANK_WOOD, mast: DECK_PLANK, hatch: DECK_PLANK }; // hatch: planked floor — the trapdoor (PASS 3) sits ON deck, never on open sea
 
 /**
  * Oriented ship (bow at +x in LOCAL space; RenderSystem rotates the Graphics to the heading). The hull IS the
@@ -113,6 +113,17 @@ export const drawShip: DrawFn = (g, e, env) => {
       g.fillStyle(0x1c1c22, 1);
       const dir = c.ly < 0 ? -1 : 1; // port cannon points −y, starboard +y
       g.fillRect(c.lx - s * 0.12, c.ly - (dir < 0 ? s * 0.5 : 0), s * 0.24, s * 0.5); // stubby barrel off the broadside
+    } else if (c.tile === 'hatch') {
+      // the HOLD HATCH: a dark inset trapdoor with a plank seam + a ring pull — reads as "the way below", the
+      // spot you stand on to reach the cargo
+      const h = s * 0.36;
+      g.fillStyle(0x2a1c0e, 1);
+      g.fillRect(c.lx - h, c.ly - h, h * 2, h * 2);
+      g.lineStyle(1.5, 0x4a3018, 1);
+      g.strokeRect(c.lx - h, c.ly - h, h * 2, h * 2);
+      g.lineBetween(c.lx - h, c.ly, c.lx + h, c.ly); // the plank seam
+      g.lineStyle(1.5, 0x8a8a8a, 1);
+      g.strokeCircle(c.lx, c.ly - h * 0.45, 2.5); // the iron ring pull
     }
   }
 
