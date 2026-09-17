@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { CAMERA_ZOOM, CAMERA_ZOOM_SMOOTH, RegKey, SIM_DT, WORLD_H, WORLD_W, type MinimapDot } from '../config/constants';
-import { RENDER_SCALE } from '../config/render';
+import { CAMERA_FOLLOW_RATE, CAMERA_ZOOM, CAMERA_ZOOM_SMOOTH, RegKey, SIM_DT, WORLD_H, WORLD_W, type MinimapDot } from '../config/constants';
+import { PIXEL_SNAP, RENDER_SCALE } from '../config/render';
 import { angleDiff, smoothFactor } from '../core/math';
 import { setBarRotation } from '../draw/actorDraws';
 import { factions } from '../defs/factions';
@@ -34,6 +34,7 @@ import { Items } from '../systems/Items';
 import { DialogueSystem } from '../systems/DialogueSystem';
 import { NameplateSystem } from '../systems/NameplateSystem';
 import { StunIndicator } from '../systems/StunIndicator';
+import { ViewPose } from '../systems/ViewPose';
 import { RenderSystem } from '../systems/RenderSystem';
 import { WeaponSpriteSystem } from '../systems/WeaponSpriteSystem';
 import { WindSystem } from '../systems/WindSystem';
@@ -94,7 +95,14 @@ export class WorldScene extends Phaser.Scene {
   private items!: Items;
   private inventoryPanel!: InventoryPanel;
   private invKey = ''; // the last-published inventory view's change key — the panel re-renders only on a change
-  private readonly camTarget = { x: 0, y: 0 }; // camera follows the CONTROLLED entity (possession-safe)
+  /** WHERE bodies are DRAWN this frame — interpolated between the last two sim steps (systems/ViewPose). Captured
+   *  before every step, alpha'd after the loop, read by every placing system + the camera. */
+  private viewPose!: ViewPose;
+  /** The follow camera's smoothed CENTER (world px): a time-based glide toward the controlled unit's DRAWN pose.
+   *  Own math instead of Phaser's startFollow: that lerps a per-frame FRACTION (frame-rate dependent — twice as
+   *  stiff at 120 Hz) and chases the RAW sim position (60 Hz steps under a 120 Hz camera = a visible vibration). */
+  private camX = 0;
+  private camY = 0;
   /** Shift-lock view. `camRot` is applied to the camera each frame. `camBlend` (0→1) eases ONLY the toggle
    *  (Alt on/off): the rotation itself always tracks the facing 1:1 (no lag at any turn speed), scaled by the
    *  blend so entering/leaving lock glides instead of snapping. InputSystem owns the mode (Alt). */
@@ -124,6 +132,7 @@ export class WorldScene extends Phaser.Scene {
 
     const world = new World();
     this.world = world;
+    this.viewPose = new ViewPose(world);
     // the STRUCTURE layer: worldgen's pure records become entities + grid occupancy, BEFORE anything
     // (minimap, colliders' first queries, door sweep) reads the composed world
     const stashed: Array<{ e: Entity; stash: NonNullable<StructureSpawn['stash']> }> = [];
@@ -203,7 +212,7 @@ export class WorldScene extends Phaser.Scene {
     this.debug = new DebugOverlay(this, world, level.grid, wind);
     this.dialogueSys = new DialogueSystem();
     this.interactionSys = new InteractionSystem(world, this.dialogueSys, items);
-    this.inspectSys = new InspectSystem(this, world, query);
+    this.inspectSys = new InspectSystem(this, world, query, this.viewPose);
     this.inputSys = new InputSystem(this, world, query, abilities, ships, this.director, this.interactionSys, this.dialogueSys, this.inspectSys, items);
     // the DOM inventory panel: reads a view-model published below, sends INTENTS into the one input seam
     this.inventoryPanel = new InventoryPanel((i) => this.inputSys.queueItemIntent(i));
@@ -212,22 +221,22 @@ export class WorldScene extends Phaser.Scene {
     this.moveSys = new MovementSystem(world, collision);
     this.swimSys = new SwimSystem(world, damage);
     this.bodySys = new BodyCollisionSystem(world, query, collision);
-    this.renderSys = new RenderSystem(this, world, level.grid, wind);
-    this.weaponSpriteSys = new WeaponSpriteSystem(this, world, this.renderSys);
-    this.projectileRenderer = new ProjectileRenderer(this, world);
-    this.nameplateSys = new NameplateSystem(this, world);
-    this.stunIndicator = new StunIndicator(this, world); // "seeing stars" tell over stunned units
-    this.accessorySys = new AccessorySystem(this, world, this.renderSys);
-    this.aimReticle = new AimReticle(this, world, this.inputSys); // the '+' aim marker ahead of the controlled unit
-    this.possessButton = new PossessButton(this, world, this.inspectSys, this.director); // debug: V+click a unit → "Control" button → possess
+    this.renderSys = new RenderSystem(this, world, level.grid, wind, this.viewPose);
+    this.weaponSpriteSys = new WeaponSpriteSystem(this, world, this.renderSys, this.viewPose);
+    this.projectileRenderer = new ProjectileRenderer(this, world, this.viewPose);
+    this.nameplateSys = new NameplateSystem(this, world, this.viewPose);
+    this.stunIndicator = new StunIndicator(this, world, this.viewPose); // "seeing stars" tell over stunned units
+    this.accessorySys = new AccessorySystem(this, world, this.renderSys, this.viewPose);
+    this.aimReticle = new AimReticle(this, world, this.inputSys, this.viewPose); // the '+' aim marker ahead of the controlled unit
+    this.possessButton = new PossessButton(this, world, this.inspectSys, this.director, this.viewPose); // debug: V+click a unit → "Control" button → possess
 
-    // roundPixels = false: smooth sub-pixel follow. (true rounds the lerped scroll each frame, which makes
-    // everything jitter ~1px as the rounding boundary flickers — worse at zoom.) The camera follows a plain
-    // point synced to the CONTROLLED entity each frame — no gfx handle, and possession retargets for free.
-    this.camTarget.x = hero.transform!.x;
-    this.camTarget.y = hero.transform!.y;
-    this.cameras.main.startFollow(this.camTarget, false, 0.16, 0.16);
+    // the camera starts centered on the hero; from here on update() glides it (possession retargets for free —
+    // it follows whoever holds `control`). Phaser's roundPixels stays OFF: it floors the scroll to whole WORLD px
+    // (~1 px jitter at zoom); the buffer-grid snap below is 1/zoom finer and is what actually steadies edges.
+    this.camX = hero.transform!.x;
+    this.camY = hero.transform!.y;
     this.cameras.main.setZoom(CAMERA_ZOOM * RENDER_SCALE); // closer view (moomoo.io-style) × the canvas-buffer scale (config/render.ts)
+    this.placeCamera(); // no glide on the first frame
 
     if (import.meta.env.DEV) {
       (window as Window & { __bp?: unknown }).__bp = { world, director: this.director, hero, abilities };
@@ -235,6 +244,22 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private acc = 0; // fixed-timestep accumulator — sim advances in SIM_DT steps, render runs every frame
+
+  /** Put the view center at (camX, camY): Phaser's scroll convention is center − half the viewport (buffer px),
+   *  zoom applied about the center. Clamped to the world bounds, then SNAPPED to the buffer-pixel grid (PIXEL_SNAP)
+   *  so the world's edges land on whole device pixels — the other half of ViewPose.setGrid (a snapped body over an
+   *  unsnapped scroll would still swim). */
+  private placeCamera(): void {
+    const cam = this.cameras.main;
+    let sx = cam.clampX(this.camX - cam.width / 2);
+    let sy = cam.clampY(this.camY - cam.height / 2);
+    if (PIXEL_SNAP) {
+      const z = cam.zoom;
+      sx = Math.round(sx * z) / z;
+      sy = Math.round(sy * z) / z;
+    }
+    cam.setScroll(sx, sy);
+  }
 
   override update(_t: number, delta: number): void {
     if (!this.world) return;
@@ -244,16 +269,13 @@ export class WorldScene extends Phaser.Scene {
     this.inputSys.sample(); // latch edge-taps every render frame so none fall between sim steps
     this.acc = Math.min(this.acc + delta / 1000, 0.25);
     while (this.acc >= SIM_DT) {
+      this.viewPose.capture(); // every body's position at the START of this step = the interpolation's `from`
       this.stepSim(SIM_DT);
       this.acc -= SIM_DT;
     }
+    this.viewPose.setAlpha(this.acc / SIM_DT); // how far into the next step this render frame falls
     const dt = delta / 1000;
     const controlled = this.world.first('control');
-
-    if (controlled?.transform) {
-      this.camTarget.x = controlled.transform.x; // follow whoever is currently possessed
-      this.camTarget.y = controlled.transform.y;
-    }
 
     // SHIFT-LOCK CAMERA: rotate the VIEW so the controlled unit's aim points up (Roblox-style). The rotation
     // ALWAYS tracks the facing 1:1 — `aimRot` is the exact target, no smoothing, so the view is welded to the
@@ -271,6 +293,16 @@ export class WorldScene extends Phaser.Scene {
     // so a notch reads as a camera dolly, not a snap. × the canvas-buffer scale (config/render.ts).
     this.viewZoom += (this.inputSys.viewZoomTarget - this.viewZoom) * smoothFactor(CAMERA_ZOOM_SMOOTH, dt);
     this.cameras.main.setZoom(this.viewZoom * RENDER_SCALE);
+    this.viewPose.setGrid(PIXEL_SNAP ? this.viewZoom * RENDER_SCALE : 0); // drawn bodies + the scroll share one grid
+    // FOLLOW: a time-based glide (the dt rule — identical feel at any refresh rate) toward the controlled unit's
+    // DRAWN pose, so camera and body move on the same clock (the raw sim pose steps at 60 Hz; the camera renders
+    // at the display's rate — chasing the raw pose is the sprint "vibration")
+    if (controlled?.transform) {
+      const k = smoothFactor(CAMERA_FOLLOW_RATE, dt);
+      this.camX += (this.viewPose.x(controlled) - this.camX) * k;
+      this.camY += (this.viewPose.y(controlled) - this.camY) * k;
+    }
+    this.placeCamera();
     // counter-rotate the world-space READOUTS so they stay screen-upright while the view spins: the
     // nameplate + damage-number text, AND the overhead hp/stamina/posture bars (set before renderSys draws
     // the actors below). The actor bodies/sprites still rotate with the world — only the readouts stay level.

@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { isRanged } from '../combat/equip';
 import type { World } from '../ecs/World';
 import type { InputSystem } from './InputSystem';
+import type { ViewPose } from './ViewPose';
 
 /** Distance ahead of the controlled unit (px) the reticle sits — far enough out to read as a clear aim marker. */
 const RETICLE_DIST = 80;
@@ -26,6 +27,7 @@ export class AimReticle {
     private readonly scene: Phaser.Scene,
     private readonly world: World,
     private readonly input: InputSystem,
+    private readonly view: ViewPose,
   ) {
     this.gfx = scene.add.graphics();
     this.gfx.setDepth(9000); // above actors, below the HUD scene
@@ -46,6 +48,8 @@ export class AimReticle {
       return;
     }
     g.setVisible(true);
+    const px = this.view.x(controlled!); // the DRAWN pose (see the `controlled!` note below); px/py — vx/vy below are screen unit vectors
+    const py = this.view.y(controlled!);
 
     // SPREAD CONE — shown ONLY while AIMING (holding RMB): a translucent WEDGE from the muzzle spanning
     // ±spread (combatant.spread), your live accuracy readout. It NARROWS as you settle (aim + stand still),
@@ -58,10 +62,10 @@ export class AimReticle {
       g.setPosition(0, 0).setRotation(0);
       const a = t.angle;
       g.fillStyle(CONE_COLOR, 0.08); // translucent fill (matches the vision wedge's weight)
-      g.slice(t.x, t.y, CONE_RADIUS, a - cone, a + cone, false);
+      g.slice(px, py, CONE_RADIUS, a - cone, a + cone, false);
       g.fillPath();
       g.lineStyle(1, CONE_COLOR, 0.35); // a faint stroked edge
-      g.slice(t.x, t.y, CONE_RADIUS, a - cone, a + cone, false);
+      g.slice(px, py, CONE_RADIUS, a - cone, a + cone, false);
       g.strokePath();
     }
 
@@ -69,8 +73,8 @@ export class AimReticle {
     // the aim readout for when the cursor is PINNED (mouselook). The cone above is drawn in WORLD space, so it
     // must be laid down BEFORE we move/rotate the graphic here for the screen-upright '+'.
     if (this.input.shiftLocked) {
-      const cx = t.x + Math.cos(t.angle) * RETICLE_DIST;
-      const cy = t.y + Math.sin(t.angle) * RETICLE_DIST;
+      const cx = px + Math.cos(t.angle) * RETICLE_DIST;
+      const cy = py + Math.sin(t.angle) * RETICLE_DIST;
       // the '+' is drawn relative to the graphic's origin, so shift it out by the reticle offset in world space
       g.lineStyle(1.5, 0xffffff, 0.95);
       const ux = Math.cos(this.rot);

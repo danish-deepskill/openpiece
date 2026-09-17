@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Effects, TAG_STUNNED } from '../combat/Effect';
 import type { World } from '../ecs/World';
 import { addText } from '../ui/text';
+import type { ViewPose } from './ViewPose';
 
 /** Depth: above nameplates/actors so the tell is never hidden behind a body. */
 const DEPTH = 9500;
@@ -21,6 +22,7 @@ export class StunIndicator {
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly world: World,
+    private readonly view: ViewPose,
   ) {}
 
   /** WorldScene passes −camRot so the label stays level while the shift-lock view rotates. */
@@ -52,7 +54,7 @@ export class StunIndicator {
       label
         .setText(show.label)
         .setColor(`#${show.color.toString(16).padStart(6, '0')}`)
-        .setPosition(t.x, t.y - t.r - 13)
+        .setPosition(this.view.x(e), this.view.y(e) - t.r - 13)
         .setRotation(this.rot)
         .setVisible(true);
     }

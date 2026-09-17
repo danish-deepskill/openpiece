@@ -7,6 +7,7 @@ import type { Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { WindSystem } from './WindSystem';
 import type { TileGrid } from '../world/TileGrid';
+import type { ViewPose } from './ViewPose';
 
 const WADE_ALPHA = 0.5; // partly submerged — shared by a shallow wade AND surface swimming (same look at the surface)
 const SUBMERGED_ALPHA = 0.15; // fully UNDERWATER (dived / sunk) — barely visible below the surface
@@ -81,6 +82,7 @@ export class RenderSystem {
     private readonly world: World,
     private readonly grid: TileGrid,
     private readonly wind: WindSystem, // draws that trim to the weather (sails) read it via DrawEnv
+    private readonly view: ViewPose, // WHERE to draw each body this frame (interpolated between sim steps)
   ) {}
 
   /** The y a unit's layers (body, accessories, weapon) sort by. Normally its own transform.y — but an ON-DECK
@@ -96,10 +98,10 @@ export class RenderSystem {
       if (ship?.transform && ship.ship) {
         const hull = ShipHulls.get(ship.ship.hull);
         const extentY = (Math.abs(Math.sin(ship.transform.angle)) * hull.length + Math.abs(Math.cos(ship.transform.angle)) * hull.width) / 2;
-        return e.transform!.y + extentY; // own y (fore/aft order) lifted clear of the hull at ANY heading
+        return this.view.y(e) + extentY; // own DRAWN y (fore/aft order) lifted clear of the hull at ANY heading
       }
     }
-    return e.transform!.y;
+    return this.view.y(e); // the drawn y, so depth order can't lag the drawn position
   }
 
   update(dt: number): void {
@@ -110,6 +112,8 @@ export class RenderSystem {
       seen.add(e.id);
       const t = e.transform;
       const rd = e.render;
+      const vx = this.view.x(e); // the DRAWN pose (interpolated) — t.x/t.y stay the sim truth for queries below
+      const vy = this.view.y(e);
       // SUBMERSION fade: a SWIMMER reads mostly-submerged (the swim STATE, not the tile — mode is the truth);
       // a foot unit wading the shallows reads partly submerged. On-deck actors (aboard a ship) never submerge.
       let alpha = 1;
@@ -136,7 +140,7 @@ export class RenderSystem {
           this.imgById.set(e.id, img);
         }
         const dia = t.r * 2 * (rd.spriteScale ?? 1);
-        img.setTexture(rd.sprite).setPosition(t.x, t.y).setRotation(rd.rotateToAngle ? t.angle : 0).setDisplaySize(dia, dia).setDepth(depth).setAlpha(alpha);
+        img.setTexture(rd.sprite).setPosition(vx, vy).setRotation(rd.rotateToAngle ? t.angle : 0).setDisplaySize(dia, dia).setDepth(depth).setAlpha(alpha);
         continue;
       }
 
@@ -145,7 +149,7 @@ export class RenderSystem {
         gfx = this.scene.add.graphics();
         this.gfxById.set(e.id, gfx);
       }
-      gfx.setPosition(t.x, t.y);
+      gfx.setPosition(vx, vy);
       gfx.setRotation(rd.rotateToAngle ? t.angle : 0);
       // JUMP height fake (docs/design/MOVEMENT_AIR.md): while airborne, scale the WHOLE actor UP on a sine arc
       // (bigger = higher = nearer the camera) — the shadow is shrunk separately inside drawActor. Grounded → 1.
@@ -207,7 +211,7 @@ export class RenderSystem {
           rig = this.scene.add.graphics();
           this.rigById.set(e.id, rig);
         }
-        rig.setPosition(t.x, t.y);
+        rig.setPosition(vx, vy);
         rig.setRotation(rd.rotateToAngle ? t.angle : 0);
         rig.setDepth(depth + RIG_DEPTH_LIFT);
         rig.clear();

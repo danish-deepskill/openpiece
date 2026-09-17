@@ -134,6 +134,10 @@ data. Data-only rows live in `defs/`. (Abilities/Effects rows move to `defs/` wi
   as an inline comment in code): wind (environment first — sails/streaks read this tick's weather) → doors →
   input-intent → squads → ai → movement → swim → body-collision → ships → hull-collision → melee → projectiles →
   abilities → combatant → effects → director. Reordering requires updating the comment chain.
+  **Render interpolation** (the fixed step's other half — Fiedler): `ViewPose.capture()` before every step,
+  `setAlpha(acc / SIM_DT)` after the loop; every system that PLACES something draws `view.x(e)/y(e)`, never the
+  raw transform (DebugOverlay excepted — it draws the sim truth). A 120 Hz display gets 120 Hz motion from the
+  60 Hz sim; presentation smoothing (the camera follow) is time-based like all other easing.
 - **Sim never calls presentation.** FX go through typed events (`events.emit('fx:burst', …)`); FxSystem
   subscribes. HUD state goes through the registry (`publish()`), one write per frame.
 - Services (`Damage`, `StrikeResolver`) are injected, not stepped; singletons are allowed only for stateless

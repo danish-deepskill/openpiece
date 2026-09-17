@@ -150,6 +150,15 @@ export const PICKUP_R = 12;
  *  reach into it (Items.reachableHold). Same idea as VerbDef.reach; a knob so a big chest can feel arm's-length. */
 export const HOLD_REACH = 28;
 
+/** FOLLOW-CAMERA glide rate (1/s, smoothFactor): how fast the view center closes on the controlled unit's DRAWN
+ *  pose. Time-based (the dt rule), so 60 and 144 Hz feel identical; 10.5 reproduces the old 0.16-per-frame feel
+ *  at 60 fps. Higher = stiffer (welded), lower = floatier. */
+export const CAMERA_FOLLOW_RATE = 10.5;
+/** RENDER INTERPOLATION teleport threshold (px, 2-D): a body that moved further than this in ONE sim step is
+ *  drawn at its new spot instead of sliding there (respawn, a frame hop's projection change). Must exceed the
+ *  fastest legal per-step move (a rocket launch ~600 px/s × 1/60 = 10 px) by a wide margin. */
+export const VIEW_TELEPORT_PX = 48;
+
 /** Follow-camera zoom at boot — higher = closer (moomoo.io-style). 1.0 showed too much world on foot. */
 export const CAMERA_ZOOM = 2;
 /** WHEEL ZOOM range — the mouse wheel steps the view-zoom TARGET (InputSystem owns it, WorldScene glides the

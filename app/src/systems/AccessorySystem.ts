@@ -5,6 +5,7 @@ import { ANATOMY, BODY_FRAME_R, SLOT_ANCHOR } from '../draw/actorDraws';
 import { rollHeadPlacement } from '../draw/rollAnim';
 import type { World } from '../ecs/World';
 import type { RenderSystem } from './RenderSystem';
+import type { ViewPose } from './ViewPose';
 
 /** Per-slot depth ladder over the body (an 'under' item drops below it instead). Distinct rungs per slot —
  *  two same-depth sprites would z-fight by POOL order, which reshuffles as units enter/leave view. Order
@@ -37,6 +38,7 @@ export class AccessorySystem {
     private readonly scene: Phaser.Scene,
     private readonly world: World,
     private readonly renderSys: RenderSystem, // accessories mirror the body's computed alpha (wade/blink)
+    private readonly view: ViewPose, // the body's DRAWN pose — slots are offsets from it
   ) {}
 
   update(): void {
@@ -46,6 +48,8 @@ export class AccessorySystem {
       if (e.health?.dead) continue;
       const t = e.transform!;
       const a = t.angle;
+      const vx = this.view.x(e);
+      const vy = this.view.y(e);
       // ROLL: the head tumbles over→under (drawRollPose). A HAT sits on the crown, so it RIDES the head — pinned
       // to the shared head placement, scaled with it, and FADED OUT while the head is tucked under (its crown
       // faces the ground, so the hat is on the head's hidden far side). Non-head accessories (chest/back) have no
@@ -67,8 +71,8 @@ export class AccessorySystem {
         const animScale = rollingHat ? 1 : (this.renderSys.scaleById.get(e.id) ?? 1);
         const off = ((registered ? 0 : SLOT_ANCHOR[d.slot] * t.r) + (d.offset ?? 0)) * animScale;
         // normal: pinned along the aim. Rolling hat: pinned to the tumbling head instead.
-        const x = rollingHat ? t.x + head!.dx : t.x + Math.cos(a) * off;
-        const y = rollingHat ? t.y + head!.dy : t.y + Math.sin(a) * off;
+        const x = rollingHat ? vx + head!.dx : vx + Math.cos(a) * off;
+        const y = rollingHat ? vy + head!.dy : vy + Math.sin(a) * off;
         const baseAlpha = this.renderSys.alphaById.get(e.id) ?? 1;
         const alpha = rollingHat ? baseAlpha * head!.crownAlpha : baseAlpha; // fade the hat out as the head tucks under
         // add the body's airborne depth-lift so a hat/mask rides ABOVE grounded units WITH the jumping body (its

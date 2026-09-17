@@ -4,6 +4,7 @@ import { entityHostile } from '../combat/targeting';
 import { Depth } from '../config/constants';
 import type { World } from '../ecs/World';
 import { addText } from '../ui/text';
+import type { ViewPose } from './ViewPose';
 
 const COLOR_SELF = '#ffd24a'; // the body you control
 const COLOR_HOSTILE = '#ff6b5a'; // hostile to your faction
@@ -23,6 +24,7 @@ export class NameplateSystem {
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly world: World,
+    private readonly view: ViewPose, // labels ride the DRAWN pose, or they'd lag the body by a sim step
   ) {}
 
   /** Keep nameplates screen-upright while the world camera spins (shift lock): the WorldScene passes −camRot. */
@@ -38,6 +40,8 @@ export class NameplateSystem {
       const idn = e.identity;
       if (!idn?.name || e.health?.dead) continue;
       const t = e.transform!;
+      const vx = this.view.x(e);
+      const vy = this.view.y(e);
       const above = t.r + 13; // distance the label sits ABOVE the unit (on screen)
       const nameColor =
         e === me
@@ -62,7 +66,7 @@ export class NameplateSystem {
         const lx = dx - total / 2; // local right offset (along the label line)
         const ly = -above; // local up offset (the label sits this far above the unit, on screen)
         // rotate the local (lx, ly) into world space about the actor center, then place + orient the glyphs
-        txt.setPosition(t.x + lx * cos - ly * sin, t.y + lx * sin + ly * cos).setRotation(this.textRot).setVisible(true);
+        txt.setPosition(vx + lx * cos - ly * sin, vy + lx * sin + ly * cos).setRotation(this.textRot).setVisible(true);
       };
       place(nameText, 0);
       if (tierText) place(tierText, nameText.width + GAP);

@@ -3,6 +3,7 @@ import type { World } from '../ecs/World';
 import type { GameDirector } from './GameDirector';
 import type { InspectSystem } from './InspectSystem';
 import { addText } from '../ui/text';
+import type { ViewPose } from './ViewPose';
 
 /**
  * The POSSESS button (debug). Rides the EXISTING inspect flow — no new key/pick: V+click a unit (InspectSystem
@@ -23,6 +24,7 @@ export class PossessButton {
     private readonly world: World,
     private readonly inspect: InspectSystem,
     private readonly director: GameDirector,
+    private readonly view: ViewPose,
   ) {
     this.box = scene.add
       .rectangle(0, 0, 120, 26, 0x1b2b1b, 0.92)
@@ -54,8 +56,8 @@ export class PossessButton {
       return;
     }
     const t = target.transform;
-    const bx = t.x;
-    const by = t.y - t.r - 26; // float above the unit's head (above the inspect ring)
+    const bx = this.view.x(target);
+    const by = this.view.y(target) - t.r - 26; // float above the unit's head (above the inspect ring)
     const name = target.identity?.name ?? 'unit';
     this.label.setText(`▶ Control ${name}`).setVisible(true);
     this.box.setSize(this.label.width + 20, 26).setPosition(bx, by).setVisible(true); // size the plate to the text

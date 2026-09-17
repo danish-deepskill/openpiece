@@ -5,6 +5,7 @@ import { weaponAnchor } from '../draw/actorDraws';
 import { rollProgress } from '../draw/rollAnim';
 import type { World } from '../ecs/World';
 import type { RenderSystem } from './RenderSystem';
+import type { ViewPose } from './ViewPose';
 
 /**
  * Renders sprite-visual weapons (WeaponDef.visual.kind === 'sprite') as pooled Images pinned to the SAME
@@ -21,6 +22,7 @@ export class WeaponSpriteSystem {
     private readonly scene: Phaser.Scene,
     private readonly world: World,
     private readonly renderSys: RenderSystem, // weapons mirror the body's computed alpha (wade/blink)
+    private readonly view: ViewPose, // the body's DRAWN pose — the grip anchor is an offset from it
   ) {}
 
   update(): void {
@@ -71,8 +73,8 @@ export class WeaponSpriteSystem {
       // ANCHOR sits farther from center at 1.45×, so scale the anchor OFFSET; the steel grows by the same factor.
       const t = e.transform!; // narrowed by the with('transform', …) query
       const s = this.renderSys.scaleById.get(e.id) ?? 1;
-      const ax = t.x + (a.x - t.x) * s;
-      const ay = t.y + (a.y - t.y) * s;
+      const ax = this.view.x(e) + (a.x - t.x) * s; // the anchor's OFFSET from the sim center, applied to the drawn center
+      const ay = this.view.y(e) + (a.y - t.y) * s;
       // REVERSE-GRIP swing (musket butt-stroke): MIRROR the sprite end-for-end so the STOCK leads, not the
       // muzzle. setFlipX/Y mirrors the texture AROUND THE ORIGIN — and the origin IS the grip (the hand), so the
       // flip pivots in place: the hand stays fixed, the tip/butt swap ends. NO origin change (that double-

@@ -31,6 +31,12 @@ export const RENDER_SCALE_MAX = 3;
  *  (curves) stay linear regardless. */
 export const BAKE_FILTER: 'nearest' | 'linear' = 'nearest';
 
+/** KNOB — PIXEL SNAP: round the camera scroll and every drawn body to the buffer-pixel grid (ViewPose.setGrid),
+ *  so the antialiasing pattern of each edge holds still from frame to frame instead of swimming as fractional
+ *  offsets drift under a moving camera (the classic 2D "shimmer"). Steps are 1/zoom world px — invisible. Off
+ *  for an A/B: walk past a wall edge with each setting. Has no effect while the view rotates or zooms. */
+export const PIXEL_SNAP = true;
+
 function measure(): number {
   const fit = Math.min(window.innerWidth / GAME_W, window.innerHeight / GAME_H); // what Scale.FIT will stretch by
   const dpr = window.devicePixelRatio || 1; // CSS px → physical px

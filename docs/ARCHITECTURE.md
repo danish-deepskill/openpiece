@@ -113,6 +113,8 @@ openpiece/
         ProjectileSystem.ts     # travelling shots (musket ball): swept path vs bodies + solid cells -> StrikeResolver
         AbilitySystem.ts        # the single attack path: costs, cooldowns, swings, shots, launches
         StrikeResolver.ts       # (service) a confirmed hit -> damage/combo/stun; Damage.ts applies it
+        ViewPose.ts             # (presentation service, Phaser-free) WHERE to draw each body this frame — interpolated between the
+        ...                     #   last two sim steps (capture before each step, alpha = acc/SIM_DT); teleport snap; optional buffer-grid pixel snap
         Items.ts                # (service) THE item mutation site: give/take/move/split/drop/equipFromHold — merge, clamp to
         ...                     #   stackLimit, refuse past Hold.slots, atomic two-hold moves; apply(intent) = the seam's authority; reachableHold = the
         ...                     #   ONE container in reach: a chest beside you, the ship's hold from its deck HATCH tile (ITEMS.md §3–4)
@@ -236,7 +238,10 @@ wind → doors → input → squads → AI → movement → swim → body-collis
 then presentation, once per render frame: structures/doors (dirty rebake) → sea → fx → render → weapon sprites → projectile sprites → accessories → nameplates → stun → inspect → reticle → possess button → debug; dialogue steps per render frame
 → (WorldScene publishes registry + the inventory view-model on change)
 ```
-The accumulator's carry-in is clamped to 0.25 s (a suspended tab slows time, never spirals). `GameDirector` gates updates by game state and owns win/lose/respawn + objectives. The order is stated as inline comments in `stepSim()` — keep both true when reordering.
+The accumulator's carry-in is clamped to 0.25 s (a suspended tab slows time, never spirals). Presentation draws
+INTERPOLATED poses (`systems/ViewPose`): captured before each step, blended by `acc / SIM_DT` after the loop, so a
+120 Hz display shows 120 Hz motion from the 60 Hz sim; the camera glides time-based (`CAMERA_FOLLOW_RATE`) toward
+the controlled unit's drawn pose and snaps its scroll to the buffer-pixel grid (`PIXEL_SNAP`). `GameDirector` gates updates by game state and owns win/lose/respawn + objectives. The order is stated as inline comments in `stepSim()` — keep both true when reordering.
 
 ---
 

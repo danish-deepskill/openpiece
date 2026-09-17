@@ -3,6 +3,7 @@ import { RegKey } from '../config/constants';
 import type { World } from '../ecs/World';
 import type { SpatialQuery } from '../world/SpatialQuery';
 import { unitPlateView } from '../ui/plateView';
+import type { ViewPose } from './ViewPose';
 
 /** Click forgiveness around a unit's center (px) — input feel, so file-local rather than sim data. */
 const PICK_RANGE = 30;
@@ -24,6 +25,7 @@ export class InspectSystem {
     private readonly scene: Phaser.Scene,
     private readonly world: World,
     private readonly query: SpatialQuery,
+    private readonly view: ViewPose, // the ring rides the DRAWN pose
   ) {
     this.keyV = scene.input.keyboard!.addKey('V');
     this.gfx = scene.add.graphics().setDepth(RING_DEPTH);
@@ -59,10 +61,12 @@ export class InspectSystem {
       return;
     }
     const t = e.transform;
+    const vx = this.view.x(e);
+    const vy = this.view.y(e);
     this.gfx.lineStyle(2, 0xf0b429, 0.9);
-    this.gfx.strokeCircle(t.x, t.y, t.r + 6);
+    this.gfx.strokeCircle(vx, vy, t.r + 6);
     this.gfx.lineStyle(1, 0xf0b429, 0.35);
-    this.gfx.strokeCircle(t.x, t.y, t.r + 10);
+    this.gfx.strokeCircle(vx, vy, t.r + 10);
     this.scene.registry.set(RegKey.Inspect, unitPlateView(e));
   }
 }

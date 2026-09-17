@@ -4,6 +4,7 @@ import { Effects } from '../combat/Effect';
 import { shotProcKey } from '../draw/projectileProc';
 import type { World } from '../ecs/World';
 import { shotArtKey } from '../scenes/BootScene';
+import type { ViewPose } from './ViewPose';
 
 /** Depth bias above the actor y-sort band — a flying ball reads ON TOP of the units at its own y (a bullet is
  *  chest-height, not on the ground). Actors sort by their y (hundreds–thousands), so the ball uses ITS y + this
@@ -23,6 +24,7 @@ export class ProjectileRenderer {
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly world: World,
+    private readonly view: ViewPose, // a ball crosses ~6 px per step — the smoothest thing on screen needs this most
   ) {}
 
   update(): void {
@@ -47,11 +49,12 @@ export class ProjectileRenderer {
       }
       const t = e.transform;
       const size = shape?.shotSize ?? 6;
+      const vy = this.view.y(e);
       img
-        .setPosition(t.x, t.y)
+        .setPosition(this.view.x(e), vy)
         .setRotation(t.angle) // the ball points along its heading (matters for a directional art; harmless for a round ball)
         .setDisplaySize(size, size)
-        .setDepth(t.y + SHOT_DEPTH_BIAS) // y-sort with the actors (+bias = over them), NOT the fixed Depth.Boat (that buried it)
+        .setDepth(vy + SHOT_DEPTH_BIAS) // y-sort with the actors (+bias = over them), NOT the fixed Depth.Boat (that buried it)
         .setVisible(true);
     }
     // orphan sweep: the projectile despawned (hit a body/wall, or fizzled at range) since last frame
