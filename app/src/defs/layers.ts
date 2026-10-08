@@ -55,6 +55,8 @@ export interface FruitDef extends LayerDef {
   primary: ContentId; // overrides the LIGHT attack while held
   heavy?: ContentId; // overrides the HEAVY attack while held (e.g. Gomu Stamp); falls back to the kick
   slots: ContentId[]; // extra abilities (U, I)
+  /** The C-slot SELF-BUFF this fruit grants (a Logia's transform, an awakening) — see StyleDef.utility. */
+  utility?: ContentId;
 }
 export interface StyleDef extends LayerDef {
   dash: ContentId;
@@ -64,6 +66,10 @@ export interface StyleDef extends LayerDef {
   primary?: ContentId;
   /** The style's HEAVY unarmed attack (a committed kick/haymaker), like FruitDef.heavy. Unset ⇒ the base kick. */
   heavy?: ContentId;
+  /** The C-slot SELF-BUFF this style grants (a kiai, a focus stance; the Haki layer's Armament lands here too):
+   *  routed into `loadout.utility` by refreshLoadout, pressed by the player's C and by the brain on engagement.
+   *  A buff is an ability row whose `grantEffect` names an Effect (timed modifiers + tags) — two data rows. */
+  utility?: ContentId;
 }
 export type PotentialDef = LayerDef;
 
@@ -143,6 +149,23 @@ Weapons.register({
   tags: ['weapon.class.ranged'],
 });
 
+// KATANA — the Samurai's blade (art: weapon/katana_1.png, points DOWN like the other blades; the long handle takes a
+// real two-handed hold just below the guard). MEDIUM class: the kesa chain rides the medium rung's quick windups
+// (the sword's heavy rear-backs would lose the duel to a kiter); reach 36 out-reaches the cutlass (30) without the
+// sword's weight. Attack +7 sits between cutlass (+6) and sword. Its heavy is the iai, not the base kick.
+Weapons.register({
+  id: 'weapon.katana',
+  name: 'Katana',
+  weaponClass: 'medium',
+  primary: 'ability.kesa',
+  heavy: 'ability.iai',
+  slots: ['ability.kamaitachi'], // the ULTI on key 1 (the marine musket's Buckshot precedent)
+  visual: { kind: 'sprite', art: 'weapon/katana_1.png', length: 36, width: 5, tipAt: 'bottom', gripAt: 0.27 }, // hand just below the guard; off-hand toward the pommel
+  grip: { hands: 2, spacing: 8 },
+  modifiers: [{ stat: 'atk', op: 'flat', value: 7, source: 'weapon:weapon.katana' }],
+  tags: ['weapon.class.medium'],
+});
+
 Fruits.register({
   id: 'fruit.gomu',
   name: 'Gomu Gomu no Mi',
@@ -160,6 +183,17 @@ Styles.register({
   dash: 'ability.flashDash',
   modifiers: [{ stat: 'atk', op: 'flat', value: 2, source: 'style:style.flashstep' }],
   tags: ['style.flashstep'],
+});
+// KENJUTSU — the Samurai's sword art: a MOVEMENT + BUFF style (no unarmed strikes of its own — the katana always
+// wins the primary). Shukuchi replaces the roll; Kiai is the first C-slot utility a layer grants (the seam the
+// Haki layer's Armament lands in next). No stat modifiers: his edge is the kit, not a hidden bonus.
+Styles.register({
+  id: 'style.kenjutsu',
+  name: 'Kenjutsu',
+  dash: 'ability.shukuchi',
+  utility: 'ability.kiai',
+  modifiers: [],
+  tags: ['style.kenjutsu'],
 });
 // STRIKING styles — a bare-handed unit's basic attack comes from its martial art (not a per-unit field).
 // dash falls back to the base roll (these are striking, not movement, styles). This is the seam Black Leg /

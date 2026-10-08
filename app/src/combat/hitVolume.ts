@@ -1,5 +1,6 @@
 import { angleDiff, segDist } from '../core/math';
 import type { AbilityDef } from './Ability';
+import type { ContentId } from '../core/Registry';
 import { kitWeapon } from './phases';
 import { HAND_R_FRAC, type SwingPose } from './swing';
 import type { Entity, MeleeSwing } from '../ecs/components';
@@ -17,7 +18,12 @@ import type { Entity, MeleeSwing } from '../ecs/components';
 /** One damaging volume of a swing. `active` = the [start, end] window on swing progress p∈[0,1] during
  *  which it is LIVE (default: the whole swing). p is monotonic, so a window opens exactly once per swing —
  *  per-volume hit-sets need no reset machinery. */
-export type HitVolume = { active?: readonly [number, number] } & (
+export type HitVolume = {
+  active?: readonly [number, number];
+  /** Scales the ability's damage for hits landed by THIS volume (default 1) — a finisher's crescent hitting
+   *  harder than the blade's edge, a flurry's large sweeps hitting double its cuts. Boot-validated > 0. */
+  damageMul?: number;
+} & (
   /** A span of the DRAWN weapon, `from`→`to` as 0..1 along grip→tip (default the whole weapon; a hammer's
    *  head is {from: 0.85}). `width` overrides the weapon visual's width for this volume. */
   | { kind: 'weaponSegment'; from?: number; to?: number; width?: number }
@@ -72,11 +78,33 @@ export function strikeVolumes(e: Entity, d: AbilityDef, activeSpan: readonly [nu
   return WHOLE_WEAPON;
 }
 
+export type ArcSpec = Omit<Extract<HitVolume, { kind: 'arc' }>, 'active'>;
+/** Choreograph a flurry from a PLAN: slice the active span [s0, s1] into plan.length + 1 back-to-back once-per-
+ *  target windows (the last = `finisher`), a 'c'/'S' window being the blade, an 'L' window the `large` arc; every
+ *  'S' window also cues a volley of `shot` at its start, forward with ±`shotSpread` rad of scatter. The authored twin of the `jabs`
+ *  synthesis above — authored because the windows differ; the cut count = the windows (swing.flurryCuts). */
+export function flurryWindows(plan: string, s0: number, s1: number, o: { large: ArcSpec; finisher: ArcSpec; shot: ContentId; shotSpread: number }): { hitVolumes: HitVolume[]; volleys: { at: number; ability: ContentId; spread: number }[] } {
+  const n = plan.length + 1;
+  const w = (s1 - s0) / n;
+  const hitVolumes: HitVolume[] = [];
+  const volleys: { at: number; ability: ContentId; spread: number }[] = [];
+  for (let i = 0; i < plan.length; i++) {
+    const active: [number, number] = [s0 + i * w, s0 + (i + 1) * w];
+    const k = plan[i];
+    if (k !== 'c' && k !== 'L' && k !== 'S') throw new Error(`flurryWindows: unknown plan glyph '${k}' at ${i}`);
+    hitVolumes.push(k === 'L' ? { ...o.large, active } : { kind: 'weaponSegment', active });
+    if (k === 'S') volleys.push({ at: active[0], ability: o.shot, spread: o.shotSpread });
+  }
+  hitVolumes.push({ ...o.finisher, active: [s0 + plan.length * w, s1] });
+  return { hitVolumes: Object.freeze(hitVolumes) as HitVolume[], volleys: Object.freeze(volleys) as { at: number; ability: ContentId; spread: number }[] }; // frozen like the jab synthesis — defs are shared by every cast
+}
+
 /** Boot validation for authored volume lists (fail loud, not a swing that silently never hits). Used by
  *  defs/validateContent over both ability- and weapon-level hitVolumes. */
 export function hitVolumeProblem(vols: readonly HitVolume[] | undefined): string | null {
   if (!vols) return null;
   for (const v of vols) {
+    if (v.damageMul !== undefined && !(v.damageMul > 0)) return `volume damageMul must be > 0 (got ${v.damageMul})`;
     if (v.active && !(v.active[0] >= 0 && v.active[1] <= 1 && v.active[0] < v.active[1]))
       return `hitVolume active window [${v.active[0]}, ${v.active[1]}] must satisfy 0 ≤ start < end ≤ 1`;
     if (v.kind === 'weaponSegment') {

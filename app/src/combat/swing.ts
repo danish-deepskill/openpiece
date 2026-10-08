@@ -129,10 +129,19 @@ function stretchLen(p: number, len: number, jabs: number, grab: boolean, ph: Att
   return len * (1 - q * q); // retract
 }
 
-/** Which hand is acting THIS frame: a flurry (Gomu Gatling) alternates hands jab-by-jab (over the ACTIVE
- *  phase, matching the jab hit windows); otherwise it's fixed. */
-export function activeSide(s: MeleeSwing, jabs: number): number {
-  if (jabs <= 1) return s.side;
+/** A FLURRY's cut count — ONE source: the authored windows when there are any (each window IS a cut), else the
+ *  synthesized `jabs`. The flurry motion and the FX trail both whip this many times, so they can never disagree
+ *  with the hits (the old `jabs`-beside-`hitVolumes` pair had to be kept equal by hand). */
+export function flurryCuts(shape: AbilityShape): number {
+  return Math.max(1, shape.hitVolumes?.length ?? shape.jabs ?? 1);
+}
+
+/** Which hand is acting THIS frame: the RUBBER-ARM flurry (Gomu Gatling) alternates hands jab-by-jab over the
+ *  ACTIVE phase, matching its jab hit windows. Every other motion keeps the lead hand — a blade flurry whips the
+ *  blade, not the grip (keying this off `jabs` alone made the fists swap hilts ~6×/s through Kamaitachi). */
+export function activeSide(s: MeleeSwing, shape: AbilityShape): number {
+  const jabs = shape.jabs ?? 1;
+  if (s.motion !== 'stretch' || jabs <= 1) return s.side;
   const p = clamp(s.dur > 0 ? s.t / s.dur : 1, 0, 1);
   const w = s.phases.windup;
   const aEnd = s.phases.windup + s.phases.active;
@@ -219,7 +228,7 @@ const arc: Motion = (s, shape, g, p) => {
 
 /** STRETCH: the Gomu rubber arm — shoulder (hx) → fist (tx) IS the hitbox. punch/grab/flurry come from the def. */
 const stretch: Motion = (s, shape, g, p) => {
-  const [bx, by] = guardHand(s.angle, activeSide(s, shape.jabs ?? 1), g.r); // a flurry alternates which hand throws
+  const [bx, by] = guardHand(s.angle, activeSide(s, shape), g.r); // a flurry alternates which hand throws
   const reach = stretchLen(p, shape.range, shape.jabs ?? 1, shape.stretchMode === 'grab', s.phases);
   return { drawAngle: s.angle, hx: bx, hy: by, tx: bx + Math.cos(s.angle) * reach, ty: by + Math.sin(s.angle) * reach };
 };
@@ -286,7 +295,36 @@ const shot: Motion = (s, _shape, g, p) => {
 };
 
 /** Strategy registry. A new MOTION is one entry here; the 1000 swing *types* are just data (AbilityDef.shape). */
-const MOTIONS: Record<string, Motion> = { stab, arc, stretch, gore, axe, shot };
+/** FLURRY (Kamaitachi): `jabs` rapid ALTERNATING blade sweeps through the ACTIVE phase — each sub-cut carries the
+ *  blade from one side to the other, the next comes back the other way — timed to the per-cut hit windows (the
+ *  authored/synthesized volumes slice the active phase the same way), so what you see is what hits. The windup
+ *  cocks to the lead side and HOLDS (the charge tell); the recovery settles from wherever the last cut ended.
+ *  The hand stays on the lead side (a two-handed blade doesn't hop hands): only the blade whips. */
+const flurry: Motion = (s, shape, g, p) => {
+  const half = Math.max(TWIST_MIN, shape.arc * TWIST_GAIN);
+  const cuts = flurryCuts(shape);
+  const w = s.phases.windup;
+  const aEnd = w + s.phases.active;
+  let off: number;
+  if (p < w) {
+    off = half * Math.min(1, p / Math.max(0.0001, w) / 0.4); // cock to +half over the first 40% of windup, then hold
+  } else if (p < aEnd) {
+    const local = (p - w) / Math.max(0.0001, aEnd - w);
+    const cut = Math.min(cuts - 1, Math.floor(local * cuts));
+    const u = local * cuts - cut; // 0 → 1 within THIS cut
+    const dir = cut % 2 === 0 ? 1 : -1; // +half → −half, then back, then …
+    off = dir * (half - 2 * half * u);
+  } else {
+    const endOff = (cuts % 2 === 0 ? 1 : -1) * half; // where the last cut came to rest
+    off = endOff * (1 - (p - aEnd) / Math.max(0.0001, 1 - aEnd)); // settle to center through recovery
+  }
+  const ang = s.angle + off;
+  const [hx, hy] = guardHand(ang, s.side, g.r);
+  const len = g.weaponLen > 0 ? g.weaponLen : Math.max(g.r * 0.95, g.reach);
+  return { drawAngle: ang, hx, hy, tx: hx + Math.cos(ang) * len, ty: hy + Math.sin(ang) * len };
+};
+
+const MOTIONS: Record<string, Motion> = { stab, arc, stretch, gore, axe, shot, flurry };
 
 /**
  * Acting-hand + weapon/fist tip + body orientation at the current point in a swing. The swing INSTANCE carries

@@ -1,10 +1,12 @@
 import { Abilities, abilityRange, type AbilityDef } from '../combat/Ability';
 import { TAG_SLOWED, TAG_STUNNED } from '../combat/Effect';
-import { phaseAt, resolvePhases } from '../combat/phases';
+import { phaseAt, resolvePhases, swingDuration } from '../combat/phases';
+import { flurryCuts } from '../combat/swing';
 import { beginFall } from './MovementSystem';
 import { spendStamina } from '../combat/stamina';
 import { harmableBy } from '../combat/targeting';
 import { SPREAD_SHOT_KICK } from '../config/constants';
+import { COMBO_RECOVERY_STAT } from '../defs/traits';
 import { events } from '../core/EventBus';
 import { angleDiff, dist, norm } from '../core/math';
 import type { Rng } from '../core/Rng';
@@ -31,6 +33,9 @@ function setCooldown(lo: Loadout, id: ContentId, seconds: number): void {
  * Resolves abilities for any actor with a `loadout` — the single attack path (the old CombatSystem folded
  * in here). Damage scales off the user's Attributes, so all four combat layers feed one resolution.
  */
+/** Seconds a swing-wave crescent lingers past its hit window — a fade, not a second hitbox. */
+const WAVE_TAIL = 0.12;
+
 export class AbilitySystem {
   // query DEFAULTED so standalone tests stand unchanged; the scene passes its SHARED instance (audit M1:
   // every neighbor enumeration through the one chokepoint — the future grid swap must share one index)
@@ -87,8 +92,23 @@ export class AbilitySystem {
         // (Buckshot) is a real "winding up the scatter" TELL you can dodge, not an instant spawn. Fired once.
         if (m.t / m.dur >= m.phases.windup) {
           m.shotFired = true;
-          this.spawnShot(e, m, d);
+          this.spawnShot(e, m.angle, m.ability, d);
         }
+      }
+      // VOLLEYS (a channel that looses shots mid-swing — Kamaitachi's wind slashes): fire each cue ONCE as the
+      // progress crosses its `at`, FORWARD along the swing's aim with a seeded ±spread so the volley fans.
+      // (Firing along the blade's live angle was tried: a plan's cues land at the same phase of same-direction
+      // sweeps, so every slash left on one identical line.) Independent of the branches above.
+      if (d.volleys) {
+        const p = m.t / m.dur;
+        let n = m.volleysFired ?? 0;
+        while (n < d.volleys.length && p >= d.volleys[n].at) {
+          const v = d.volleys[n]; // in range: the while condition bounds n
+          const heading = m.angle + (this.rng.next() - this.rng.next()) * (v.spread ?? 0); // biased to straight ahead
+          this.spawnShot(e, heading, v.ability, Abilities.get(v.ability));
+          n++;
+        }
+        m.volleysFired = n;
       }
     }
   }
@@ -161,15 +181,20 @@ export class AbilitySystem {
     }
     const god = e.tags?.has('state.godMode') === true; // debug: free abilities — no stamina, no cooldown
     if (!god && d.costStam && e.combatant) spendStamina(e.combatant, d.costStam); // spend + regen pause, one rule
-    // attack speed is a tier stat: effective recovery = base cooldown / atkSpeed (default 1)
-    const atkSpeed = Math.max(0.1, e.attributes?.get('atkSpeed') ?? 1);
+    // attack speed is a tier stat: effective recovery = base cooldown / atkSpeed (default 1); the SWING itself
+    // is scaled by the same stat in startSwing/fireShot (combat/phases.swingDuration)
+    const atkSpeed = this.atkSpeedOf(e);
     setCooldown(lo!, actual, god ? 0 : d.cooldown / atkSpeed); // `!` safe: ready() above returns false when loadout is absent
     // chain bookkeeping: arm the next step — or, on a chain's FINAL step, lock the ROOT for this step's
     // cooldown too (the post-combo recovery; without it the chain would restart the instant it finishes)
     if (lo) {
       if (d.comboNext) lo.chain = { root: id, next: d.comboNext, until: d.comboWindow ?? 0.9 };
       else {
-        if (actual !== id) setCooldown(lo, id, god ? 0 : d.cooldown / atkSpeed); // lock the chain ROOT for the FINISHER's cd (not slash1's own) — cdMax records THIS duration so the HUD fill is correct
+        // lock the chain ROOT for the FINISHER's cd (not slash1's own), scaled by the wielder's COMBO RECOVERY
+        // stat (Kiai halves the post-combo pause; the steps' own cooldowns are untouched) — cdMax records THIS
+        // duration so the HUD fill is correct
+        const recovery = Math.max(0.1, e.attributes?.get(COMBO_RECOVERY_STAT) ?? 1);
+        if (actual !== id) setCooldown(lo, id, god ? 0 : (d.cooldown / atkSpeed) * recovery);
         if (lo.chain?.root === id) delete lo.chain;
       }
     }
@@ -224,6 +249,11 @@ export class AbilitySystem {
     return angle + (this.rng.next() - this.rng.next()) * AIM_SPREAD;
   }
 
+  /** The wielder's attack speed (a tier stat, modifiable), floored so a broken stat can't divide by zero. */
+  private atkSpeedOf(e: Entity): number {
+    return Math.max(0.1, e.attributes?.get('atkSpeed') ?? 1);
+  }
+
   /** Begin a melee swing — the animated fist/blade becomes the hitbox (see MeleeSystem). */
   private startSwing(e: Entity, id: string, d: AbilityDef): void {
     const shape = d.shape!;
@@ -256,12 +286,13 @@ export class AbilitySystem {
     } else {
       side = 1; // combatant-less swinger (not spawned via Spawner) — lead hand
     }
+    const phases = { ...resolvePhases(e, d) }; // resolved ONCE here (like `motion`), COPIED so a stray mutation through the swing can never corrupt the def (defs are shared by every future cast)
     e.melee = {
       ability: id,
       t: 0,
-      dur: shape.swingTime ?? 0.18,
+      dur: swingDuration(shape.swingTime ?? 0.18, this.atkSpeedOf(e), phases), // attack speed shortens the SWING, tell-floored (constants.TELL_FLOOR)
       motion,
-      phases: { ...resolvePhases(e, d) }, // resolved ONCE here (like `motion`), COPIED so a stray mutation through the swing can never corrupt the def (defs are shared by every future cast)
+      phases,
       side,
       // committed aim + natural scatter — moving still makes it whiff. A GORE is a precise, committed ram (the
       // head IS the hitbox, so its aim must match the drawn head exactly) — no scatter, or the hitbox drifts off
@@ -269,14 +300,24 @@ export class AbilitySystem {
       angle: motion === 'gore' ? e.transform!.angle : this.scatter(e.transform!.angle),
       hitByVolume: [],
     };
-    // SLASH-WAVE FX: if the ability has an 'arc' hit-volume that REACHES PAST the blade (the sword finisher's
-    // energy crescent), draw a swoosh at that radius — so the extended-reach hitbox is VISIBLE, not an invisible
-    // fan bigger than the drawn sword ("what you see is what hits"). FxSystem already renders the melee crescent.
-    const wave = shape.hitVolumes?.find((v) => v.kind === 'arc');
-    if (wave && wave.kind === 'arc') {
-      const t = e.transform!;
-      const life = (shape.swingTime ?? 0.18) * (e.melee.phases.active + e.melee.phases.recover); // spans active→recover
-      events.emit('fx:swing', { type: 'melee', x: t.x, y: t.y, angle: e.melee.angle, len: wave.radius, arc: wave.halfAngle, life, max: life, enemy: !e.control });
+    // SWING-WAVE FX — ONE rule for every 'arc' hit volume (a finisher's energy crescent, a flurry's large sweeps,
+    // the wind): a swoosh at the volume's OUTER radius, cued to the volume's OWN window (windowless ⇒ the active
+    // phase, MeleeSystem's read-time default) plus a fading tail — so an extended-reach hitbox is visible exactly
+    // when it is live ("what you see is what hits"; the old cast-time wave played through the charge-hold). A
+    // flurry adds a trail that whips once per cut. Visuals FOLLOW the swinger and die with the swing (FxSystem).
+    const sw = e.melee;
+    const t = e.transform!;
+    for (const v of shape.hitVolumes ?? []) {
+      if (v.kind !== 'arc') continue;
+      const a0 = v.active ? v.active[0] : sw.phases.windup;
+      const a1 = v.active ? v.active[1] : sw.phases.windup + sw.phases.active;
+      const life = sw.dur * (a1 - a0) + WAVE_TAIL;
+      events.emit('fx:swing', { type: 'melee', x: t.x, y: t.y, angle: sw.angle, len: v.radius, arc: v.halfAngle, life, max: life, enemy: !e.control, delay: sw.dur * a0, follow: e.id, ability: id });
+    }
+    if (motion === 'flurry') {
+      const reach = abilityRange(d, e.attributes?.get('reach') ?? 0);
+      const trailLife = sw.dur * sw.phases.active;
+      events.emit('fx:swing', { type: 'melee', x: t.x, y: t.y, angle: sw.angle, len: reach, arc: shape.arc, life: trailLife, max: trailLife, enemy: !e.control, cuts: flurryCuts(shape), delay: sw.dur * sw.phases.windup, follow: e.id, ability: id });
     }
     // (ELECTRIC swing visual is now drawn ON the foot itself — draw/actorDraws.drawFoot reads shape.swingFx —
     //  so the charge is welded to the limb through the whole swing, not a one-shot spark guessed near it.)
@@ -315,12 +356,13 @@ export class AbilitySystem {
   private fireShot(e: Entity, id: string, d: AbilityDef): void {
     const t = e.transform!;
     const shape = d.shape!;
+    const phases = { ...resolvePhases(e, d) };
     e.melee = {
       ability: id,
       t: 0,
-      dur: shape.swingTime ?? 0.4,
+      dur: swingDuration(shape.swingTime ?? 0.4, this.atkSpeedOf(e), phases), // a quick hand fires its pose faster too
       motion: 'shot',
-      phases: { ...resolvePhases(e, d) },
+      phases,
       side: 1,
       angle: t.angle, // COMMIT the aim now (fired at the active cue along this heading)
       hitByVolume: [],
@@ -330,13 +372,13 @@ export class AbilitySystem {
   /** FIRE the shot — spawn the projectile(s) + muzzle flash + recoil pushback. Called at the windup→active cue
    *  (update()), NOT at activation, so the windup telegraphs. Aim = the swing's committed angle + the LIVE spread
    *  scatter (settled/bloomed by CombatantSystem). Buckshot (pellets>1) fans a cone; each pellet rolls electric. */
-  private spawnShot(e: Entity, m: MeleeSwing, d: AbilityDef): void {
+  private spawnShot(e: Entity, heading: number, abilityId: ContentId, d: AbilityDef): void {
     const t = e.transform!;
     const shape = d.shape!;
     // scatter within the shooter's LIVE aim cone (combatant.spread — narrow when aimed+still, wide when
     // hip-firing/moving; CombatantSystem eases it). No combatant (a turret) ⇒ the fixed AIM_SPREAD.
     const half = e.combatant?.spread ?? AIM_SPREAD;
-    const aim = m.angle + (this.rng.next() - this.rng.next()) * half; // committed heading + a scatter (biased to 0)
+    const aim = heading + (this.rng.next() - this.rng.next()) * half; // committed heading + a scatter (biased to 0)
     // RECOIL BLOOM: THIS shot fired from the current cone; now kick it WIDER (the settle re-tightens it as you
     // hold aim) — so paced shots stay tight but a rapid string sprays. The "don't spray" skill (#19).
     if (e.combatant) e.combatant.spread = (e.combatant.spread ?? half) + SPREAD_SHOT_KICK;
@@ -363,7 +405,7 @@ export class AbilitySystem {
       const proc = pe && pe.chance > 0 && this.rng.chance(pe.chance) ? { effect: pe.effect, dur: pe.dur, damageMult: pe.damageMult ?? 1 } : undefined;
       this.world.create({
         transform: { x: mx, y: my, angle: pa, r: 2 },
-        projectile: { owner: e.id, ability: m.ability, vx: Math.cos(pa) * speed, vy: Math.sin(pa) * speed, life, hit: [], passChance, proc },
+        projectile: { owner: e.id, ability: abilityId, vx: Math.cos(pa) * speed, vy: Math.sin(pa) * speed, life, hit: [], passChance, proc },
       });
     }
     const mx = t.x + Math.cos(aim) * muzzle; // muzzle flash at the barrel (the aim line, not a pellet)

@@ -96,6 +96,20 @@ export function pickAttack(e: Entity, ctx: AIContext, targetDist: number): Conte
   return lo.primary; // nothing special is ready/in-range → the reliable jab
 }
 
+/** THE BUFF BEAT: fire the loadout's `utility` (the C-slot self-buff — a kiai, a focus stance, Armament) when it's
+ *  granted, off cooldown and affordable. Checked each chase tick while a foe is in view — the FIRST such tick is the
+ *  engagement (the kiai before the charge), and a long duel re-pops it as it comes back. Generic by construction: it reads the loadout's
+ *  slot, never a unit id, so any style/fruit/haki buff a unit carries is used the same way (the Moat). Returns
+ *  true if it fired. Skipped while regrouping (conserve — a buff spends the bar being refilled). */
+export function tryUtility(e: Entity, ctx: AIContext): boolean {
+  const lo = e.loadout;
+  const id = lo?.utility;
+  if (!lo || !id || !lo.granted.has(id)) return false;
+  if (e.ai?.bb.regrouping === true) return false;
+  if (!ctx.abilities.ready(e, id)) return false; // ready() owns cooldown AND affordability
+  return ctx.abilities.activate(e, id);
+}
+
 /** What a PINNED regrouper does this beat about the Rocket-reposition — a COMMIT-then-conserve mini-intent
  *  (bb.plannedSpecial), the answer to "how does he ever reach the Rocket instead of jabbing it away?":
  *   - 'fire'    — a plan is set AND he can now pay for it (+ facing) → activate the heavy, clear the plan.
@@ -654,6 +668,7 @@ const chase: FsmState = {
       bb.lastSeenX = foe.transform!.x;
       bb.lastSeenY = foe.transform!.y;
       bb.lostT = 0;
+      tryUtility(e, ctx); // a long duel re-pops the buff as it comes off cooldown (no-op while it's active/unaffordable)
     } else {
       bb.lostT = ((bb.lostT) ?? 0) + dt;
     }

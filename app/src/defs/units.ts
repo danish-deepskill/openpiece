@@ -110,7 +110,7 @@ export const Units = new Registry<UnitDef>('Units', (u) => {
 
 // outfit palette (torso/shoulder garb + dialogue-ring hat color) — the per-unit LOOK on top of the body's
 // rig+skin. Named so the roster reads by intent, not hex; same-body units differ only by which they wear.
-const GARB = { hero: 0xb5342a, bandit: 0x6b4a3a, boss: 0x3a2f4a, civilian: 0x4a6a8a, soldier: 0x2f4a6a, marine: 0xffffff } as const; // marine = TEMP white naval shirt (Marine Officer)
+const GARB = { hero: 0xb5342a, bandit: 0x6b4a3a, boss: 0x3a2f4a, civilian: 0x4a6a8a, soldier: 0x2f4a6a, marine: 0xffffff, samurai: 0x2b2d4f } as const; // samurai = indigo hakama // marine = TEMP white naval shirt (Marine Officer)
 const HAT = { hero: 0xf0c040, dark: 0x2a0d0d, civilian: 0x2e5a35 } as const;
 
 Units.registerAll([
@@ -146,6 +146,13 @@ Units.registerAll([
   // his aggressive rush+charge brain. Faction bandits for now so he's a hostile DUEL target you can spar to
   // feel the rubber AI — flip to straw_hat (or recruitable) when he becomes a crewmate rather than a test foe.
   { id: 'unit.luffy', name: 'Luffy', race: 'race.heroic', garb: GARB.hero, hatColor: HAT.hero, tier: 'D', faction: 'bandits', aiProfile: 'ai.luffy', fruit: 'fruit.gomu', accessories: ['accessory.strawHat'], traits: ['trait.sprinter'], gold: 60 },
+  // the SAMURAI — a C-tier ronin duelist, the Marine Officer's EPIC-DUEL partner: faction pirates (hostile to
+  // Marines, NEUTRAL to you until struck — so the duel starts on its own and you can stand and watch it, the
+  // first "witness the world" moment). Plain humanoid/human/medium: his strength is the tier + the kit, not a
+  // frame. Katana (kesa chain + iai) and the kenjutsu style (shukuchi dash + the kiai buff); sprinter for the
+  // charge; Footwork (his PASSIVE: he keeps half his stride mid-swing where everyone else plants — a fencer's feet);
+  // guard ON (parrying is his character). One line of dialogue so he's conversable while neutral.
+  { id: 'unit.samurai', name: 'Samurai', garb: GARB.samurai, hatColor: HAT.dark, tier: 'C', faction: 'pirates', aiProfile: 'ai.samurai', gold: 50, weapon: 'weapon.katana', style: 'style.kenjutsu', accessories: ['accessory.kasa', 'accessory.sode'], traits: ['trait.sprinter', 'trait.mobileAttackSlow'], dialogue: ['A blade answers only a blade. Walk on, captain.'] },
   // a townsperson: a FULL unit on the SAME stack as everyone (the Moat) — civilian build, work-shirt blue.
   // noGuard: an untrained civilian throws panicked punches but can't block/parry (the negative exception).
   {

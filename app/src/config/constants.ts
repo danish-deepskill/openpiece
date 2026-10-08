@@ -150,6 +150,16 @@ export const PICKUP_R = 12;
  *  reach into it (Items.reachableHold). Same idea as VerbDef.reach; a knob so a big chest can feel arm's-length. */
 export const HOLD_REACH = 28;
 
+/** ATTACK SPEED → SWING LENGTH. A swing (and a shot's fire pose) lasts swingTime / max(SWING_SPEED_FLOOR, atkSpeed):
+ *  a faster unit SWINGS faster, not just recovers faster (before, swings were fixed and attack speed above a
+ *  primary's cooldown/swingTime ratio was a silent no-op). SWING_SPEED_FLOOR 1: attack speed below 1 never SLOWS
+ *  a swing — the roster's swingTimes were authored at ~1.0 and slowing fodder/civilians is a separate retune;
+ *  set 0 for the symmetric model. TELL_FLOOR: the WINDUP (the tell, in seconds) a readable attack keeps at ANY
+ *  attack speed — the parry promise (~reaction time). A tell authored BELOW the floor (a jab) scales freely:
+ *  it was never a readable tell, and freezing it would make fists immune to attack speed. */
+export const SWING_SPEED_FLOOR = 1;
+export const TELL_FLOOR = 0.2;
+
 /** FOLLOW-CAMERA glide rate (1/s, smoothFactor): how fast the view center closes on the controlled unit's DRAWN
  *  pose. Time-based (the dt rule), so 60 and 144 Hz feel identical; 10.5 reproduces the old 0.16-per-frame feel
  *  at 60 fps. Higher = stiffer (welded), lower = floatier. */

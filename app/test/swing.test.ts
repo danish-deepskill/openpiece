@@ -17,6 +17,9 @@ function pose(motion: string, swing: Partial<MeleeSwing>, shape: Partial<Ability
   return swingPose(s, sh, { ...GEOM, ...geom });
 }
 
+/** A shape with just a jab count — activeSide reads `jabs` off the SHAPE now (the motion decides whether it matters). */
+const jabs = (n: number): AbilityShape => ({ range: 0, arc: 0, swing: 'melee', jabs: n });
+
 /** A stretch swing instance for activeSide tests (all-active clock: jab index maps 1:1 onto progress). */
 const sw = (over: Partial<MeleeSwing>): MeleeSwing => ({
   ability: 'ability.x', t: 0, dur: 1, motion: 'stretch', phases: ALL_ACTIVE, side: 1, angle: 0, hitByVolume: [], ...over,
@@ -68,14 +71,18 @@ describe('swingPose — Gomu rubber-arm stretch (on the Pistol\'s authored phase
 });
 
 describe('activeSide — a flurry alternates hands jab by jab', () => {
+  it('only the RUBBER-ARM (stretch) flurry alternates: a blade flurry keeps the lead hand on the hilt', () => {
+    expect(activeSide(sw({ t: 0.3, side: 1, motion: 'flurry' }), jabs(4))).toBe(1); // would be jab 1 (−1) for a stretch
+  });
+
   it('the Gatling goes L → R → L → R', () => {
-    expect(activeSide(sw({ t: 0.1, side: 1 }), 4)).toBe(1); // jab 0
-    expect(activeSide(sw({ t: 0.3, side: 1 }), 4)).toBe(-1); // jab 1
-    expect(activeSide(sw({ t: 0.6, side: 1 }), 4)).toBe(1); // jab 2
+    expect(activeSide(sw({ t: 0.1, side: 1 }), jabs(4))).toBe(1); // jab 0
+    expect(activeSide(sw({ t: 0.3, side: 1 }), jabs(4))).toBe(-1); // jab 1
+    expect(activeSide(sw({ t: 0.6, side: 1 }), jabs(4))).toBe(1); // jab 2
   });
 
   it('a single strike never switches hands', () => {
-    expect(activeSide(sw({ t: 0.4, side: 1 }), 1)).toBe(1);
-    expect(activeSide(sw({ t: 0.9, side: -1 }), 1)).toBe(-1);
+    expect(activeSide(sw({ t: 0.4, side: 1 }), jabs(1))).toBe(1);
+    expect(activeSide(sw({ t: 0.9, side: -1 }), jabs(1))).toBe(-1);
   });
 });

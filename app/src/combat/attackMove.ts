@@ -1,4 +1,5 @@
 import type { Entity } from '../ecs/components';
+import { Abilities } from './Ability';
 import { ATTACK_MOVE_STAT } from '../defs/traits';
 
 /**
@@ -12,6 +13,7 @@ import { ATTACK_MOVE_STAT } from '../defs/traits';
  */
 export function attackMoveSpeed(e: Entity, speed: number): number {
   if (!e.melee) return speed; // not swinging — full speed
+  if (Abilities.get(e.melee.ability).channel) return 0; // a CHANNEL plants the feet whatever the trait says (the counterplay is to walk out of it)
   const mult = e.attributes?.get(ATTACK_MOVE_STAT) ?? 0; // unset → 0 → rooted
   return speed * mult;
 }

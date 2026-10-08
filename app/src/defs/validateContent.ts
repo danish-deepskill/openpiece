@@ -68,10 +68,15 @@ export function validateAllContent(): void {
     check(s.id, 'primary', s.primary, Abilities);
     check(s.id, 'heavy', s.heavy, Abilities);
     check(s.id, 'dash', s.dash, Abilities);
+    check(s.id, 'utility', s.utility, Abilities); // a typo'd buff would grant a dead id into the C slot
   }
   for (const a of Abilities.all()) {
     check(a.id, 'grantEffect', a.grantEffect, Effects);
     check(a.id, 'comboNext', a.comboNext, Abilities); // a broken chain link would dead-end a combo mid-fight
+    for (const v of a.volleys ?? []) {
+      check(a.id, 'volleys', v.ability, Abilities);
+      if (Abilities.has(v.ability) && Abilities.get(v.ability).shape?.swing !== 'shot') problems.push(`${a.id}: volley '${v.ability}' must be a 'shot' ability (it is loosed as a projectile)`);
+    }
     const hv = hitVolumeProblem(a.shape?.hitVolumes); // a typo'd window/span = a swing that silently never hits
     if (hv) problems.push(`${a.id}: ${hv}`);
   }
@@ -90,6 +95,7 @@ export function validateAllContent(): void {
     check(f.id, 'primary', f.primary, Abilities);
     check(f.id, 'heavy', f.heavy, Abilities);
     for (const s of f.slots) check(f.id, 'slots', s, Abilities);
+    check(f.id, 'utility', f.utility, Abilities);
   }
   for (const s of Styles.all()) check(s.id, 'dash', s.dash, Abilities);
   // a manual (skill book) must teach a REGISTERED ability (a typo'd `teaches` would grant a dead id on read)

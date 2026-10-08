@@ -45,6 +45,12 @@ export const BLOCK_ARC = 1.75; // ≈ ±100°
 export const PARRY_ARC = 2.1; // ≈ ±120°
 /** Movement multiplier while holding block — bracing is not a walk. */
 export const BLOCK_MOVE_MULT = 0.55;
+/** BLOCKED PROJECTILES: a ball that meets a raised guard (inside BLOCK_ARC) has this chance to GLANCE OFF instead
+ *  of being stopped — it ricochets along the blocker's facing, scattered within ±BLOCK_DEFLECT_ARC, as the
+ *  blocker's own shot (it can hit whoever it meets). The other times the block stops it as normal (posture
+ *  damage, no HP). A dash-deflect (DEFLECT_STAT — a true RETURN to the shooter) is rolled first and wins. */
+export const BLOCK_DEFLECT_CHANCE = 0.5;
+export const BLOCK_DEFLECT_ARC = Math.PI / 6; // ±30°
 /** Posture recovered per second while the guard is DOWN (never while blocking). Deliberately slow — built-up
  *  guard strain should LINGER, so a pressured fighter stays near the break instead of resetting between hits. */
 export const POSTURE_REGEN = 5;
@@ -117,6 +123,22 @@ export function damagePosture(e: Entity, amount: number): boolean {
 
 export type GuardOutcome = 'none' | 'parried' | 'blocked' | 'guardBreak';
 
+/** How far OFF the defender's facing a blow from (fromX, fromY) arrives (rad, ≥ 0) — the ONE arc rule both the
+ *  guard resolution and the block query read, so a future per-unit arc lands in one place. */
+function guardOffset(tt: { x: number; y: number; angle: number }, fromX: number, fromY: number): number {
+  const incoming = Math.atan2(fromY - tt.y, fromX - tt.x); // where the blow comes FROM, seen by the defender
+  return Math.abs(angleDiff(incoming, tt.angle));
+}
+
+/** Is `target` BLOCKING with its guard facing the point (fromX, fromY) a blow comes from? The block half of
+ *  resolveGuard's rule as a pure QUERY (no posture spent) — ProjectileSystem asks it before a ball lands to
+ *  decide whether the ball may glance off the guard. Parry is deliberately not here (a parried ball is a later rule). */
+export function guardCovers(target: Entity, fromX: number, fromY: number): boolean {
+  const c = target.combatant;
+  const tt = target.transform;
+  return !!c?.blocking && !!tt && guardOffset(tt, fromX, fromY) <= BLOCK_ARC;
+}
+
 /**
  * How the target's guard answers an incoming hit — called by StrikeResolver BEFORE damage applies.
  * Directional: the hit must arrive inside the guard's facing arc, so a turned back is always open.
@@ -128,8 +150,7 @@ export function resolveGuard(attacker: Entity, target: Entity, postureDamage: nu
   const tt = target.transform;
   const at = attacker.transform;
   if (!c || !tt || !at) return 'none';
-  const incoming = Math.atan2(at.y - tt.y, at.x - tt.x); // where the blow comes FROM, seen by the defender
-  const off = Math.abs(angleDiff(incoming, tt.angle));
+  const off = guardOffset(tt, at.x, at.y);
   if ((c.parryT ?? 0) > 0 && off <= PARRY_ARC) {
     c.parryT = PARRY_GRACE; // auto-parry grace — a string can't cheat through the reward
     c.parryCd = 0; // success re-arms instantly (only a WHIFF pays the cooldown)

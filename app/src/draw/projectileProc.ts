@@ -33,6 +33,28 @@ export function bakeProjectileTextures(scene: Phaser.Scene): void {
     colors.add(Effects.get(proc.effect).status?.color ?? 0xffffff); // the effect row's ONE theme color
   }
   for (const c of colors) ball(scene, c);
+  slash(scene); // the flying wind crescent (shotProc 'slash')
+}
+
+/** A WIND SLASH: a crescent flying along +x (the renderer rotates it to the heading) — a thick pale blade-arc
+ *  with its bulge leading and a thin inner echo, so it reads as a cut in the air, not a ball. */
+function slash(scene: Phaser.Scene): void {
+  const key = shotProcKey('slash');
+  if (scene.textures.exists(key)) return;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const c = TEX / 2;
+  const r = TEX * 0.42;
+  const cx = c - TEX * 0.14; // the arc's center sits BEHIND the canvas center so its bulge leads at +x
+  g.lineStyle(9, 0xeef6ff, 0.95);
+  g.beginPath();
+  g.arc(cx, c, r, -1.15, 1.15, false);
+  g.strokePath();
+  g.lineStyle(3, 0x9fd8ff, 0.9); // the inner echo
+  g.beginPath();
+  g.arc(cx, c, r * 0.72, -0.95, 0.95, false);
+  g.strokePath();
+  g.generateTexture(key, TEX, TEX);
+  g.destroy();
 }
 
 /** A round shot. Plain = dark lead with a hot highlight. Charged = a bright themed core, white-hot center, and

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { Accessories, type AccessorySlot } from '../defs/accessories';
 import { accessoryDraws } from '../draw/accessoryDraws';
-import { ANATOMY, BODY_FRAME_R, SLOT_ANCHOR } from '../draw/actorDraws';
+import { ANATOMY, BODY_FRAME_R, SLOT_ANCHOR, bodyDrawAngle } from '../draw/actorDraws';
 import { rollHeadPlacement } from '../draw/rollAnim';
 import type { World } from '../ecs/World';
 import type { RenderSystem } from './RenderSystem';
@@ -58,6 +58,7 @@ export class AccessorySystem {
       for (const id of Object.values(e.accessories!.slots)) {
         if (!id) continue;
         const d = Accessories.get(id);
+        const facing = d.follows === 'body' ? bodyDrawAngle(e) : a; // a hat faces the cursor; body-mounted armor turns with the torso's swing twist
         const rollingHat = head !== null && (d.slot === 'head' || d.slot === 'face' || d.slot === 'hair'); // hair rides the tumbling head too
         if (head !== null && !rollingHat) continue; // mid-roll non-head accessory → hidden (falls into the pool sweep)
         const v = d.visual;
@@ -71,8 +72,8 @@ export class AccessorySystem {
         const animScale = rollingHat ? 1 : (this.renderSys.scaleById.get(e.id) ?? 1);
         const off = ((registered ? 0 : SLOT_ANCHOR[d.slot] * t.r) + (d.offset ?? 0)) * animScale;
         // normal: pinned along the aim. Rolling hat: pinned to the tumbling head instead.
-        const x = rollingHat ? vx + head!.dx : vx + Math.cos(a) * off;
-        const y = rollingHat ? vy + head!.dy : vy + Math.sin(a) * off;
+        const x = rollingHat ? vx + head!.dx : vx + Math.cos(facing) * off;
+        const y = rollingHat ? vy + head!.dy : vy + Math.sin(facing) * off;
         const baseAlpha = this.renderSys.alphaById.get(e.id) ?? 1;
         const alpha = rollingHat ? baseAlpha * head!.crownAlpha : baseAlpha; // fade the hat out as the head tucks under
         // add the body's airborne depth-lift so a hat/mask rides ABOVE grounded units WITH the jumping body (its
@@ -97,7 +98,7 @@ export class AccessorySystem {
           const basis = d.slot === 'head' || d.slot === 'face' || d.slot === 'hair' ? ANATOMY.headR * 2 * t.r : 2 * t.r;
           const dia = (registered ? BODY_FRAME_R * 2 * t.r * v.scale : basis * v.scale) * (rollingHat ? head!.scale : animScale); // shrink w/ tumbling head, else ride the jump/sink arc
           // rolling hat orients to the TRAVEL direction (it tumbles the way you roll), not the unit's aim
-          const rot = d.rotates === false ? 0 : (rollingHat ? head!.travel : a) + Math.PI / 2;
+          const rot = d.rotates === false ? 0 : (rollingHat ? head!.travel : facing) + Math.PI / 2;
           img
             .setPosition(x, y)
             .setRotation(rot)
@@ -115,7 +116,7 @@ export class AccessorySystem {
         }
         usedGfx++;
         g.setPosition(x, y)
-          .setRotation(d.rotates === false ? 0 : (rollingHat ? head!.travel : a)) // rolling hat follows travel, not aim
+          .setRotation(d.rotates === false ? 0 : (rollingHat ? head!.travel : facing)) // rolling hat follows travel, not aim
           .setScale(animScale) // ride the body's jump/sink arc (animScale is forced to 1 while rolling, above)
           .setAlpha(alpha)
           .setDepth(depth)

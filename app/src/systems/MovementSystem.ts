@@ -2,7 +2,7 @@ import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STA
 import { spendStamina } from '../combat/stamina';
 import { events } from '../core/EventBus';
 import { applyEffect, Effects, TAG_SLOWED, TAG_STUNNED } from '../combat/Effect';
-import { SWIM_SPEED_STAT } from '../defs/traits';
+import { SWIM_SPEED_STAT, MOVE_SPEED_STAT } from '../defs/traits';
 import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, tileAt, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
 import { deckCanOccupy, deckTryMove, hullBlocksWorldPoint, hullRailPen, hullWoodClearance } from '../world/deckCollision';
@@ -182,6 +182,9 @@ export class MovementSystem {
         // (so a strong swimmer isn't slowed off the beach either). Land terrain is untouched. Spawned StatBlocks
         // seed multiplier stats at base 1 (MULTIPLIER_STAT_SEEDS); ?? 1 covers only an attribute-less body.
         if (water !== undefined) terrain *= e.attributes?.get(SWIM_SPEED_STAT) ?? 1;
+        // HASTE / BURDEN — the generic move-speed multiplier stat (a Kiai buff, a future slow-by-stat, a race
+        // trait): seeded 1 on every spawned StatBlock; ?? 1 covers only an attribute-less body
+        terrain *= e.attributes?.get(MOVE_SPEED_STAT) ?? 1;
         vx *= terrain;
         vy *= terrain;
         if (m.onLedge) { // balancing atop a low wall — a slow perch (movement-frames / MOVEMENT_AIR)

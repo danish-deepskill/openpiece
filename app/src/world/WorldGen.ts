@@ -333,6 +333,12 @@ export function generateLevel(rng: Rng): LevelLayout {
     let sy = px(HOME.cy + 8); // south, inside the r=13 isle
     for (let d = 8; d >= 4 && solidPx(sx, sy); d--) { sy = px(HOME.cy + d); }
     enemies.push({ x: sx, y: sy, boss: false, unit: 'unit.marineOfficer' });
+    // the SAMURAI — his duel partner, five tiles WEST (in his 260px sight), nudged back east if that lands on a
+    // house/stone. pirates vs marine: they engage each other on sight; both leave the watching player alone.
+    let kx = sx - px(5);
+    for (let d = 5; d >= 2 && solidPx(kx, sy); d--) kx = sx - px(d); // nudge east until the tile is clear
+    if (solidPx(kx, sy)) throw new Error('WorldGen: no clear tile for the samurai west of the officer'); // a layout bug, not a spawn-in-a-wall
+    enemies.push({ x: kx, y: sy, boss: false, unit: 'unit.samurai' });
   }
   // the NE DUEL SPOT — normally LUFFY (a hostile D-tier rubber brawler: Gomu fruit + straw hat, the
   // ai.luffy rush/charge duel target), posted at the TOP-RIGHT of the HOME island (the old Brute's spot),

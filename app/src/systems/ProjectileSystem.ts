@@ -1,6 +1,8 @@
 import { Abilities } from '../combat/Ability';
 import { applyEffect, Effects } from '../combat/Effect';
 import { harmableBy } from '../combat/targeting';
+import { DEFLECT_STAT } from '../defs/traits';
+import { BLOCK_DEFLECT_ARC, BLOCK_DEFLECT_CHANCE, guardCovers } from '../combat/guard';
 import { FX_COLOR, TILE } from '../config/constants';
 import { events } from '../core/EventBus';
 import type { Entity } from '../ecs/components';
@@ -50,7 +52,13 @@ export class ProjectileSystem {
       const wallT = this.wallSweep(x0, y0, x1, y1);
       // 2) the FIRST hostile body the segment crosses, up to wallT (so a wall in front shields the target)
       const owner = this.world.byId(pr.owner);
-      const bodyHit = owner ? this.bodySweep(e, owner, x0, y0, x1, y1, wallT) : null;
+      if (!owner) {
+        // the shooter (or the deflector who now owns it) is GONE: without an owner there is no harm predicate, and
+        // an inert ball flying through everyone is a silent failure — it fizzles instead
+        this.despawn(e, null);
+        continue;
+      }
+      const bodyHit = this.bodySweep(e, owner, x0, y0, x1, y1, wallT);
 
       // CLOSE-RANGE PASS-THROUGH (chance baked at FIRE time, AbilitySystem.closePass): a shot fired point-blank
       // can FUMBLE — phase THROUGH this body doing nothing (the reload's still spent, so it's punishable). Record
@@ -58,13 +66,36 @@ export class ProjectileSystem {
       // flying but still respects THIS segment's wall (jumping to the segment end skipped it: a point-blank-
       // against-a-wall fumble advanced the ball INTO the wall face, and a fast round tunneled cover outright).
       const fumbled = bodyHit && (pr.passChance ?? 0) > 0 && this.rng.chance(pr.passChance!);
+      // DEFLECT (the target's `deflectChance` stat — a shukuchi window, a Haki later): the ball TURNS at the point
+      // of contact and flies back at wherever its shooter is NOW, as the deflector's OWN shot — new owner (so the
+      // shooter is a legal target and the deflector isn't), a fresh range, and no pass-through fumble (a returned
+      // ball is a clean shot). Rolled on the seeded combat stream; the near-miss fumble is checked first.
+      if (bodyHit && !fumbled) {
+        const target = bodyHit.target;
+        // 1) the dash-deflect STAT (a shukuchi window, a Haki later): a true RETURN at wherever the shooter is NOW
+        const returnChance = target.attributes?.get(DEFLECT_STAT) ?? 0;
+        if (returnChance > 0 && this.rng.chance(returnChance)) {
+          const sx = owner.transform!.x; // transform: every shooter is a placed body
+          const sy = owner.transform!.y;
+          this.deflect(e, target, bodyHit.x, bodyHit.y, Math.atan2(sy - bodyHit.y, sx - bodyHit.x));
+          continue;
+        }
+        // 2) a raised GUARD facing the ball: a GLANCE — the ball ricochets along the blocker's facing, scattered
+        //    within ±BLOCK_DEFLECT_ARC (so it only sometimes finds the shooter); the other times the block stops it
+        //    as normal (resolveHit → resolveGuard → 'blocked'). Seeded roll (determinism).
+        if (guardCovers(target, bodyHit.x, bodyHit.y) && this.rng.chance(BLOCK_DEFLECT_CHANCE)) {
+          const facing = target.transform!.angle; // guardCovers proved the transform
+          this.deflect(e, target, bodyHit.x, bodyHit.y, facing + (this.rng.next() * 2 - 1) * BLOCK_DEFLECT_ARC);
+          continue;
+        }
+      }
       if (fumbled) {
         pr.hit.push(bodyHit.target.id);
         events.emit('fx:burst', { x: bodyHit.x, y: bodyHit.y, color: FX_COLOR.spark, n: 3, speed: 70 }); // a near-miss puff
       } else if (bodyHit) {
         t.x = bodyHit.x; // stop AT the body it struck
         t.y = bodyHit.y;
-        this.resolveHit(e, owner!, bodyHit.target);
+        this.resolveHit(e, owner, bodyHit.target);
         this.despawn(e, FX_COLOR.spark);
         continue;
       }
@@ -118,6 +149,26 @@ export class ProjectileSystem {
     }
     if (!best) return null;
     return { target: best, x: x0 + (x1 - x0) * bestF, y: y0 + (y1 - y0) * bestF };
+  }
+
+  /** Turn the ball at the point of contact toward `heading` as `deflector`'s OWN shot — new owner (so the old
+   *  shooter is a legal target and the deflector isn't), a fresh range, no pass-through fumble (a deflected ball
+   *  is a clean shot), the art turned with it, and a steel clang. Shared by the stat RETURN and the guard GLANCE. */
+  private deflect(e: Entity, deflector: Entity, hx: number, hy: number, heading: number): void {
+    const pr = e.projectile!;
+    const t = e.transform!;
+    const shape = Abilities.get(pr.ability).shape!; // a projectile only spawns from a boot-validated 'shot' row (range > 0, shotSpeed > 0)
+    const speed = Math.hypot(pr.vx, pr.vy) || 1;
+    pr.vx = Math.cos(heading) * speed;
+    pr.vy = Math.sin(heading) * speed;
+    pr.owner = deflector.id;
+    pr.hit = [];
+    pr.passChance = undefined;
+    pr.life = shape.range / shape.shotSpeed!; // a FULL range for the new trip (not the remaining life — a near-spent ball would fizzle a few px on)
+    t.x = hx;
+    t.y = hy;
+    t.angle = heading; // the art turns with the ball
+    events.emit('fx:burst', { x: hx, y: hy, color: FX_COLOR.spark, n: 10, speed: 180 }); // the steel clang
   }
 
   /** Land the shot through the shared resolver — same path as a melee contact, so guard/parry/Logia/combo/

@@ -145,7 +145,7 @@ export class WorldScene extends Phaser.Scene {
     const collision = new Collision(level.grid);
     const pathfinder = new Pathfinder(level.grid);
     const query = new SpatialQuery(world);
-    const fx = new FxSystem(this);
+    const fx = new FxSystem(this, world, this.viewPose); // swing visuals follow their swinger's drawn pose
     this.fx = fx;
     const damage = new Damage();
     const strikes = new StrikeResolver(damage, combatRng);
@@ -382,6 +382,7 @@ export class WorldScene extends Phaser.Scene {
         { key: '1', id: lo.slots[0] },
         { key: '2', id: lo.slots[1] },
         { key: '3', id: lo.slots[2] },
+        { key: 'C', id: lo.utility }, // the buff slot (a style's kiai, a fruit's transform, Armament later)
       ] as Array<{ key: string; id?: string }>)
         .filter((x) => !!x.id && lo.granted.has(x.id))
         .map((x) => ({ key: x.key, id: x.id as string, cd: lo.cd.get(x.id as string) ?? 0, cdMax: lo.cdMax.get(x.id as string) ?? 0 }));

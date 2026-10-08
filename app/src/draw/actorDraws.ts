@@ -216,6 +216,17 @@ function drawStretchLimb(g: Phaser.GameObjects.Graphics, ax: number, ay: number,
  * stowed). ONE home for this math — drawActor (procedural weapons) and WeaponSpriteSystem (sprite weapons)
  * both call it, so the drawn grip can never drift between the two substrates.
  */
+/** The body's ORIENTATION this frame: the aim — or, mid-swing, the swing's drawAngle (an arc TWISTS the whole
+ *  torso left→across→back). The ONE answer for anything that must sit ON the body rather than face the cursor
+ *  (shoulder armor, a cape): the same value drawActor lays the torso out with, so armor can't drift off the
+ *  shoulders it sits on. Hats keep the raw aim — they face where you look. */
+export function bodyDrawAngle(e: Entity): number {
+  const t = e.transform!; // callers hold a placed body (with('transform', …))
+  const m = e.melee;
+  const shape = m ? Abilities.get(m.ability).shape : undefined;
+  return m && shape ? swingPose(m, shape, swingGeomOf(e)).drawAngle : t.angle;
+}
+
 export function weaponAnchor(e: Entity): { x: number; y: number; angle: number } | undefined {
   const t = e.transform;
   if (!t) return undefined;
@@ -410,7 +421,7 @@ const drawActorImpl = (g: Phaser.GameObjects.Graphics, e: Entity, blocky: boolea
   // SURFACE SWIM: swimming (mode is now TRUTHFUL — set from the tile you're actually over, MovementSystem) and
   // NOT submerged (that's the full pose) and NOT mid-attack → the idle hands breaststroke instead of hanging.
   const surfaceSwim = e.mover?.mode === 'swim' && !e.mover.submerged && !pose;
-  const actSide = pose && !footLimb && shape ? activeSide(m!, shape.jabs ?? 1) : 0; // which HAND throws (flurry alternates)
+  const actSide = pose && !footLimb && shape ? activeSide(m!, shape) : 0; // which HAND throws (flurry alternates)
   // anatomy + garb (clothing color, the second channel chest armor will later cover) — used by the sleeves
   // in the hand loop below AND the torso/shoulder block after it
   const A = ANATOMY;

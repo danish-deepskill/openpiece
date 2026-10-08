@@ -251,6 +251,7 @@ export interface MeleeSwing {
   landed?: boolean; // grab-launch: the landing AoE has fired (latches to fire once, when the leap stops)
   leaptBack?: boolean; // on-hit recoil LEAP (Shock Kick) has fired for this swing (latches — one hop per kick)
   shotFired?: boolean; // a 'shot' swing has spawned its projectile(s) at the active cue (latches — one volley per shot)
+  volleysFired?: number; // how many of the ability's `volleys` cues have fired (a channel that looses shots mid-swing)
 }
 
 /** A ship hull instance (composite entity: hull stats from ShipHullDef + parts/cannons later). */

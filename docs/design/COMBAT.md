@@ -92,6 +92,26 @@ bosses** (multiple enemies combine into a giant) emerge in War events.
 - **Tags**: `state.logia.intangible`, `haki.armament.active`, `cc.feared`, `fruit.type.zoan`, … drive
   immunities, counters, and conditions (Armament tag lets a hit bypass `state.logia.intangible`).
 
+### Built (ledger — the generic seams the first duel pair landed, 2026-10-09)
+Each is DATA on a row + one generic engine rule; none knows the Samurai exists. The Haki layer lands on them.
+- **The C-slot buff** — `utility` on a style/fruit row → `loadout.utility`; the player's C, the brain's buff beat
+  on engagement (`ai/brains.tryUtility`). A buff = an ability with `grantEffect` + an Effect row of modifiers.
+  First row: Kiai (haste + attack + attack speed + halved combo recovery). Armament is the next customer.
+- **Named stats in one home** (`combat/stats.ts`): `moveSpeedMul`, `deflectChance`, `comboRecoveryMul`, the
+  attack-mobility and swim stats; multiplier stats seeded 1 at spawn and filled on restore.
+- **Attack speed scales the SWING**, not just the cooldown (`combat/phases.swingDuration`): tell-floored
+  (`TELL_FLOOR`) so high tiers stay parryable; never slows below the authored time (`SWING_SPEED_FLOOR`).
+- **Channels** (`AbilityDef.channel`): planted feet AND interruptible through the whole swing — a long
+  commitment bought with a short tell is breakable. A freeze (`state.stunned`) ends ANY swing.
+- **Flurries** (`pattern: 'flurry'`): N alternating sweeps timed to authored windows (`combat/hitVolume.flurryWindows`
+  from a plan string); the cut count is the windows (`swing.flurryCuts`), boot-validated to tile the active phase.
+- **Volleys** (`AbilityDef.volleys`): shot rows loosed mid-swing at progress cues, forward ± spread.
+- **Per-volume damage** (`HitVolume.damageMul`): a finisher's crescent can hit harder than the blade's edge.
+- **Projectile deflect**: the `deflectChance` stat returns a ball at its shooter (the shukuchi window); a raised
+  guard GLANCES it off at `BLOCK_DEFLECT_CHANCE` within `±BLOCK_DEFLECT_ARC` of the facing (`combat/guard`).
+- **Body-mounted accessories** (`AccessoryDef.follows: 'body'`): ride the torso's swing twist
+  (`draw/actorDraws.bodyDrawAngle`); hats face the cursor. First procedural looks: the kasa and the sode.
+
 ## Architecture decision — everything is an Ability; "fundamental" = which grant list
 
 Two ORTHOGONAL questions people conflate (settled 2026-07):

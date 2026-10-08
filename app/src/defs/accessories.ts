@@ -26,6 +26,10 @@ export interface AccessoryDef extends Def {
   offset?: number;
   /** Rotate to face the aim direction (a sprite's "forward" is up). Default true. */
   rotates?: boolean;
+  /** WHAT it turns with: 'aim' (default) = the cursor/facing, right for a hat; 'body' = the torso's live orientation,
+   *  which TWISTS through a swing (draw/actorDraws.bodyDrawAngle) — right for anything mounted ON the body (shoulder
+   *  armor, a cape), else the piece stands still while the shoulders under it turn. */
+  follows?: 'aim' | 'body';
   /** Drawn over the body (hat) or under it (cape/back-item). Default 'over'. */
   layer?: 'over' | 'under';
   modifiers?: Modifier[];
@@ -40,6 +44,13 @@ export const Accessories = new Registry<AccessoryDef>('Accessories', (a) => {
 Accessories.registerAll([
   // the hero's icon — FOUND in the cutlass house (WorldGen loot), not spawn-worn (id grammar: accessory.<camelCase>)
   { id: 'accessory.strawHat', name: 'Straw Hat', slot: 'head', visual: { kind: 'sprite', art: 'accessories/examples/straw_hat.png', scale: 1.6 } },
+  // the samurai's KASA — the first PROCEDURAL accessory (draw/accessoryDraws.kasa): no art day needed for a cone of
+  // straw. Turns with the aim like every hat (its ribs show the turn). A sprite flip later is one data edit.
+  { id: 'accessory.kasa', name: 'Kasa', slot: 'head', visual: { kind: 'procedural', draw: 'kasa' } },
+  // the samurai's SODE (shoulder guards) — a VISUAL chest piece, no modifiers: armor-with-stats is backlog #4's
+  // call. follows:'body' — the plates ride the torso's LIVE orientation, which twists through a swing, so they
+  // stay on the shoulders mid-cut instead of standing still while the shoulders turn under them.
+  { id: 'accessory.sode', name: 'Sode', slot: 'chest', visual: { kind: 'procedural', draw: 'sode' }, follows: 'body' },
   // the Brawler's helmet (the D- sword duelist) — the plain grey visor
   { id: 'accessory.soldierHelmet', name: 'Soldier Helmet', slot: 'head', visual: { kind: 'sprite', art: 'hats/soldier_helmet.png', scale: 1.6 } },
   // the Brute's helmet — the horned one, marks the F+ fodder variant at a glance

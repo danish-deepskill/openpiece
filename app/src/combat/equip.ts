@@ -85,6 +85,7 @@ export function refreshLoadout(e: Entity): void {
   let heavy: ContentId = granted.has(BASE_KIT.heavy) ? BASE_KIT.heavy : '';
   let dash: ContentId = granted.has(BASE_KIT.dash) ? BASE_KIT.dash : '';
   let slots: ContentId[] = [];
+  let utility: ContentId | undefined; // the C buff slot — a style's, overridden by a fruit's (the fruit is the louder power)
 
   if (eq?.weapon) {
     const d = Weapons.get(eq.weapon);
@@ -109,12 +110,20 @@ export function refreshLoadout(e: Entity): void {
       granted.add(d.heavy);
       if (!eq.weapon) heavy = d.heavy;
     }
+    if (d.utility) {
+      granted.add(d.utility);
+      utility = d.utility;
+    }
   }
   if (eq?.fruit) {
     const d = Fruits.get(eq.fruit);
     granted.add(d.primary);
     if (d.heavy) granted.add(d.heavy);
     for (const s of d.slots) granted.add(s);
+    if (d.utility) {
+      granted.add(d.utility);
+      utility = d.utility;
+    }
     primary = d.primary; // the fruit's power takes over the LIGHT attack while held…
     if (d.heavy) heavy = d.heavy; // …and the HEAVY (toggle back to fist/kick with R)
     slots = [...d.slots];
@@ -125,6 +134,7 @@ export function refreshLoadout(e: Entity): void {
   lo.heavy = heavy;
   lo.dash = dash;
   lo.slots = slots;
+  lo.utility = utility;
 }
 
 /** Does the entity hold a RANGED weapon (a musket)? The one place input, AI, and draw ask "can this actor

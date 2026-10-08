@@ -7,6 +7,7 @@ import type { World } from '../ecs/World';
 import { leapBack } from './MovementSystem';
 import type { StrikeResolver } from './StrikeResolver';
 import { SpatialQuery } from '../world/SpatialQuery';
+import { TAG_STUNNED } from '../combat/Effect';
 
 /** Airborne window (s) for an on-hit recoil LEAP (the Shock Kick's jump-back). Matches the jump feel — long
  *  enough to read as a hop-arc, short enough to snap back to firing quickly. The DISTANCE is the ability's
@@ -34,6 +35,12 @@ export class MeleeSystem {
     for (const e of [...this.world.with('melee', 'transform')]) {
       const m = e.melee;
       if (!m) continue; // a hit earlier this same frame may have cancelled this swing (hitstun) — skip it
+      if (e.tags?.has(TAG_STUNNED)) {
+        // a FROZEN body swings nothing: a stun (the wall-slam's electrified pin, a future freeze) ends any swing in
+        // flight — else a six-second channel kept cutting and loosing slashes while its owner stood paralysed
+        delete (e as Entity).melee;
+        continue;
+      }
       m.t += dt;
       this.resolve(e);
       // detach: presence-as-state (widen past the narrowing) — but HOLD a launched swing whose landing
@@ -83,7 +90,7 @@ export class MeleeSystem {
         const ot = o.transform!;
         if (!volumeHits(v, frame, ot.x, ot.y, ot.r)) continue; // steel/slash hasn't reached them yet
         hits.push(o.id); // count the contact even if it phases (Logia), so it isn't re-tested every frame
-        const landed = this.strikes.hit(e, o, d, base, kx, ky, d.shake ?? 0, d.stun ?? 0);
+        const landed = this.strikes.hit(e, o, d, base * (v.damageMul ?? 1), kx, ky, d.shake ?? 0, d.stun ?? 0); // this VOLUME's share of the ability's damage
         // ON-HIT LEAP-BACK (the Shock Kick's shove-off): only when the kick CONNECTS does the kicker jump
         // backward (a whiff = no free escape). A jump-style hop (air arc), not a flat slide — see leapBack.
         if (landed && d.recoilPush && e.mover && !m.leaptBack) {

@@ -5,6 +5,8 @@ import { events, type SwingFx } from '../core/EventBus';
 import { clamp, rand } from '../core/math';
 import { Pool } from '../core/Pool';
 import { addText } from '../ui/text';
+import type { World } from '../ecs/World';
+import type { ViewPose } from './ViewPose';
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: number; r: number }
 interface Corpse { x: number; y: number; r: number; color: number; life: number; max: number }
@@ -18,6 +20,9 @@ export class FxSystem {
   private readonly gfxGround: Phaser.GameObjects.Graphics; // ground-plane layer (Depth.GroundFx) — splash rings draw beneath units
   private particles: Particle[] = [];
   private swings: SwingFx[] = [];
+  /** Each followed swing visual's CUE in swing-seconds (its payload `delay` at emit) — the swing's own clock drives
+   *  it from there, so a gated/paused sim freezes the wave with the blade and two accumulators never drift. */
+  private readonly cueOf = new WeakMap<SwingFx, number>();
   private corpses: Corpse[] = [];
   private texts: DmgText[] = [];
   private spots: Spot[] = [];
@@ -30,7 +35,11 @@ export class FxSystem {
     this.textRot = rot;
   }
 
-  constructor(private readonly scene: Phaser.Scene) {
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly world: World, // swing visuals FOLLOW their swinger's body (and die with its swing)
+    private readonly view: ViewPose, // … at the DRAWN pose, so a crescent never lags the interpolated body
+  ) {
     this.gfx = scene.add.graphics().setDepth(Depth.Fx);
     this.gfxGround = scene.add.graphics().setDepth(Depth.GroundFx); // ground-plane FX (splash rings) — UNDER units
     // the sim EMITS fx events; this presentation system is their one subscriber (DESIGN_PATTERNS §7)
@@ -69,6 +78,7 @@ export class FxSystem {
   }
 
   swing(o: SwingFx): void {
+    this.cueOf.set(o, o.delay ?? 0);
     this.swings.push(o);
   }
 
@@ -105,7 +115,30 @@ export class FxSystem {
     }
     this.particles = this.particles.filter((p) => p.life > 0);
 
-    for (const s of this.swings) s.life -= dt;
+    for (const s of this.swings) {
+      if (s.follow !== undefined) {
+        // FOLLOW the swinger: a crescent rides the body it belongs to (knockback, Footwork). When that swing is
+        // GONE (ended, cancelled, replaced by the next chain step): a visual already showing fades out where it
+        // is; one still WAITING on its cue never shows — a broken channel leaves no ghost waves behind.
+        const e = this.world.byId(s.follow);
+        const sw = e?.melee;
+        if (e && sw && (s.ability === undefined || sw.ability === s.ability)) {
+          s.x = this.view.x(e);
+          s.y = this.view.y(e);
+          // derive cue + life from the SWING's clock (m.t), not a second accumulator: a paused/dead-screen sim
+          // holds m.t, so the visual holds too, and nothing drifts between the two
+          const cue = this.cueOf.get(s) ?? 0;
+          s.delay = cue - sw.t;
+          s.life = s.max - Math.max(0, sw.t - cue);
+          continue;
+        } else if ((s.delay ?? 0) > 0) {
+          s.life = 0;
+          continue;
+        }
+      }
+      if ((s.delay ?? 0) > 0) s.delay = (s.delay ?? 0) - dt; // waiting for its cue — life holds
+      else s.life -= dt;
+    }
     this.swings = this.swings.filter((s) => s.life > 0);
 
     for (const c of this.corpses) c.life -= dt;
@@ -154,7 +187,7 @@ export class FxSystem {
       layer.lineStyle(rg.width * (1 - prog) + 1, rg.color, rg.alpha * clamp(rg.life / rg.max, 0, 1)); // thick+opaque early, thin+faint late
       layer.strokeCircle(rg.x, rg.y, cur);
     }
-    for (const s of this.swings) this.drawSwing(s);
+    for (const s of this.swings) if ((s.delay ?? 0) <= 0) this.drawSwing(s);
     for (const p of this.particles) {
       g.fillStyle(p.color, clamp(p.life / p.max, 0, 1));
       g.fillCircle(p.x, p.y, p.r);
@@ -183,14 +216,20 @@ export class FxSystem {
       // a fixed-length crescent that CHASES the blade: a constant-size swoosh whose leading edge is the
       // blade's current angle and whose tail trails a fixed span behind — a motion trail, not a filling fan.
       const half = s.arc ?? 0.45;
-      const prog = 1 - k; // 0 at strike start → 1 at end
-      const start = s.angle + half; // edge the weapon sweeps from
-      const lead = start - 2 * half * prog; // blade's current (leading) edge
+      const cuts = Math.max(1, s.cuts ?? 1);
+      // a FLURRY whips the crescent back and forth `cuts` times over its life (cuts 1 = the plain one-way sweep);
+      // each cut sweeps the full arc, alternating direction, matching the flurry motion the blade itself runs
+      const whole = Math.min(cuts - 1e-6, (1 - k) * cuts); // 0 at strike start → cuts at end
+      const c = Math.floor(whole);
+      const u = whole - c; // progress within this cut
+      const dir = c % 2 === 0 ? 1 : -1;
+      const start = s.angle + dir * half; // edge this cut sweeps from
+      const lead = start - 2 * dir * half * u; // blade's current (leading) edge
       const trailLen = Math.min(2 * half, 0.6);
-      const tail = Math.min(start, lead + trailLen); // fixed-length tail, clamped to the start edge
+      const tail = dir > 0 ? Math.min(start, lead + trailLen) : Math.max(start, lead - trailLen); // fixed-length tail behind the lead
       g.lineStyle(6, s.enemy ? 0xe65a46 : 0xffffff, (s.enemy ? 0.8 : 0.7) * (0.4 + 0.6 * k));
       g.beginPath();
-      g.arc(s.x, s.y, s.len, lead, tail, false);
+      g.arc(s.x, s.y, s.len, Math.min(lead, tail), Math.max(lead, tail), false);
       g.strokePath();
     }
   }

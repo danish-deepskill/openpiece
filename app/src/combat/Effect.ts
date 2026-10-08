@@ -2,6 +2,7 @@ import { Registry, type ContentId, type Def } from '../core/Registry';
 import { modifierProblem, type Modifier } from './Modifier';
 import { syncDerivedResources } from './attributes';
 import type { Entity } from '../ecs/components';
+import { COMBO_RECOVERY_STAT, DEFLECT_STAT, MOVE_SPEED_STAT } from '../defs/traits';
 
 /**
  * A timed (or instant) gameplay effect: a bundle of Modifiers and/or Tags applied to a target for a
@@ -82,6 +83,31 @@ Effects.registerAll([
     durationSec: 4,
     grantTags: ['haki.armament.active'],
     modifiers: [{ stat: 'atk', op: 'mulPct', value: 0.2, source: 'haki.armament' }],
+  },
+  // DEFLECTING — the Samurai's shukuchi window (0.3s): NOT i-frames. Melee lands as normal; a PROJECTILE that
+  // would strike him has `deflectChance` odds of being turned back at its shooter (ProjectileSystem reads the
+  // stat). Invisible like invuln — the dash itself is the tell.
+  {
+    id: 'effect.deflecting',
+    name: 'Deflecting',
+    durationSec: 0.3,
+    modifiers: [{ stat: DEFLECT_STAT, op: 'flat', value: 0.5, source: 'deflect.shukuchi' }],
+  },
+  // KIAI — the Samurai's engagement buff (ability.kiai): haste + a little bite, visibly labelled so the opponent
+  // and the watcher both see the charge coming. The move-speed stat is the generic multiplier MovementSystem reads
+  // (MOVE_SPEED_STAT) — mulPct so it stacks with a sprint or a trait instead of overriding them.
+  {
+    id: 'effect.kiai',
+    name: 'Kiai',
+    durationSec: 4,
+    grantTags: ['buff.kiai'],
+    modifiers: [
+      { stat: MOVE_SPEED_STAT, op: 'mulPct', value: 0.3, source: 'buff.kiai' },
+      { stat: 'atk', op: 'mulPct', value: 0.1, source: 'buff.kiai' }, // DAMAGE: +10% — a little bite, not a power spike
+      { stat: 'atkSpeed', op: 'mulPct', value: 0.3, source: 'buff.kiai' }, // ATTACK SPEED: +30% — faster cuts AND shorter cooldowns while the shout lasts
+      { stat: COMBO_RECOVERY_STAT, op: 'mulPct', value: -0.5, source: 'buff.kiai' }, // COMBO RECOVERY: the post-combo lockout HALVED — the three-cut chain comes back twice as fast
+    ],
+    status: { label: 'Kiai', color: 0xffb347 },
   },
   // ── CROWD CONTROL (the two CC classes × the electric theme — backlog #16's "shocked" vocabulary) ──────────
   // STAGGERED — the universal hitstun every landed attack applies (duration = the ability's `stun`, overridden

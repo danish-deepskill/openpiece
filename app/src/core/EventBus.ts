@@ -1,3 +1,4 @@
+import type { ContentId } from './Registry';
 /**
  * Typed cross-system event contract. Discrete one-off signals go here; continuous
  * per-frame state goes through the Phaser registry instead (see WorldScene).
@@ -15,6 +16,16 @@ export interface SwingFx {
   arc?: number; // half-angle of the melee swing visual (matches the ability's hit cone)
   enemy?: boolean;
   thin?: boolean;
+  /** A FLURRY trail: the crescent whips across the arc this many times over its life (default 1 — one sweep). */
+  cuts?: number;
+  /** Seconds to WAIT before the visual starts (and before `life` ticks) — a wave timed to a flurry's last cut. */
+  delay?: number;
+  /** The SWINGER's entity id: the visual FOLLOWS that body's drawn pose (a knocked-back or Footwork-shuffling
+   *  swinger carries its crescents with it), and a visual still WAITING on its cue dies with the swing (a cancelled
+   *  channel shows no ghost waves). Unset ⇒ a fixed world point (the instant pistol line). */
+  follow?: number;
+  /** With `follow`: the swing this visual belongs to — a different swing on the same body ends it. */
+  ability?: ContentId;
 }
 
 export interface GameEvents {

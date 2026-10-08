@@ -86,7 +86,7 @@ openpiece/
       defs/                     # content rows: units, bodies, factions, aiProfiles, layers, ships, terrains,
         ...                     #   structures, decks, accessories, visual, items (ItemRef spine + ItemStack; BASE_KIT in units.ts),
         ...                     #   materials (the first stackable commons; per-def stackLimit) — data only
-      combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier,
+      combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier, stats (the named stat ids + multiplier seeds — one home),
         ...                     #   swing (motion registry + shared geom), hitVolume (timed strike volumes),
         ...                     #   phases (windup/active/recover clock), guard (block/parry/feint + posture),
         ...                     #   equip, stamina, targeting, apparel, attributes

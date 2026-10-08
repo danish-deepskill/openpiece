@@ -226,6 +226,11 @@ AIProfiles.registerAll([
   // The counter is the FEINT (bait the guard, then punish the whiffed block). EXPERIMENT: also a TACTICAL
   // fighter — it breaks off when its stamina runs low (≤30%), WALKS back to spacing to regen (no sprint, or
   // it'd drain the bar it's refilling), and re-engages fresh (≥75%). The rhythm: pressure → back off → breathe.
+  // SAMURAI — a RUSHER with a duelist's hands, built to CLOSE on a kiter and win the exchange: sharp reaction, a
+  // sprint-charge that crosses the musket's 230–400px band in one go (chargeMax/Dur), real block AND parry odds
+  // (the officer's buttstroke/kick are melee swings — parryable), specialChance so the iai punctuates the kesa
+  // chain, and a regroup band so he doesn't empty the bar mid-duel. Kiai is fired by the generic buff beat.
+  { ...BASE, id: 'ai.samurai', name: 'Samurai', approach: 'rush', sight: 260, cone: 1.2, reaction: 0.12, leadAim: 0.2, spotDelay: 0.8, chargeMax: 320, chargeDur: 0.8, chargeCd: 1.4, chargeStam: 12, blockChance: 0.3, parryChance: 0.3, specialChance: 0.35, regroupBelowStam: 0.15, reengageStam: 0.6 },
   { ...BASE, id: 'ai.master', name: 'Guard Master', approach: 'guard', sight: 230, reaction: 0.1, guardRadius: 520, leash: 900, blockChance: 0.6, parryChance: 0, regroupBelowStam: 0.3, reengageStam: 0.75 },
   { ...BASE, id: 'ai.coward', name: 'Coward', approach: 'kite', sight: 210, leash: 9999, loseSightSec: 1.5, preferredRange: 9999, fleeBelowHp: 1 },
   // townsfolk: wander their spot, defend it from anything hostile that comes close, flee when badly hurt — never hunt

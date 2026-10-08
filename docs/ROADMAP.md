@@ -47,6 +47,11 @@ Design pass #21 landed (`ITEMS.md` — the item substrate: stacks/instances/hold
 (stacks + the `Items` service + materials) and slice 3 (bag/chest/ship hold unified on one `Hold`, the
 transfer/drop/split/equip verbs, the DOM inventory panel speaking INTENTS into InputSystem) LANDED 2026-09-17;
 slice 2 (instances) + 4 (ownership) wait on their triggers; loot-a-body waits on corpses persisting as entities.
+**The first duel pair LANDED 2026-10-09:** the Samurai (C, pirates — neutral to you) vs the Marine Officer on the
+home island, the first fight the world stages on its own. Built as data on six GENERIC combat seams the Haki layer
+will reuse (ledger in `COMBAT.md` → Built): the C-slot buff, attack speed scaling swings, channels, mid-swing
+volleys, per-volume damage, projectile deflect + the block glance. Flagged for later: the sword rows' `range: 0`,
+flat defense vs multi-hit moves, a parried ball's return.
 
 ## Foundation-audit ledger (repo-wide, 2026-07 — baseline d7d5afb)
 

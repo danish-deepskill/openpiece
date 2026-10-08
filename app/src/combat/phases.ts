@@ -2,6 +2,7 @@ import type { ContentId } from '../core/Registry';
 import { Weapons, type WeaponDef, type WeaponClass } from '../defs/layers';
 import { Abilities, type AbilityDef } from './Ability';
 import type { Entity } from '../ecs/components';
+import { SWING_SPEED_FLOOR, TELL_FLOOR } from '../config/constants';
 
 /**
  * THE ATTACK PHASE CLOCK — every attack's duration splits into three named regions (the Deepwoken/Sekiro
@@ -105,6 +106,16 @@ export function kitWeapon(e: Entity, d: AbilityDef): WeaponDef | undefined {
 export function resolvePhases(e: Entity, d: AbilityDef): AttackPhases {
   if (d.shape?.phases) return d.shape.phases;
   return WEIGHT_PHASES[kitWeapon(e, d)?.weaponClass ?? 'light'];
+}
+
+/** How long a swing LASTS for a wielder: the authored swingTime compressed by attack speed (never stretched — see
+ *  SWING_SPEED_FLOOR), but a readable tell is never compressed below TELL_FLOOR seconds of windup. A tell authored
+ *  under the floor (a 0.07s jab) is not a telegraph and scales freely. Pure, so the rule is testable headless and
+ *  the HUD/AI could predict a swing from the same math. */
+export function swingDuration(authored: number, atkSpeed: number, ph: AttackPhases): number {
+  const scaled = authored / Math.max(SWING_SPEED_FLOOR, atkSpeed, 0.1);
+  if (authored * ph.windup <= TELL_FLOOR || ph.windup <= 0) return scaled; // never a readable tell → free scaling
+  return Math.max(scaled, TELL_FLOOR / ph.windup); // compress, but the windup stays ≥ the floor
 }
 
 /** Which phase the attack is in at progress p∈[0,1] — the one shared clock read (melee gating, the future

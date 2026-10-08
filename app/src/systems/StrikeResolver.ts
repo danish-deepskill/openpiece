@@ -26,7 +26,7 @@ export class StrikeResolver {
   /** Ability `d`'s base damage for attacker `e`: attribute-scaled (damageStat) + flat bonus + combo (≤ COMBO_CAP). */
   baseDamage(e: Entity, d: AbilityDef): number {
     const combo = Math.min(e.combatant?.combo ?? 0, COMBO_CAP);
-    return (d.damageStat ? e.attributes?.get(d.damageStat) ?? 0 : 0) + (d.damageFlat ?? 0) + combo;
+    return ((d.damageStat ? e.attributes?.get(d.damageStat) ?? 0 : 0) + (d.damageFlat ?? 0) + combo) * (d.damageMul ?? 1);
   }
 
   /**
@@ -117,9 +117,11 @@ export class StrikeResolver {
       const phase = swing ? phaseAt(swing.phases, swing.dur > 0 ? swing.t / swing.dur : 1) : undefined;
       if (!swing) {
         applyEffect(o, 'effect.staggered', 'hit', stun); // not swinging → a jab still STAGGERS (slowed-class, not a freeze)
-      } else if (phase === 'windup') {
+      } else if (phase === 'windup' || Abilities.get(swing.ability).channel) {
         // WINDUP → interruptible, but PROBABILISTICALLY by weight (Model D): a lighter hit only sometimes clips
         // the swing-arm and cancels a heavier windup. Roll on the seeded `combat` stream (determinism).
+        // A CHANNEL (`channel`) stays breakable through its WHOLE swing by the same roll: commitment is a window
+        // bought with a tell, and six seconds bought with a 0.4s tell is immunity, not a trade.
         const atk = kitWeapon(e, d)?.weaponClass ?? 'light';
         const def = kitWeapon(o, Abilities.get(swing.ability))?.weaponClass ?? 'light';
         if (this.rng.chance(interruptChance(atk, def))) {
@@ -128,7 +130,7 @@ export class StrikeResolver {
         }
         // roll failed → the heavier swing shrugs off the clip and plays out (you traded)
       }
-      // active/recover → COMMITTED: no cancel, no stun — the swing plays out and trades
+      // active/recover of an ORDINARY swing → COMMITTED: no cancel, no stun — the swing plays out and trades
     }
     this.alertAI(o, e, landed);
     return landed; // the honest outcome — consumers (Shock Kick leap-back, charged-round procs) gate on a real connect

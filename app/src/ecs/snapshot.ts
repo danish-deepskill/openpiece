@@ -1,6 +1,8 @@
 import { actorBrain } from '../ai/brains';
 import { StatBlock, type StatBlockSnapshot } from '../combat/StatBlock';
 import { TagSet } from '../combat/TagSet';
+import { MULTIPLIER_STAT_SEEDS } from '../defs/traits';
+import type { StatId } from '../combat/Modifier';
 import type { ContentId } from '../core/Registry';
 import { AIProfiles } from '../defs/aiProfiles';
 import type { Blackboard, ComponentName, Components, Entity, Loadout } from './components';
@@ -102,8 +104,15 @@ function snapComponent(name: ComponentName, value: NonNullable<Components[Compon
  *  previous world. Casts are the serialization boundary's untyped-input narrowing, localized to this arm. */
 function restoreComponent(name: ComponentName, raw: unknown): unknown {
   switch (name) {
-    case 'attributes':
-      return StatBlock.restore(raw as StatBlockSnapshot);
+    case 'attributes': {
+      // MIGRATION: a save from before a multiplier stat existed restores it ABSENT → StatBlock reads 0 → a frozen
+      // walker / ×0.1 lockouts. Seed every missing multiplier at its neutral 1 (the Spawner's rule), never trust age.
+      const snap = raw as StatBlockSnapshot;
+      const have = new Set(snap.base.map(([k]) => k));
+      const base: Array<[StatId, number]> = [...snap.base];
+      for (const [k, v] of Object.entries(MULTIPLIER_STAT_SEEDS)) if (!have.has(k)) base.push([k, v]);
+      return StatBlock.restore({ ...snap, base });
+    }
     case 'tags': {
       const t = new TagSet();
       for (const s of raw as string[]) t.add(s);

@@ -1,5 +1,7 @@
 import { Registry, type ContentId, type Def } from '../core/Registry';
-import type { HitVolume } from './hitVolume';
+import { SWING_SPEED_FLOOR } from '../config/constants';
+import { tierStats } from './PowerTier';
+import { flurryWindows, type HitVolume } from './hitVolume';
 import type { StatId } from './Modifier';
 import type { AttackPhases } from './phases';
 
@@ -31,7 +33,7 @@ export interface AbilityShape {
    *  = a round lead shot (with an electric crackle variant when the round procs). Mutually exclusive with
    *  `shotArt` (art wins if both set). A proc ball keeps art out of the repo for simple shapes + lets a variant
    *  (electric) recolor without a second file. */
-  shotProc?: 'ball';
+  shotProc?: 'ball' | 'slash'; // 'slash' = a flying crescent (a wind cut)
   /** 'shot' only: on-screen size of the drawn projectile (px diameter). Default 6. Visual only — the hit
    *  radius is the ball's own tiny transform.r; a big cannonball art can still be a small point-hit, or set
    *  the projectile's r via a future field. */
@@ -53,16 +55,19 @@ export interface AbilityShape {
    *  effect row, zero new fields. The renderer themes the charged ball by the effect's status color. */
   procEffect?: { chance: number; effect: ContentId; dur: number; damageMult?: number };
   /** Hit shape: 'arc' = swing (sweep); 'line' = stab (thrust); 'mixed' = random; 'stretch' = Gomu rubber arm;
-   *  'gore' = headbutt capsule; 'axe' = overhead axe-kick (the limb rises/scales UP, then slams an AoE straight down). */
-  pattern?: 'arc' | 'line' | 'mixed' | 'stretch' | 'gore' | 'axe';
+   *  'gore' = headbutt capsule; 'axe' = overhead axe-kick (the limb rises/scales UP, then slams an AoE straight down);
+   *  'flurry' = `jabs` rapid ALTERNATING blade sweeps through the active phase (a thousand-cuts channel). */
+  pattern?: 'arc' | 'line' | 'mixed' | 'stretch' | 'gore' | 'axe' | 'flurry';
   width?: number; // 'line' corridor half-width (px)
-  /** Melee swing duration (s): the window the animated fist/blade is a live hitbox. Default 0.18. */
+  /** Melee swing duration (s) at attack speed 1: the window the animated fist/blade is a live hitbox. Default 0.18.
+   *  The REAL duration is swingTime / atkSpeed, floored so a readable tell never drops under TELL_FLOOR
+   *  (combat/phases.swingDuration) — a faster unit swings faster, not just recovers faster. */
   swingTime?: number;
   /** CHARGE-HOLD (arc swings): snap the blade to its cocked-back load EARLY in the windup, then HOLD it there
    *  until the cut — a Sekiro-style "charging up" tell that reads unmistakably (vs a linear load that drifts).
    *  For big committed swings (the sword finisher). Default off (a linear load). */
   chargeHold?: boolean;
-  jabs?: number; // 'stretch' flurry: number of rapid jabs (Gomu Gatling); a target can be hit once per jab
+  jabs?: number; // a SYNTHESIZED flurry's cut count ('stretch' Gomu Gatling): N once-per-target windows + alternating hands. A 'flurry' with authored hitVolumes derives its count from them instead (swing.flurryCuts)
   /** 'stretch' style: 'punch' cocks back then snaps out; 'grab' reaches forward then retracts (Gomu Rocket). */
   stretchMode?: 'punch' | 'grab';
   /** Which limb strikes — purely visual (a fist/hand vs a kicking foot/boot); the motion + hitbox are the same. */
@@ -105,6 +110,8 @@ export type AbilityTrigger = 'tap' | 'hold' | 'combo';
 
 /** AI ROLE tags (AbilityDef.tags) — the brain scans the loadout for these (one home for the strings):
  *  pointBlank = the ranged close-range answer (a scatter blast); disengage = the space-maker (a shove-off kick). */
+
+
 export const AI_ROLE_POINT_BLANK = 'ai.role.pointBlank';
 export const AI_ROLE_DISENGAGE = 'ai.role.disengage';
 
@@ -132,6 +139,20 @@ export interface AbilityDef extends Def {
   hitFx?: number;
   damageStat?: StatId; // base damage read from the user's attributes (e.g. 'atk')
   damageFlat?: number;
+  /** Scales the base damage (stat + flat) of EVERY hit this ability lands — a multi-hit move's per-cut share
+   *  (8 cuts × 0.3 ≈ 2.4 full hits), the mirror of procEffect.damageMult for rounds. Default 1; boot-validated > 0. */
+  damageMul?: number;
+  /** VOLLEYS: shot abilities this swing LOOSES mid-flight — each fires ONCE when the swing's progress crosses `at`
+   *  (a fraction of the swing, ascending), FORWARD along the swing's aim, scattered by up to ±`spread` rad (seeded
+   *  combat stream) so a volley fans a little instead of stacking on one line. Each `ability` is a 'shot' row of
+   *  its own (its damage/speed/look live there; it needs no grant). The generic seam for any channel that throws
+   *  things while swinging — a wind flurry, a Rankyaku kick storm. Boot-validated. */
+  volleys?: { at: number; ability: ContentId; spread?: number }[];
+  /** A CHANNEL — two consequences of one concept: (1) it ignores the wielder's attack-mobility trait (combat/
+   *  attackMove) — feet planted for the whole thing, so walking out of it is a counterplay; (2) it stays
+   *  INTERRUPTIBLE through its whole swing (StrikeResolver's weight roll, not windup-only — a long commitment bought
+   *  with a short tell must be breakable). Default false: an ordinary swing moves per the trait and trades once active. */
+  channel?: boolean;
   knockback?: number;
   /** WALL-SLAM proc (the marine Buttstroke): `chance` (0..1) that this hit's knockback is replaced by a LONG one
    *  (`knockback` px/s). Two outcomes, both electric (statuses = EFFECT rows, backlog #16): SLAMMING a wall
@@ -194,6 +215,35 @@ export interface AbilityDef extends Def {
 export const Abilities = new Registry<AbilityDef>('Abilities', (a) => {
   if (a.cooldown < 0) return 'cooldown must be ≥ 0';
   if ((a.costStam ?? 0) < 0) return 'costStam must be ≥ 0';
+  if (a.damageMul !== undefined && !(a.damageMul > 0)) return `damageMul must be > 0 (got ${a.damageMul})`;
+  if (a.volleys && !a.shape) return 'volleys need a shape (they are loosed from a swing in flight)';
+  if (a.shape?.swing === 'shot' && !(a.shape.range > 0)) return `a 'shot' ability needs range > 0 (its life is range / shotSpeed; got ${a.shape.range})`;
+  if (a.shape?.shotProc === 'slash' && a.shape.procEffect) return "shotProc 'slash' has no charged (proc) texture yet — use 'ball' or drop procEffect";
+  if (a.shape?.pattern === 'flurry' && a.shape.hitVolumes && a.shape.phases) {
+    // the authored windows ARE the cuts (swing.flurryCuts): they must tile the active phase back to back, or the
+    // whipping blade and the live hitbox drift apart (and a stray `jabs` must not disagree with them)
+    const vols = a.shape.hitVolumes;
+    const w = a.shape.phases.windup;
+    const end = w + a.shape.phases.active;
+    if (a.shape.jabs !== undefined && a.shape.jabs !== vols.length) return `a flurry's jabs (${a.shape.jabs}) must equal its authored windows (${vols.length}) — or drop jabs`;
+    for (let i = 0; i < vols.length; i++) {
+      const v = vols[i]!; // index-bounded loop
+      if (!v.active) return `flurry window #${i} needs an active span`;
+      const want0 = i === 0 ? w : vols[i - 1]!.active![1];
+      if (Math.abs(v.active[0] - want0) > 1e-6) return `flurry window #${i} starts at ${v.active[0]}, expected ${want0.toFixed(4)} (windows must tile the active phase)`;
+    }
+    const last = vols[vols.length - 1]!.active![1];
+    if (Math.abs(last - end) > 1e-6) return `flurry windows end at ${last}, expected the active phase's end ${end.toFixed(4)}`;
+  }
+  if (a.volleys) {
+    let prev = -1;
+    for (const v of a.volleys) {
+      if (!(v.at >= 0 && v.at <= 1)) return `volley.at must be in [0, 1] (got ${v.at})`;
+      if (v.at < prev) return 'volleys must be in ascending `at` order';
+      if (v.spread !== undefined && !(v.spread >= 0)) return `volley.spread must be ≥ 0 (got ${v.spread})`;
+      prev = v.at;
+    }
+  }
   if (a.shape && a.shape.range < 0) return 'shape.range must be ≥ 0';
   if (a.shape?.swing === 'shot' && !((a.shape.shotSpeed ?? 0) > 0)) return `a 'shot' ability needs shotSpeed > 0 (got ${a.shape.shotSpeed})`;
   // an authored 0 makes the swing clock divide by zero (t/dur → NaN: the ball never fires, the swing never ends);
@@ -234,7 +284,11 @@ export const Abilities = new Registry<AbilityDef>('Abilities', (a) => {
     if (!(win > 0)) return `comboWindow must be > 0 (got ${win})`;
     // the window starts at ACTIVATION and a new swing is refused while one is in flight — a window shorter
     // than the swing makes the next step unreachable (the JSDoc's warning, promoted to a boot crash)
-    if (a.shape?.swingTime !== undefined && win <= a.shape.swingTime) return `comboWindow (${win}) must outlast swingTime (${a.shape.swingTime}) or the chain is unreachable`;
+    // the chain must be reachable at the SLOWEST swing the knobs allow: swingTime is divided by at least
+    // SWING_SPEED_FLOOR, so with the floor at 1 the authored time is the bound; set the floor to 0 (the symmetric
+    // model) and an F- unit's swing stretches by 1/0.45 — this check follows the knob so it can't silently lie
+    const slowest = (a.shape?.swingTime ?? 0) / Math.max(SWING_SPEED_FLOOR, tierStats('F-').atkSpeed);
+    if (a.shape?.swingTime !== undefined && win <= slowest) return `comboWindow (${win}) must outlast the slowest possible swing (${slowest.toFixed(2)}s) or the chain is unreachable`;
   }
   return null;
 });
@@ -246,6 +300,21 @@ export const Abilities = new Registry<AbilityDef>('Abilities', (a) => {
 // unarmed/light tier stays deliberately UNREACTABLE (rhythm-parry only, the twitchy inside game); medium is
 // borderline; heavy/fruit telegraphs run ~0.23–0.33s of windup — the reaction-parry targets. Lengthening a
 // swingTime slows the WHOLE attack, so cooldowns rise with it where the old rhythm assumed cd ≥ swing.
+// ── KAMAITACHI's choreography (the row is below; this is its one tuning surface) ────────────────────────
+/** The channel's clock: windup = the tell, active = the cutting span the PLAN is laid over, recover = the settle. */
+const KAMAITACHI_PHASES = { windup: 0.07, active: 0.87, recover: 0.06 } as const; // ×6s: 0.42s tell · 5.22s of cuts · 0.36s settle
+/** One char per window of the channel, in order: 'c' = a blade cut, 'L' = a LARGE sweep (an arc reaching past the
+ *  blade, with its own wave), 'S' = a cut that also LOOSES a wind-slash projectile. The finisher (the big wind)
+ *  is appended as the last window. Edit the string to re-choreograph; the windows, waves and volleys follow. */
+const KAMAITACHI_PLAN = 'ccLccS'.repeat(5);
+/** The windows + volley cues, laid over the active phase (ONE source with the row's phases — they can't drift). */
+const KAMAITACHI_WINDOWS = flurryWindows(KAMAITACHI_PLAN, KAMAITACHI_PHASES.windup, KAMAITACHI_PHASES.windup + KAMAITACHI_PHASES.active, {
+  large: { kind: 'arc', radius: 96, halfAngle: 0.9, thickness: 72, follow: 'swing', damageMul: 2 }, // an arc band runs radius−thickness → radius: 24–96px, 3 tiles; DOUBLE a cut's damage
+  finisher: { kind: 'arc', radius: 120, halfAngle: 1.1, thickness: 96, follow: 'swing' }, // 24–120px: the big wind
+  shot: 'ability.kamaitachiSlash',
+  shotSpread: 0.35, // ±20°: forward, but no two slashes on the same line
+});
+
 Abilities.registerAll([
   // base kit (unarmed): a committed fist jab — the fist itself is the hitbox on contact. Windup ~200ms — the
   // FLOOR of the ladder (the fastest readable tell; nothing winds up quicker). Fists sit at the minimum because
@@ -349,6 +418,60 @@ Abilities.registerAll([
   { id: 'ability.marineShockKick', name: 'Shock Kick', tags: [AI_ROLE_DISENGAGE], cooldown: 6, shape: { range: 0, arc: 0.45, swing: 'melee', pattern: 'line', swingTime: 0.5, limb: 'foot', reachMul: 1.4, swingFx: 'electric', phases: { windup: 0.36, active: 0.3, recover: 0.34 } }, recoilPush: 560, hitFx: 0x6cf0ff, damageStat: 'atk', damageFlat: 7, knockback: 360, costStam: 12, stun: 1.3, shake: 3 }, // windup 0.36×0.5 = 0.18s tell
   // fighting style (flash step)
   { id: 'ability.flashDash', name: 'Flash Dash', cooldown: 0.45, costStam: 10, selfImpulse: 420, grantEffect: 'effect.invuln' },
+  // ── KENJUTSU (the Samurai's kit — weapon.katana + style.kenjutsu). Designed as ANSWERS to the Marine Officer's
+  // cycle (a kiter: shot / buttstroke / buckshot / shock-kick), so the duel has a rhythm, not two spam loops:
+  //  KESA → KIRI-AGE: the two-cut chain (LMB, LMB). Medium rung (no authored phases → windup 0.5×0.55 = 0.28s),
+  //    faster than the sword's 0.8 swings, and LOW knockback on purpose — against a kiter every pixel of shove
+  //    is a gift; the cuts keep him in reach and the iai's posture does the finishing. Two steps, not three: his
+  //    kick/buttstroke recharge too fast for a third auto-chained cut to land; the third beat is a decision (iai).
+  { id: 'ability.kesa', name: 'Kesa', cooldown: 0.8, shape: { range: 36, arc: 0.5, swing: 'melee', pattern: 'arc', swingTime: 0.55 }, damageStat: 'atk', damageFlat: 3, knockback: 150, costStam: 5, stun: 0.4, comboNext: 'ability.kiriage' },
+  { id: 'ability.kiriage', name: 'Kiri-age', cooldown: 0.8, shape: { range: 36, arc: 0.5, swing: 'melee', pattern: 'arc', swingTime: 0.55, mirror: true }, damageStat: 'atk', damageFlat: 4, knockback: 170, costStam: 5, stun: 0.45, comboNext: 'ability.tsuki' },
+  //  TSUKI (the thrust): the chain's THIRD press — a STAB, not a third sweep (two cuts then the point: the chain
+  //    reads as three different motions). The stab motion cocks back then lunges (the 'line' corridor + a longer
+  //    reach); the one with real posture and shove. After it the root (Kesa) locks for THIS cooldown (the
+  //    post-combo recovery, the chain engine's rule).
+  { id: 'ability.tsuki', name: 'Tsuki', cooldown: 1.4, shape: { range: 36, arc: 0.3, swing: 'melee', pattern: 'line', width: 12, swingTime: 0.6, reachMul: 1.2 }, damageStat: 'atk', damageFlat: 6, knockback: 240, costStam: 6, stun: 0.6, posture: 10 },
+  //  IAI: the draw cut — the HEAVY (RMB) and the brain's special. A narrow arc from the sheath with a CHARGE-HOLD
+  //    tell (0.55 × 0.9 = 0.5s: honest, answerable), a flash of an active window, a long punishable recovery.
+  //    Its job is posture (20 — breaks a block) and ending a stagger, not raw damage. reachMul: the drawn blade.
+  { id: 'ability.iai', name: 'Iai', cooldown: 3, shape: { range: 36, arc: 0.3, swing: 'melee', pattern: 'arc', swingTime: 0.9, chargeHold: true, reachMul: 1.25, phases: { windup: 0.55, active: 0.15, recover: 0.3 } }, damageStat: 'atk', damageFlat: 9, knockback: 220, costStam: 10, stun: 1.0, posture: 20, shake: 3, comboNext: 'ability.kirioroshi', comboWindow: 1.3 }, // comboWindow > the 0.9s swing, or the second press could never chain
+  //  KIRIOROSHI (the overhead finishing cut that follows the draw in iaido): the HEAVY chain's second press —
+  //    heavier than the iai, no charge-hold (the draw was the tell), the biggest single hit in the kit. It must
+  //    READ differently from the draw it follows: the iai is a NARROW cut from the lead side; this is a WIDE
+  //    sweep MIRRORED from the off side (arc 0.9 — well past the twist floor the narrow draw sits on), with a
+  //    visible WAVE reaching a little past the blade (the overhead cut's shock), so the two heavies can't be
+  //    confused. Top-down can't show "overhead" — width, side, and the wave are what it has.
+  { id: 'ability.kirioroshi', name: 'Kirioroshi', cooldown: 3.5, shape: { range: 36, arc: 0.9, swing: 'melee', pattern: 'arc', swingTime: 0.8, mirror: true, phases: { windup: 0.45, active: 0.2, recover: 0.35 }, hitVolumes: [{ kind: 'weaponSegment' }, { kind: 'arc', radius: 80, halfAngle: 0.9, thickness: 56, follow: 'swing', active: [0.45, 0.65] }] }, damageStat: 'atk', damageFlat: 11, knockback: 260, costStam: 11, stun: 1.1, posture: 14, shake: 3 },
+  //  SHUKUCHI ("shrinking the earth"): the style's dash — longer + more committal than Flash Dash, and NOT i-frames:
+  //    melee still lands, but for the dash window a musket ball has 50% odds (effect.deflecting) of being turned
+  //    back at its shooter — the closer's answer to the kite, with the kiter's own shot as the punishment.
+  { id: 'ability.shukuchi', name: 'Shukuchi', cooldown: 1.6, costStam: 9, selfImpulse: 520, impulseDur: 0.22, grantEffect: 'effect.deflecting' },
+  //  KIAI (the spirit shout): the C-slot buff — a BURST, not a state (4s on a 12s cooldown): +30% move speed and
+  //    +10% attack with a visible label, popped on engagement (the beat where the kite is decided). Short and
+  //    pricey on purpose: a long/cheap haste makes the kiter a slower melee unit and kills the duel's rhythm.
+  { id: 'ability.kiai', name: 'Kiai', cooldown: 12, costStam: 12, grantEffect: 'effect.kiai' },
+  //  WIND SLASH — the projectile Kamaitachi LOOSES on its 'S' windows (never pressed; fired by the channel's volley
+  //    cues along the blade's live angle, so the flurry fans them). A flying crescent (shotProc 'slash'), ~9 tiles,
+  //    a real hit on whoever it meets first.
+  { id: 'ability.kamaitachiSlash', name: 'Wind Slash', cooldown: 0, shape: { range: 288, arc: 0, swing: 'shot', shotSpeed: 480, muzzle: 30, shotProc: 'slash', shotSize: 30, swingTime: 0.2, noHit: true }, damageStat: 'atk', damageMul: 0.7, knockback: 200, stun: 0.4 },
+  //  KAMAITACHI (the sickle-weasel wind — invisible rapid cuts): the ULTI, the katana's slot (key 1). A ROOTED
+  //    channel SIX seconds long: a 0.4s charge-hold tell, then the PLAN (KAMAITACHI_PLAN) over ~5.2s at about half
+  //    the kesa chain's cadence (~6/s; the flurry motion): plain blade cuts, LARGE sweeps that reach past the blade
+  //    with their own wave, and cuts that LOOSE a wind-slash projectile — then the LAST window, the big WIND (an arc
+  //    to ~4 tiles) that catches a kicker who hopped away. (An arc volume's band is radius−thickness → radius.) Every window lands once per target per cut (a crowd eats
+  //    it too), each a small damage share and a sliver of posture that adds up to a guard break. Counterplay: WALK
+  //    OUT — he's planted for all six seconds, and staggered feet still answer (slowed) — or interrupt the tell.
+  //    Knockback is tiny per cut so the flurry doesn't shove its own target out of reach. Pricey + a long cooldown.
+  {
+    id: 'ability.kamaitachi', name: 'Kamaitachi', cooldown: 30, costStam: 30, channel: true,
+    shape: {
+      range: 36, arc: 0.55, swing: 'melee', pattern: 'flurry', swingTime: 6, chargeHold: true, reachMul: 1.1, // the cut count = the windows (flurryCuts)
+      phases: KAMAITACHI_PHASES,
+      hitVolumes: KAMAITACHI_WINDOWS.hitVolumes,
+    },
+    volleys: KAMAITACHI_WINDOWS.volleys,
+    damageStat: 'atk', damageMul: 0.24, knockback: 25, stun: 0.15, posture: 2.5, shake: 1,
+  },
   // devil fruit (gomu) — rubber-arm STRETCH punches: the fist cocks back then shoots far out (the arm is the hitbox)
   // fruit phases are AUTHORED (never the weight ladder): the Pistol's long rubber cock-back IS its telegraph
   { id: 'ability.gomuPistol', name: 'Gomu Pistol', cooldown: 1.1, shape: { range: 118, arc: 0.12, single: true, swing: 'melee', pattern: 'stretch', swingTime: 1.05, phases: { windup: 0.46, active: 0.2, recover: 0.34 } }, damageStat: 'atk', damageFlat: 8, knockback: 330, costStam: 11, stun: 0.44, posture: 8 }, // posture 8 (2× the unarmed-fallback 4): a rubber blow crushes a guard harder than a bare fist. ~480ms rubber cock-back — the show IS the reactable telegraph
