@@ -1,7 +1,7 @@
 import { actorBrain } from '../ai/brains';
 import { StatBlock, type StatBlockSnapshot } from '../combat/StatBlock';
 import { TagSet } from '../combat/TagSet';
-import { MULTIPLIER_STAT_SEEDS } from '../defs/traits';
+import { MULTIPLIER_STAT_SEEDS } from '../combat/stats';
 import type { StatId } from '../combat/Modifier';
 import type { ContentId } from '../core/Registry';
 import { AIProfiles } from '../defs/aiProfiles';

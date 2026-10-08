@@ -2,7 +2,7 @@ import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STA
 import { spendStamina } from '../combat/stamina';
 import { events } from '../core/EventBus';
 import { applyEffect, Effects, TAG_SLOWED, TAG_STUNNED } from '../combat/Effect';
-import { SWIM_SPEED_STAT, MOVE_SPEED_STAT } from '../defs/traits';
+import { SWIM_SPEED_STAT, MOVE_SPEED_STAT } from '../combat/stats';
 import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, tileAt, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
 import { deckCanOccupy, deckTryMove, hullBlocksWorldPoint, hullRailPen, hullWoodClearance } from '../world/deckCollision';

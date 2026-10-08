@@ -2,7 +2,7 @@ import { Registry, type ContentId, type Def } from '../core/Registry';
 import { modifierProblem, type Modifier } from './Modifier';
 import { syncDerivedResources } from './attributes';
 import type { Entity } from '../ecs/components';
-import { COMBO_RECOVERY_STAT, DEFLECT_STAT, MOVE_SPEED_STAT } from '../defs/traits';
+import { COMBO_RECOVERY_STAT, DEFLECT_STAT, MOVE_SPEED_STAT } from './stats';
 
 /**
  * A timed (or instant) gameplay effect: a bundle of Modifiers and/or Tags applied to a target for a

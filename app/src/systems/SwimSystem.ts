@@ -1,5 +1,5 @@
 import { BREATH_DRAIN, BREATH_REFILL, DROWN_DAMAGE, DROWN_INTERVAL, MAX_BREATH, SWIM_STAM_DRAIN } from '../config/constants';
-import { SWIM_BREATH_STAT, SWIM_STAM_STAT } from '../defs/traits';
+import { SWIM_BREATH_STAT, SWIM_STAM_STAT } from '../combat/stats';
 import type { World } from '../ecs/World';
 import type { Damage } from './Damage';
 

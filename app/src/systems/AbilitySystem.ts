@@ -6,7 +6,7 @@ import { beginFall } from './MovementSystem';
 import { spendStamina } from '../combat/stamina';
 import { harmableBy } from '../combat/targeting';
 import { SPREAD_SHOT_KICK } from '../config/constants';
-import { COMBO_RECOVERY_STAT } from '../defs/traits';
+import { COMBO_RECOVERY_STAT } from '../combat/stats';
 import { events } from '../core/EventBus';
 import { angleDiff, dist, norm } from '../core/math';
 import type { Rng } from '../core/Rng';

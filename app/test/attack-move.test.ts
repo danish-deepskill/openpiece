@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { attackMoveSpeed } from '../src/combat/attackMove';
-import { ATTACK_MOVE_STAT } from '../src/defs/traits';
+import { ATTACK_MOVE_STAT } from '../src/combat/stats';
 import { StatBlock } from '../src/combat/StatBlock';
 import type { Entity } from '../src/ecs/components';
 

@@ -16,7 +16,7 @@ import type { FactionId } from '../defs/factions';
 import { Accessories } from '../defs/accessories';
 import { countedName, type ItemRef } from '../defs/items';
 import { Traits } from '../defs/traits';
-import { MULTIPLIER_STAT_SEEDS } from '../defs/traits';
+import { MULTIPLIER_STAT_SEEDS } from '../combat/stats';
 import { Weapons } from '../defs/layers';
 import { BAG_SLOTS, BASE_KIT, DASH_MIN_TIER, GUARD_KIT, Units } from '../defs/units';
 import type { Combatant, Entity } from './components';

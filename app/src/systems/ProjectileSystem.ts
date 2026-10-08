@@ -1,7 +1,7 @@
 import { Abilities } from '../combat/Ability';
 import { applyEffect, Effects } from '../combat/Effect';
 import { harmableBy } from '../combat/targeting';
-import { DEFLECT_STAT } from '../defs/traits';
+import { DEFLECT_STAT } from '../combat/stats';
 import { BLOCK_DEFLECT_ARC, BLOCK_DEFLECT_CHANCE, guardCovers } from '../combat/guard';
 import { FX_COLOR, TILE } from '../config/constants';
 import { events } from '../core/EventBus';

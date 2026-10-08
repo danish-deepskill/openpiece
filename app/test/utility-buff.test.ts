@@ -3,7 +3,7 @@ import { tryUtility } from '../src/ai/brains';
 import type { AIContext } from '../src/ai/Brain';
 import { equip, unequip } from '../src/combat/equip';
 import { Rng } from '../src/core/Rng';
-import { MOVE_SPEED_STAT } from '../src/defs/traits';
+import { MOVE_SPEED_STAT } from '../src/combat/stats';
 import { TERRAIN } from '../src/defs/terrains';
 import { Spawner } from '../src/ecs/Spawner';
 import { World } from '../src/ecs/World';

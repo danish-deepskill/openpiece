@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BREATH_DRAIN, DROWN_DAMAGE, DROWN_INTERVAL, MAX_BREATH, SWIM_STAM_DRAIN } from '../src/config/constants';
 import { TERRAIN } from '../src/defs/terrains';
-import { MULTIPLIER_STAT_SEEDS } from '../src/defs/traits';
+import { MULTIPLIER_STAT_SEEDS } from '../src/combat/stats';
 import { StatBlock } from '../src/combat/StatBlock';
 import type { Entity } from '../src/ecs/components';
 import { World } from '../src/ecs/World';

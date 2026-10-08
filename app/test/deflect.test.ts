@@ -6,7 +6,7 @@ import { BLOCK_DEFLECT_ARC, guardCovers } from '../src/combat/guard';
 import { angleDiff } from '../src/core/math';
 import { Rng } from '../src/core/Rng';
 import { TERRAIN } from '../src/defs/terrains';
-import { DEFLECT_STAT } from '../src/defs/traits';
+import { DEFLECT_STAT } from '../src/combat/stats';
 import type { Entity, FactionId } from '../src/ecs/components';
 import { Spawner } from '../src/ecs/Spawner';
 import { World } from '../src/ecs/World';

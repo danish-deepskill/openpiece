@@ -1,6 +1,6 @@
 import type { Entity } from '../ecs/components';
 import { Abilities } from './Ability';
-import { ATTACK_MOVE_STAT } from '../defs/traits';
+import { ATTACK_MOVE_STAT } from './stats';
 
 /**
  * Move-speed penalty WHILE A SWING IS IN FLIGHT — the ONE rule the player's input and every AI brain call, so
