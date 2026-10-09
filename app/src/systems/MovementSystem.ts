@@ -1,7 +1,8 @@
 import { GEPPO_FALL_DUR, GEPPO_HOVER_HEIGHT, GEPPO_KICK_INTERVAL, GEPPO_KICK_STAM, GEPPO_MOVE_MULT, JUMP_LAND_STUN, LEDGE_MOVE_MULT, SLOW_MULT } from '../config/constants';
-import { spendStamina } from '../combat/stamina';
+import { spendStamina, stamCostOf } from '../combat/stamina';
 import { events } from '../core/EventBus';
 import { applyEffect, Effects, TAG_SLOWED, TAG_STUNNED } from '../combat/Effect';
+import { DOWNED_TORSO_R, groundRagdoll, landRagdoll, relaxRagdoll, slamRagdoll } from '../combat/ragdoll';
 import { SWIM_SPEED_STAT, MOVE_SPEED_STAT } from '../combat/stats';
 import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, tileAt, worldToDeck, type DeckCell, type DeckGrid } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
@@ -111,6 +112,14 @@ export class MovementSystem {
       // cheap no-op when already clear); a jumper is airborne and passes over things, so skip it mid-air.
       if (m.mode !== 'boat' && m.layer !== 'air' && !e.onDeck) this.collision.unstick(t, t.r, m.mode, false, m.onLedge); // on-deck actors are parented by ShipSystem — don't depenetrate against the ocean grid; a perched actor stays on its low wall (onLedge keeps it walkable)
       if (m.rollT) m.rollT = Math.max(0, m.rollT - dt); // roll-anim clock ticks down independently of the impulse decay
+      if (m.ragdoll) {
+        m.ragdoll.t += dt; // flight → downed → the GET-UP clears the record (the effect's STUNNED expires on the same clock)
+        if (m.ragdoll.t >= m.ragdoll.air + m.ragdoll.down) delete m.ragdoll;
+        else if (m.ragdoll.t >= m.ragdoll.air) {
+          landRagdoll(m, t.r); // the first downed tick lays the parts out; later ticks only settle the joints
+          relaxRagdoll(m, t.r, (dx, dy) => this.collision.tryMove(t, dx, dy, t.r * DOWNED_TORSO_R, m.mode)); // a shoved limb drags the body; walls hold it
+        }
+      }
       if ((m.frameCd ?? 0) > 0) m.frameCd = Math.max(0, m.frameCd! - dt); // frame-switch cooldown ticks with the other mover timers
       // GEPPO HOVER (docs/design/MOVEMENT_AIR.md): while hovering, kick off the air every GEPPO_KICK_INTERVAL —
       // each kick spends GEPPO_KICK_STAM + puffs a cloud. When the next kick is UNAFFORDABLE, begin the FALL (a
@@ -121,8 +130,9 @@ export class MovementSystem {
         if (m.hoverT >= GEPPO_KICK_INTERVAL) {
           m.hoverT -= GEPPO_KICK_INTERVAL;
           const stam = e.combatant?.stam ?? 0;
-          if (stam >= GEPPO_KICK_STAM && e.combatant) {
-            spendStamina(e.combatant, GEPPO_KICK_STAM); // pay for the kick (+ pauses regen, one rule)
+          const kick = stamCostOf(e, GEPPO_KICK_STAM); // at this body's price (a push halves it)
+          if (stam >= kick && e.combatant) {
+            spendStamina(e.combatant, kick, e); // pay for the kick (+ pauses regen, one rule)
             events.emit('fx:ring', { x: t.x, y: t.y, radius: t.r * 1.4, color: 0xffffff, life: 0.3 }); // air-kick CLOUD
           } else {
             beginFall(m); // out of gas → descend (same fall path as toggle-off)
@@ -276,14 +286,18 @@ export class MovementSystem {
               break; // one blocker owns the slide (multi-hull rail-to-rail is the recorded battle-boarding revisit)
             }
           }
-          if ((m.slamStun ?? 0) > 0 && m.dodgeT > 0) {
+          const flying = m.ragdoll !== undefined && m.ragdoll.t < m.ragdoll.air; // a ragdoll's FLIGHT (combat/ragdoll)
+          if (((m.slamStun ?? 0) > 0 || flying) && m.dodgeT > 0) {
             const intended = Math.hypot(vx, vy) * dt;
             if (intended > 4) {
               const hx = vx / Math.hypot(vx, vy), hy = vy / Math.hypot(vx, vy); // shove heading (unit)
               const progressed = (t.x - wx0) * hx + (t.y - wy0) * hy; // displacement PROJECTED onto the heading
               // < 70% headway = a wall ate a chunk of the shove. Loose enough for a GLANCING/diagonal hit (only one
               // axis blocked → it still slides the other way, keeping SOME headway) as well as a head-on slam (~0).
-              if (progressed < intended * 0.7) this.wallSlam(e, m, t);
+              if (progressed < intended * 0.7) {
+                if ((m.slamStun ?? 0) > 0) this.wallSlam(e, m, t);
+                else this.ragdollThud(e, m, t); // a flung body meets a wall: the flight ends HERE, it drops where it hit
+              }
             }
           }
         }
@@ -339,6 +353,15 @@ export class MovementSystem {
   /** A wall-slam landed (the marine Buttstroke proc): the fast knockback shove was stopped by a wall, so pin the
    *  target — effect.electrified for the armed duration (a FROZEN pin + a themed pop) — kill the impulse
    *  (pinned, not bouncing) and clear the flags. One-shot — consumed here so one shove can't re-slam per frame. */
+  /** A ragdoll FLIGHT into a wall: no bounce, no pin — the body drops at the wall and the downed beat starts now
+   *  (combat/ragdoll.groundRagdoll), with a dust thud. The electric pin is the Buttstroke's; this is just gravity. */
+  private ragdollThud(e: Entity, m: Mover, t: { x: number; y: number }): void {
+    groundRagdoll(m);
+    slamRagdoll(e); // the wall keeps him down longer than grass would (WALL_THUD_DOWN_BONUS) — the slam's stun
+    events.emit('fx:burst', { x: t.x, y: t.y, color: 0xd8c08a, n: 14, speed: 160 });
+    events.emit('fx:shake', { amount: 4 });
+  }
+
   private wallSlam(e: Entity, m: Mover, t: { x: number; y: number }): void {
     const pin = m.slamStun ?? 0;
     m.slamStun = undefined;

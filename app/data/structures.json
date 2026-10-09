@@ -2,7 +2,10 @@
   {
     "id": "structure.wall",
     "name": "Wall",
-    "size": { "w": 1, "h": 1 },
+    "size": {
+      "w": 1,
+      "h": 1
+    },
     "blocksFoot": true,
     "blocksAir": true,
     "opaque": true,
@@ -13,7 +16,10 @@
   {
     "id": "structure.door",
     "name": "Door",
-    "size": { "w": 1, "h": 1 },
+    "size": {
+      "w": 1,
+      "h": 1
+    },
     "blocksFoot": true,
     "blocksAir": true,
     "door": true,
@@ -24,7 +30,10 @@
   {
     "id": "structure.stoneWall",
     "name": "Stone Wall",
-    "size": { "w": 1, "h": 1 },
+    "size": {
+      "w": 1,
+      "h": 1
+    },
     "blocksFoot": true,
     "blocksAir": false,
     "color": "#8a8781",
@@ -34,7 +43,10 @@
   {
     "id": "structure.tree",
     "name": "Tree",
-    "size": { "w": 1, "h": 1 },
+    "size": {
+      "w": 1,
+      "h": 1
+    },
     "blocksFoot": true,
     "blocksAir": false,
     "minimap": "#2f5a2f",
@@ -44,7 +56,10 @@
   {
     "id": "structure.windmill",
     "name": "Windmill",
-    "size": { "w": 3, "h": 2 },
+    "size": {
+      "w": 3,
+      "h": 2
+    },
     "blocksFoot": true,
     "blocksAir": true,
     "opaque": true,
@@ -56,12 +71,67 @@
   {
     "id": "structure.chest",
     "name": "Chest",
-    "size": { "w": 1, "h": 1 },
+    "size": {
+      "w": 1,
+      "h": 1
+    },
     "blocksFoot": true,
     "blocksAir": false,
     "color": "#6b4a2a",
     "minimap": "#8a6a3a",
     "bake": "chest",
     "holdSlots": 12
+  },
+  {
+    "id": "structure.waystone",
+    "name": "Waystone",
+    "size": {
+      "w": 1,
+      "h": 1
+    },
+    "blocksFoot": true,
+    "blocksAir": false,
+    "color": "#3e4a58",
+    "minimap": "#9fd0ff",
+    "bake": "waystone"
+  },
+  {
+    "id": "structure.duelGong",
+    "name": "Duel Gong",
+    "size": {
+      "w": 1,
+      "h": 1
+    },
+    "blocksFoot": true,
+    "blocksAir": false,
+    "color": "#4a3a24",
+    "minimap": "#e0b23a",
+    "bake": "gong",
+    "summonLabel": "Ring the Gong",
+    "reRing": "reset",
+    "summon": [
+      { "unit": "unit.zoroAdvanced", "dx": -4, "dy": 3 },
+      { "unit": "unit.ronin", "dx": 4, "dy": 3 }
+    ]
+  },
+  {
+    "id": "structure.trainingPost",
+    "name": "Training Post",
+    "size": {
+      "w": 1,
+      "h": 1
+    },
+    "blocksFoot": true,
+    "blocksAir": false,
+    "color": "#6b4a2a",
+    "minimap": "#c9a55a",
+    "bake": "trainingPost",
+    "summonLabel": "Set up the dummies",
+    "reRing": "clear",
+    "summon": [
+      { "unit": "unit.dummy", "dx": 1, "dy": 6 },
+      { "unit": "unit.dummy", "dx": 4, "dy": 6 },
+      { "unit": "unit.dummy", "dx": 7, "dy": 6 }
+    ]
   }
 ]

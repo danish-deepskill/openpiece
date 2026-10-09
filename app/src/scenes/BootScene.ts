@@ -3,6 +3,7 @@ import { Abilities } from '../combat/Ability';
 import { Accessories } from '../defs/accessories';
 import { Weapons } from '../defs/layers';
 import { accessoryDraws } from '../draw/accessoryDraws';
+import { bakeCoatedWeapons, offArtKey } from '../draw/coating';
 import { bakeProjectileTextures } from '../draw/projectileProc';
 
 /** Texture key for a projectile art file (the art path IS the key, so two abilities sharing one bullet art
@@ -40,6 +41,11 @@ export class BootScene extends Phaser.Scene {
       const url = ART_URLS[`../art/${w.visual.art}`];
       if (!url) throw new Error(`Weapon art not found: ${w.visual.art} (${w.id})`); // fail loud at boot
       this.load.image(w.id, url); // texture key = def id (the convention every sprite consumer uses)
+      if (w.visual.offArt) {
+        const offUrl = ART_URLS[`../art/${w.visual.offArt}`]; // a pair's second blade — its own art under the off key
+        if (!offUrl) throw new Error(`Weapon off-hand art not found: ${w.visual.offArt} (${w.id})`); // fail loud at boot
+        this.load.image(offArtKey(w.id), offUrl);
+      }
     }
     // projectile arts (a 'shot' ability's flying ball) — keyed by the art path so shared arts load once
     const shotArts = new Set<string>();
@@ -56,6 +62,7 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     bakeProjectileTextures(this); // generate the proc bullet textures (needs the live renderer — create, not preload)
+    bakeCoatedWeapons(this); // the Armament-black variant of every sprite weapon (Canvas can't tint — see draw/coating)
     this.scene.launch('World');
     this.scene.launch('Hud');
   }

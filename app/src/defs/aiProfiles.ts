@@ -1,4 +1,5 @@
-import { Registry, type Def } from '../core/Registry';
+import { Registry, type Def, type Validator } from '../core/Registry';
+import type { CombatWeight } from '../combat/phases';
 
 export type Approach = 'rush' | 'kite' | 'flank' | 'guard';
 
@@ -97,6 +98,42 @@ export interface AIProfileDef extends Def {
   /** Chance (0..1) to attempt the riskier PARRY instead (rolled before block — parry ⊂ the guard decision).
    *  Its timing is honest: the tap only lands if the foe's active phase falls inside the parry window. */
   parryChance: number;
+  /** READS THE WEIGHT of what's coming: a per-weight override of `parryChance` keyed by the incoming swing's combat
+   *  weight (combat/phases.swingWeight — the same classifier the posture table uses) — `{ medium: 0.8, heavy: 0.9 }`
+   *  parries committed weapon blows almost always while jabs (light) keep the base rate: a read is spent where it
+   *  pays. Unset weights fall back to `parryChance`. Each value + blockChance must stay ≤ 1 (one roll decides parry |
+   *  block | neither — boot-validated). The INT ladder's first "tactical" rung, as a knob. */
+  parryByWeight?: Partial<Record<CombatWeight, number>>;
+  /** DODGE the tell (0..1 per incoming weight): the third outcome of the one guard roll — a SIDESTEP (the base roll, kept even
+   *  when a style owns Q) thrown perpendicular to the foe so a committed blow whiffs, and the whiff is then an opening
+   *  (pickAttack's riposte). parry + block + dodge per weight ≤ 1 (boot-validated). Unset ⇒ never dodges. */
+  dodgeByWeight?: Partial<Record<CombatWeight, number>>;
+  /** GUARD READS: choose the RIGHT guard, not a luckier one — never spend a parry on a blow the ladder says can't be parried
+   *  (a coated technique's parryShift vs my letter; its share goes to dodge, else block), never block on a cracked guard
+   *  (posture past CRACKED_GUARD — a break is worse than the hit; its share goes to dodge, else parry). Deterministic. */
+  guardReads?: boolean;
+  /** COMBO INTENT: don't walk a chain's FINISHER into air — if the previous step whiffed, let the window lapse; if the
+   *  steps landed, always finish. The brain remembers whether its last swing hit (bb.lastSwingLanded). */
+  comboIntent?: boolean;
+  /** READS SITUATIONS: before the flat special roll, reach for a special FOR A REASON — the ability role tags (AI_ROLE_*):
+   *  a gap closer when the foe is well out of reach, a guard breaker against a raised or cracked guard, a finisher under
+   *  FINISHER_HP, a ranged poke at a regrouping foe. Each still gated by cooldown, cost, reach and tags. */
+  readsSituations?: boolean;
+  /** RANGED POKE (0..1, per DECISION beat — DECIDE_CADENCE): with the foe out of reach and a ranged-role special able to reach
+   *  him, loose it at this chance instead of closing — the flying slash from across the ring. A regrouping foe is always
+   *  worth it (no roll). Needs readsSituations. Unset ⇒ only the regrouper gets shot at. */
+  rangedChance?: number;
+  /** RIPOSTE (0..1): when the foe is STAGGERED (parried, guard-broken, rebounded, hit-stunned) inside the loadout
+   *  HEAVY's reach, reach for the heavy at this chance instead of rolling the ordinary rotation — the opening a
+   *  trained fighter never wastes. Still gated by the heavy's cooldown + stamina. 0/unset ⇒ fodder that jabs on. */
+  punishChance?: number;
+  /** PACE (the stance cycle, if the unit carries it): PUSH (Second Wind) when stamina falls under this fraction of today's
+   *  bar while engaged; CONSERVE (Measured Breath) while regrouping; normal otherwise. Unset ⇒ never touches the stance. */
+  pushBelowStam?: number;
+  /** PACE by DANGER: PUSH (Second Wind) once HP falls to ≤ this fraction while engaged — the fight is going badly, borrow
+   *  from tomorrow to turn it (the duelists: 0.6). Either trigger (this or pushBelowStam) is enough. Unset ⇒ HP never
+   *  moves the stance. */
+  pushBelowHp?: number;
   /** ABILITY ROTATION (0..1): chance PER swing to reach for a SPECIAL (the loadout's `heavy` + `slots` —
    *  a fruit's Stamp/Gatling/Rocket, a style's committed strike) instead of the fast primary jab. The
    *  candidates come from the unit's OWN loadout (generic — any fruit/style/weapon it carries joins), gated
@@ -175,7 +212,9 @@ const BASE: Omit<AIProfileDef, 'id' | 'name' | 'approach' | 'sight' | 'preferred
 
 // validated at boot: brains divide by `reaction` and scale by `strikeFrac`, so a 0 or NaN here is not a
 // tuning choice — it's a division-by-zero / never-strikes bug that must fail on load
-export const AIProfiles = new Registry<AIProfileDef>('AIProfiles', (p) => {
+/** The profile validator as a PURE function (the abilityProblem pattern): a problem string or null. Exported so a
+ *  test can judge a bad row without registering it (a planted bad row poisons every later lookup in that file). */
+export const aiProfileProblem: Validator<AIProfileDef> = (p) => {
   for (const [k, v] of Object.entries(p)) {
     if (typeof v === 'number' && !Number.isFinite(v)) return `${k} must be finite (got ${v})`;
   }
@@ -184,6 +223,25 @@ export const AIProfiles = new Registry<AIProfileDef>('AIProfiles', (p) => {
   if (!(p.reaction > 0)) return `reaction must be > 0 — brains compute 1/reaction (got ${p.reaction})`;
   if (!(p.strikeFrac > 0 && p.strikeFrac <= 1)) return `strikeFrac must be in (0, 1] (got ${p.strikeFrac})`;
   if (p.fleeBelowHp !== undefined && (p.fleeBelowHp < 0 || p.fleeBelowHp > 1)) return `fleeBelowHp must be in [0, 1] (got ${p.fleeBelowHp})`;
+  if (p.punishChance !== undefined && !(p.punishChance >= 0 && p.punishChance <= 1)) return `punishChance must be in [0, 1] (got ${p.punishChance})`;
+  if (p.pushBelowStam !== undefined && !(p.pushBelowStam >= 0 && p.pushBelowStam <= 1)) return `pushBelowStam must be in [0, 1] (got ${p.pushBelowStam})`;
+  if (p.pushBelowHp !== undefined && !(p.pushBelowHp >= 0 && p.pushBelowHp <= 1)) return `pushBelowHp must be in [0, 1] (got ${p.pushBelowHp})`;
+  if (p.rangedChance !== undefined && !(p.rangedChance >= 0 && p.rangedChance <= 1)) return `rangedChance must be in [0, 1] (got ${p.rangedChance})`;
+  if (p.rangedChance !== undefined && p.readsSituations !== true) return 'rangedChance is read by the situation reads — set readsSituations too, or it is inert';
+  if (p.dodgeByWeight) {
+    for (const [w, v] of Object.entries(p.dodgeByWeight)) {
+      if (v === undefined) continue;
+      if (!(v >= 0 && v <= 1)) return `dodgeByWeight.${w} must be in [0, 1] (got ${v})`;
+      const parry = p.parryByWeight?.[w as CombatWeight] ?? p.parryChance;
+      if (parry + p.blockChance + v > 1 + 1e-9) return `dodgeByWeight.${w} (${v}) + parry (${parry}) + block (${p.blockChance}) exceed 1 — one roll decides parry | block | dodge | neither`;
+    }
+  }
+  for (const [w, v] of Object.entries(p.parryByWeight ?? {})) {
+    // the guard roll is ONE draw split parry | block | neither — an override that pushes the sum past 1 silently
+    // loses the "neither" outcome for that weight (the brain would guard every such swing)
+    if (!(v >= 0 && v <= 1)) return `parryByWeight.${w} must be in [0, 1] (got ${v})`;
+    if (v + p.blockChance > 1) return `parryByWeight.${w} + blockChance must be ≤ 1 (got ${v} + ${p.blockChance})`;
+  }
   if (p.betrayHpFrac < 0 || p.betrayHpFrac > 1) return `betrayHpFrac must be in [0, 1] (got ${p.betrayHpFrac})`;
   if (p.blockChance < 0 || p.blockChance > 1) return `blockChance must be in [0, 1] (got ${p.blockChance})`;
   if (p.parryChance < 0 || p.parryChance > 1) return `parryChance must be in [0, 1] (got ${p.parryChance})`;
@@ -192,7 +250,9 @@ export const AIProfiles = new Registry<AIProfileDef>('AIProfiles', (p) => {
   if ((rg === undefined) !== (re === undefined)) return 'regroupBelowStam and reengageStam must be set together (a retreat needs both edges of the hysteresis)';
   if (rg !== undefined && re !== undefined && !(re > rg)) return `reengageStam (${re}) must be > regroupBelowStam (${rg}) — else the retreat can never end`;
   return null;
-});
+};
+
+export const AIProfiles = new Registry<AIProfileDef>('AIProfiles', aiProfileProblem);
 
 AIProfiles.registerAll([
   { ...BASE, id: 'ai.rusher', name: 'Rusher', approach: 'rush', sight: 210, reaction: 0.16, spotDelay: 2.0, blockChance: 0.15 }, // fodder blocks occasionally, never parries; the SLOWEST double-take (~2s)
@@ -230,7 +290,18 @@ AIProfiles.registerAll([
   // sprint-charge that crosses the musket's 230–400px band in one go (chargeMax/Dur), real block AND parry odds
   // (the officer's buttstroke/kick are melee swings — parryable), specialChance so the iai punctuates the kesa
   // chain, and a regroup band so he doesn't empty the bar mid-duel. Kiai is fired by the generic buff beat.
-  { ...BASE, id: 'ai.samurai', name: 'Samurai', approach: 'rush', sight: 260, cone: 1.2, reaction: 0.12, leadAim: 0.2, spotDelay: 0.8, chargeMax: 320, chargeDur: 0.8, chargeCd: 1.4, chargeStam: 12, blockChance: 0.3, parryChance: 0.3, specialChance: 0.35, regroupBelowStam: 0.15, reengageStam: 0.6 },
+  { ...BASE, id: 'ai.samurai', name: 'Samurai', approach: 'rush', sight: 260, cone: 1.2, reaction: 0.12, leadAim: 0.2, spotDelay: 0.8, chargeMax: 320, chargeDur: 0.8, chargeCd: 1.4, chargeStam: 12, blockChance: 0.3, parryChance: 0.3, dodgeByWeight: { heavy: 0.25 }, guardReads: true, readsSituations: true, rangedChance: 0.25, specialChance: 0.35, pushBelowStam: 0.3, regroupBelowStam: 0.15, reengageStam: 0.6 }, // a trained fighter: reads guards and situations; steps off a heavy a quarter of the time
+  // the TRAINING DUMMY — sees nothing (sight 0), investigates nothing (alertDur 0), hugs its post (tether 0) and
+  // ambles back to it after a shove: a body that takes hits and never answers. Everything else is BASE.
+  { ...BASE, id: 'ai.dummy', name: 'Dummy', approach: 'guard', sight: 0, spotDelay: 0, alertDur: 0, leash: 0, wanderTether: 0, wanderSpeed: 24, blockChance: 0, parryChance: 0, betrayHpFrac: 0 },
+  // the RONIN — approach 'guard': he HOLDS the arena (never chases a duel into the sea — the whole point of the walled
+  // sand). Perception = the Samurai's (no special awareness: his edge is the counters). parryByWeight: he spends the
+  // parry on committed blows (medium/heavy) and mostly lets jabs through; punish: a stagger is answered by the heavy.
+  // ZORO — the challenger's brain: the Samurai's RUSH and charge (he goes TO the Ronin), the Ronin's reads (parries the
+  // committed blows, ripostes a stagger) a shade less often — he trades, the Ronin counters — and pushes harder (specials
+  // 0.45): the duel reads as pressure against precision. Utilities walk C then X (the coating, then the pump).
+  { ...BASE, id: 'ai.zoro', name: 'Zoro', approach: 'rush', sight: 280, cone: 1.2, reaction: 0.12, leadAim: 0.2, spotDelay: 0.5, chargeMax: 320, chargeDur: 0.8, chargeCd: 1.4, chargeStam: 12, blockChance: 0.25, parryChance: 0.2, parryByWeight: { medium: 0.5, heavy: 0.45 }, dodgeByWeight: { medium: 0.2, heavy: 0.3 }, guardReads: true, comboIntent: true, readsSituations: true, rangedChance: 0.4, punishChance: 0.8, pushBelowHp: 0.6, specialChance: 0.45, regroupBelowStam: 0.12, reengageStam: 0.5 }, // pace: normal until the fight turns (HP ≤ 60%), then the push. The pressure fighter: parries less than the Ronin, presses more
+  { ...BASE, id: 'ai.ronin', name: 'Ronin', approach: 'guard', sight: 260, cone: 1.2, reaction: 0.12, leadAim: 0.2, spotDelay: 0.8, guardRadius: 260, leash: 420, chargeMax: 300, chargeDur: 0.7, chargeCd: 1.2, chargeStam: 12, blockChance: 0.2, parryChance: 0.15, parryByWeight: { medium: 0.55, heavy: 0.45 }, dodgeByWeight: { medium: 0.25, heavy: 0.35 }, guardReads: true, comboIntent: true, readsSituations: true, rangedChance: 0.3, punishChance: 0.9, pushBelowHp: 0.6, specialChance: 0.4, regroupBelowStam: 0.12, reengageStam: 0.5 }, // pace: normal until the fight turns (HP ≤ 60%), then the push. The reader: parries, sidesteps, and punishes what misses
   { ...BASE, id: 'ai.master', name: 'Guard Master', approach: 'guard', sight: 230, reaction: 0.1, guardRadius: 520, leash: 900, blockChance: 0.6, parryChance: 0, regroupBelowStam: 0.3, reengageStam: 0.75 },
   { ...BASE, id: 'ai.coward', name: 'Coward', approach: 'kite', sight: 210, leash: 9999, loseSightSec: 1.5, preferredRange: 9999, fleeBelowHp: 1 },
   // townsfolk: wander their spot, defend it from anything hostile that comes close, flee when badly hurt — never hunt
@@ -255,6 +326,13 @@ export interface CombatStance {
   regroup?: boolean;
 }
 
+/** A guard is CRACKED past this fraction of max posture — a reading brain stops blocking there (guardReads). */
+export const CRACKED_GUARD = 0.6;
+/** The stamina PUSH's hysteresis band: once pushing, a unit stays in Second Wind until its bar is this far ABOVE pushBelowStam
+ *  (tryPace) — the push's own regen would otherwise flip it back every tick. */
+export const PACE_PUSH_BAND = 0.2;
+/** A foe at or under this HP fraction is a FINISHER's reason (readsSituations). */
+export const FINISHER_HP = 0.3;
 /** How far a regrouping unit backs off to catch its breath (px), if the profile has no explicit kite range. */
 const REGROUP_SPACING = 190;
 

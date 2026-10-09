@@ -143,21 +143,27 @@ export function guardCovers(target: Entity, fromX: number, fromY: number): boole
  * How the target's guard answers an incoming hit — called by StrikeResolver BEFORE damage applies.
  * Directional: the hit must arrive inside the guard's facing arc, so a turned back is always open.
  * Mutates the defender's guard state (parry consumption/grace, posture, break stagger); the CALLER
- * handles the attacker's side of a parry (posture spike, interrupt) and all FX.
+ * handles the attacker's side of a parry (posture spike, interrupt) and all FX. `parryDeflects` (default true)
+ * is the tier-gap ladder's verdict on whether a parry can turn THIS blow at all (combat/dominance).
  */
-export function resolveGuard(attacker: Entity, target: Entity, postureDamage: number): GuardOutcome {
+export function resolveGuard(attacker: Entity, target: Entity, postureDamage: number, parryDeflects = true): GuardOutcome {
   const c = target.combatant;
   const tt = target.transform;
   const at = attacker.transform;
   if (!c || !tt || !at) return 'none';
   const off = guardOffset(tt, at.x, at.y);
-  if ((c.parryT ?? 0) > 0 && off <= PARRY_ARC) {
+  // `parryDeflects` false = the dominance ladder's call: steel from that far ABOVE can't be turned by a read — the
+  // open window still BLOCKS (the gesture that opened it is a hold), it just earns no deflection
+  if (parryDeflects && (c.parryT ?? 0) > 0 && off <= PARRY_ARC) {
     c.parryT = PARRY_GRACE; // auto-parry grace — a string can't cheat through the reward
     c.parryCd = 0; // success re-arms instantly (only a WHIFF pays the cooldown)
     c.posture = Math.max(0, c.posture - PARRY_REFUND);
     return 'parried';
   }
-  if (c.blocking && off <= BLOCK_ARC) {
+  // a parry window whose deflect the ladder refused still has the arms UP for its duration — a TAPPED F (key already
+  // released, `blocking` false, `parryT` ticking) blocks the blow it couldn't turn, as the window's own comment promises
+  const armsUp = c.blocking || (!parryDeflects && (c.parryT ?? 0) > 0);
+  if (armsUp && off <= BLOCK_ARC) {
     return damagePosture(target, postureDamage) ? 'guardBreak' : 'blocked';
   }
   return 'none';

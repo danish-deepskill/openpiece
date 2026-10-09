@@ -1,3 +1,4 @@
+import { isDowned, PART_FIST_L, PART_FIST_R, PART_HEAD } from '../combat/ragdoll';
 import type { Entity } from '../ecs/components';
 
 /**
@@ -48,7 +49,13 @@ export function rollHeadPlacement(e: Entity): RollHead | null {
   const prog = rollProgress(e);
   const m = e.mover;
   const t = e.transform;
-  if (prog === null || !m || !t) return null;
+  if (!m || !t) return null;
+  if (prog === null) {
+    // DOWNED (the sprawl): the head lies at the far end of the body along the fall direction, rolled to one side —
+    // the hat lies WITH it (same placement the prone pose draws the head at), crown up, sized as a resting head
+    const p = proneHead(e);
+    return p ? { dx: p.x, dy: p.y, scale: 1, overTop: true, crownAlpha: 1, travel: p.tilt } : null;
+  }
   const travel = Math.atan2(m.dvy, m.dvx);
   const theta = prog * Math.PI * 2; // one revolution
   const along = Math.cos(theta); // signed forward offset
@@ -62,4 +69,25 @@ export function rollHeadPlacement(e: Entity): RollHead | null {
     crownAlpha: Math.max(0, depth), // crown faces the camera only over the top (depth>0); 0 while tucked under
     travel,
   };
+}
+
+/** The SPRAWL as drawn — the sim's jointed parts (combat/ragdoll) read into the pose: where the head lies (the hat lies
+ *  there too), the body axis, and the two fists. Null unless downed with its parts laid out (the first downed tick lays
+ *  them; the tumble draws until then). Units: px from the unit center. */
+export interface Sprawl {
+  x: number; // head center
+  y: number;
+  tilt: number; // the head's facing (rad) — along its own offset from the body, i.e. where it rolled
+  axis: number; // the body's long axis (the fall direction)
+  fists: [[number, number], [number, number]];
+}
+export function proneHead(e: Entity): Sprawl | null {
+  if (!isDowned(e)) return null;
+  const rg = e.mover!.ragdoll!; // isDowned proved the record
+  const parts = rg.parts;
+  if (!parts || parts.length < 3) return null;
+  const h = parts[PART_HEAD]!;
+  const l = parts[PART_FIST_L]!;
+  const r = parts[PART_FIST_R]!;
+  return { x: h.x, y: h.y, tilt: Math.atan2(h.y, h.x), axis: rg.angle, fists: [[l.x, l.y], [r.x, r.y]] };
 }

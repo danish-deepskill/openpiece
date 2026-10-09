@@ -9,7 +9,7 @@ import type { MeleeSwing } from '../src/ecs/components';
  */
 
 const ONO = Abilities.get('ability.gomuOno');
-const geom = { r: 12, reach: 20, weaponLen: 0 };
+const geom = { r: 12, reach: 20, weaponLen: 0, pair: false, x: 0, y: 0 };
 
 function poseAt(p: number) {
   const s: MeleeSwing = { ability: ONO.id, t: p, dur: 1, motion: 'axe', phases: ONO.shape!.phases!, side: 1, angle: 0, hitByVolume: [] };

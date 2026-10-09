@@ -132,7 +132,7 @@ data. Data-only rows live in `defs/`. (Abilities/Effects rows move to `defs/` wi
 - **The canonical tick** (WorldScene, fixed-timestep): accumulate render delta; step the sim at `SIM_DT` inside
   `while (acc >= SIM_DT)`; presentation updates once per render frame after. Sim order (each dependency stated
   as an inline comment in code): wind (environment first — sails/streaks read this tick's weather) → doors →
-  input-intent → squads → ai → movement → swim → body-collision → ships → hull-collision → melee → projectiles →
+  input-intent → squads → ai → movement → swim → body-collision → ships → hull-collision → melee → hazards → projectiles →
   abilities → combatant → effects → director. Reordering requires updating the comment chain.
   **Render interpolation** (the fixed step's other half — Fiedler): `ViewPose.capture()` before every step,
   `setAlpha(acc / SIM_DT)` after the loop; every system that PLACES something draws `view.x(e)/y(e)`, never the

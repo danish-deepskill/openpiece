@@ -47,13 +47,13 @@ describe('utility — the C buff slot a style or fruit grants', () => {
   it('equipping kenjutsu routes its utility into the slot + grants it; unequipping clears both', () => {
     const { sp } = grassWorld();
     const e = sp.spawnHero(0, 0);
-    expect(e.loadout!.utility).toBeUndefined();
+    expect(e.loadout!.utilities).toEqual([]);
     equip(e, 'style', 'style.kenjutsu');
-    expect(e.loadout!.utility).toBe('ability.kiai');
+    expect(e.loadout!.utilities).toEqual(['ability.kiai']);
     expect(e.loadout!.granted.has('ability.kiai')).toBe(true);
     expect(e.loadout!.dash).toBe('ability.shukuchi'); // the style's dash replaced the roll
     unequip(e, 'style', 'style.kenjutsu');
-    expect(e.loadout!.utility).toBeUndefined();
+    expect(e.loadout!.utilities).toEqual([]);
     expect(e.loadout!.granted.has('ability.kiai')).toBe(false);
   });
 });

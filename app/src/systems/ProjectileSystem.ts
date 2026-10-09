@@ -1,6 +1,9 @@
 import { Abilities } from '../combat/Ability';
 import { applyEffect, Effects } from '../combat/Effect';
-import { harmableBy } from '../combat/targeting';
+import { entityHostile, harmableBy } from '../combat/targeting';
+import { effectiveTier } from '../combat/dominance';
+import { letters } from '../combat/PowerTier';
+import { segSegClosest } from '../core/math';
 import { DEFLECT_STAT } from '../combat/stats';
 import { BLOCK_DEFLECT_ARC, BLOCK_DEFLECT_CHANCE, guardCovers } from '../combat/guard';
 import { FX_COLOR, TILE } from '../config/constants';
@@ -24,6 +27,10 @@ import type { StrikeResolver } from './StrikeResolver';
  * gets hit). One engine for player and AI — who fired it is just `owner`. Geometry lives here; the hit is
  * delegated. (AI that deliberately USES cover is the reserved PATHFINDING/line-of-fire follow-up.)
  */
+/** Shot-vs-shot pre-check (px): two shots farther apart than this on either axis can't meet this tick (the largest radii +
+ *  a tick of the fastest flight are well under it) — skips the owner lookups and the geometry for the far pairs. */
+const DUEL_GATE = 96;
+
 export class ProjectileSystem {
   /** Wall-sweep step (px): sample the path at ≤ this spacing so a fast ball can't skip over a 1-tile wall
    *  between ticks. Half a tile is safe for any wall ≥ 1 tile thick. One-engine geometry knob. */
@@ -39,7 +46,10 @@ export class ProjectileSystem {
   update(dt: number): void {
     // snapshot: the loop despawns projectiles (contact/expiry) — iterating the live set while deleting is the
     // one case the canon allows a copy (MeleeSystem does the same with its `melee` query)
-    for (const e of [...this.world.with('projectile', 'transform')]) {
+    const live = [...this.world.with('projectile', 'transform')];
+    if (live.length > 1) this.duels(live, dt);
+    for (const e of live) {
+      if (!e.projectile) continue; // lost to a duel this tick
       const pr = e.projectile;
       const t = e.transform;
       pr.life -= dt;
@@ -123,8 +133,9 @@ export class ProjectileSystem {
     return 1;
   }
 
-  /** The first harmable body whose circle the segment (up to `maxF`) crosses, and the point on the segment
-   *  where it's first touched. Null if the lane is clear. Skips bodies already hit (pierce-safe) and ships. */
+  /** The first harmable body the ball's swept DISC (its own radius — `shotRadius`, a point for a musket ball — grown
+   *  onto the body's circle) crosses along the segment up to `maxF`, and the point on the path where it's first
+   *  touched. Null if the lane is clear. Skips bodies already hit (pierce-safe) and ships. */
   private bodySweep(
     e: Entity,
     owner: Entity,
@@ -141,7 +152,7 @@ export class ProjectileSystem {
     for (const o of this.world.with('transform', 'health', 'faction')) {
       if (o.id === owner.id || pr.hit.includes(o.id) || !canHit(o)) continue;
       const ot = o.transform;
-      const f = segCircleF(x0, y0, x1, y1, ot.x, ot.y, ot.r); // earliest fraction the path enters the circle
+      const f = segCircleF(x0, y0, x1, y1, ot.x, ot.y, ot.r + e.transform!.r); // earliest fraction the ball's disc touches the body (Minkowski: body grown by the ball's radius) — `e` is a transform-bearing projectile (the update loop's query)
       if (f !== null && f <= bestF) {
         bestF = f;
         best = o;
@@ -162,9 +173,11 @@ export class ProjectileSystem {
     pr.vx = Math.cos(heading) * speed;
     pr.vy = Math.sin(heading) * speed;
     pr.owner = deflector.id;
+
+    pr.rung = effectiveTier(deflector); // it is their shot now — it flies at THEIR rung (a coated body's return is a coated shot)
     pr.hit = [];
     pr.passChance = undefined;
-    pr.life = shape.range / shape.shotSpeed!; // a FULL range for the new trip (not the remaining life — a near-spent ball would fizzle a few px on)
+    pr.life = shape.range! / shape.shotSpeed!; // both boot-validated > 0 for a shot. A FULL range for the new trip (not the remaining life — a near-spent ball would fizzle a few px on)
     t.x = hx;
     t.y = hy;
     t.angle = heading; // the art turns with the ball
@@ -192,6 +205,45 @@ export class ProjectileSystem {
       applyEffect(target, pr.proc.effect, 'shot', pr.proc.dur);
       const theme = Effects.get(pr.proc.effect).status?.color ?? FX_COLOR.spark; // the effect's ONE theme color
       events.emit('fx:burst', { x: target.transform!.x, y: target.transform!.y, color: theme, n: 8, speed: 130 }); // the charged pop
+    }
+  }
+
+  /** SHOT MEETS SHOT (the flying-slash duel): for every pair of live projectiles whose owners are enemies and whose paths
+   *  this tick come within their two radii, the LADDER decides first — a letter or more apart (the rungs stamped at fire),
+   *  the dominant shot destroys the other and flies on untouched; at the same rung the CLASS decides — a slash cuts a ball
+   *  and flies on, equals burst each other. No dice. A coated 72-Pound erases an uncoated gale and keeps going; two coated
+   *  gales meet in a mutual burst. */
+  private duels(live: Entity[], dt: number): void {
+    for (let i = 0; i < live.length; i++) {
+      const a = live[i]!;
+      if (!a.projectile) continue;
+      for (let j = i + 1; j < live.length; j++) {
+        const b = live[j]!;
+        if (!a.projectile || !b.projectile) continue;
+        const pa = a.projectile;
+        const pb = b.projectile;
+        if (pa.owner === pb.owner) continue;
+        const at = a.transform!;
+        const bt = b.transform!;
+        if (Math.abs(at.x - bt.x) > DUEL_GATE || Math.abs(at.y - bt.y) > DUEL_GATE) continue; // the cheap gate first: most pairs are nowhere near each other
+        const oa = this.world.byId(pa.owner);
+        const ob = this.world.byId(pb.owner);
+        if (!oa || !ob || !entityHostile(oa, ob)) continue; // your own volley never eats itself; neutral shots pass
+        const c = segSegClosest(at.x, at.y, at.x + pa.vx * dt, at.y + pa.vy * dt, bt.x, bt.y, bt.x + pb.vx * dt, bt.y + pb.vy * dt);
+        if (c.d > at.r + bt.r) continue;
+        const gap = (pa.rung ?? pb.rung ?? 0) - (pb.rung ?? pa.rung ?? 0); // a tier-less shot meets anything as an equal
+        let loserA = false;
+        let loserB = false;
+        if (gap >= letters(1)) loserB = true;
+        else if (gap <= -letters(1)) loserA = true;
+        else if (pa.kind !== pb.kind) { if (pa.kind === 'slash') loserB = true; else loserA = true; } // a slash cuts a ball
+        else { loserA = true; loserB = true; } // equals burst each other
+        const theme = (loserA ? pb.theme : pa.theme) ?? pa.theme ?? pb.theme; // the survivor's look colors the burst
+        events.emit('fx:burst', { x: c.x, y: c.y, color: FX_COLOR.spark, n: loserA && loserB ? 14 : 9, speed: 220, theme });
+        if (loserA) this.despawn(a, null);
+        if (loserB) this.despawn(b, null);
+        if (loserA) break; // a is gone — on to the next shot
+      }
     }
   }
 

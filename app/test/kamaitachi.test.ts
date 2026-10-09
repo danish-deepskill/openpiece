@@ -1,3 +1,4 @@
+import { tierStats } from '../src/combat/PowerTier';
 import { describe, expect, it } from 'vitest';
 import { Abilities } from '../src/combat/Ability';
 import { flurryWindows } from '../src/combat/hitVolume';
@@ -39,15 +40,15 @@ describe('the katana chains — LMB three cuts, RMB two', () => {
     expect(e.melee!.ability).toBe('ability.tsuki');
     endSwing(e);
     expect(e.loadout!.chain).toBeUndefined();
-    expect(e.loadout!.cd.get(root)).toBeCloseTo(1.4 / 1.45, 6); // tsuki's cooldown over the samurai's attack speed
+    expect(e.loadout!.cd.get(root)).toBeCloseTo(1.4 / tierStats('C').atkSpeed, 6); // tsuki's cooldown over the samurai's attack speed
     expect(abilities.activate(e, root)).toBe(false); // locked out until it elapses
   });
 
   it('under Kiai the post-combo lockout is HALVED (on top of the attack-speed cut); each step keeps its own cooldown', () => {
     const { e, abilities } = rig();
     applyEffect(e, 'effect.kiai', 'test');
-    const atkSpeed = e.attributes!.get('atkSpeed'); // 1.45 × 1.3
-    expect(atkSpeed).toBeCloseTo(1.45 * 1.3, 6);
+    const atkSpeed = e.attributes!.get('atkSpeed'); // tier C × Kiai's 1.3
+    expect(atkSpeed).toBeCloseTo(tierStats('C').atkSpeed * 1.3, 6);
     const root = 'ability.kesa';
     abilities.activate(e, root);
     expect(e.loadout!.cd.get(root)).toBeCloseTo(0.8 / atkSpeed, 6); // the first cut's OWN cooldown — not halved

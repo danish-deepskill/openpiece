@@ -1,5 +1,5 @@
-import { applyEffect, Effects } from '../combat/Effect';
-import { syncDerivedResources } from '../combat/attributes';
+import { applyEffect, Effects, releaseEffect } from '../combat/Effect';
+import { spendStamina, spendWill } from '../combat/stamina';
 import type { ActiveEffect, Entity } from '../ecs/components';
 import type { World } from '../ecs/World';
 
@@ -20,6 +20,17 @@ export class EffectSystem {
       for (let i = arr.length - 1; i >= 0; i--) {
         const a = arr[i];
         a.remaining -= dt;
+        // a DRAINING effect (a held coating) bills the pool every tick and dies the moment it's empty — the pool is
+        // the budget, the duration only a cap. spendStamina pauses regen, so a held state never refills under itself.
+        const def = Effects.get(a.id);
+        if (def.drainStamPerSec !== undefined && e.combatant) {
+          spendStamina(e.combatant, def.drainStamPerSec * dt, e);
+          if (e.combatant.stam <= 0) a.remaining = 0;
+        }
+        if (def.drainWillPerSec !== undefined && e.combatant) {
+          spendWill(e.combatant, def.drainWillPerSec * dt); // a body with no pool spends nothing…
+          if ((e.combatant.will ?? 0) <= 0) a.remaining = 0; // …and can't HOLD a haki state: it ends at once
+        }
         if (a.remaining <= 0) {
           arr.splice(i, 1);
           this.expire(e, a, arr);
@@ -28,15 +39,19 @@ export class EffectSystem {
     }
   }
 
+  /** END an active effect NOW (the toggle-off of a held state — AbilitySystem's `toggle` press). Removes ONE instance
+   *  (the 'refresh' rule keeps one per id anyway) through the same expiry path a timer takes. No-op if absent. */
+  end(e: Entity, effectId: string): boolean {
+    const arr = e.effects?.active;
+    if (!arr) return false;
+    const i = arr.findIndex((a) => a.id === effectId);
+    if (i < 0) return false;
+    const [a] = arr.splice(i, 1);
+    this.expire(e, a!, arr); // splice at a found index yields the element
+    return true;
+  }
+
   private expire(e: Entity, a: ActiveEffect, remaining: ActiveEffect[]): void {
-    const d = Effects.get(a.id);
-    if (d.modifiers && e.attributes) e.attributes.removeBySource(a.source);
-    if (d.grantTags && e.tags) {
-      for (const t of d.grantTags) {
-        const stillGranted = remaining.some((o) => Effects.get(o.id).grantTags?.includes(t));
-        if (!stillGranted) e.tags.remove(t);
-      }
-    }
-    syncDerivedResources(e); // a maxHp/maxStam buff just ended — clamp the pools to the restored ceiling
+    releaseEffect(e, a, remaining); // the ONE release path (combat/Effect) — endEffect shares it
   }
 }

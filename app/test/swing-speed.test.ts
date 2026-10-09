@@ -1,3 +1,4 @@
+import { tierStats } from '../src/combat/PowerTier';
 import { describe, expect, it } from 'vitest';
 import { swingDuration, WEIGHT_PHASES } from '../src/combat/phases';
 import { SWING_SPEED_FLOOR, TELL_FLOOR } from '../src/config/constants';
@@ -37,13 +38,14 @@ describe('swingDuration — attack speed shortens the swing, the tell stays read
 });
 
 describe('a cast swing carries the scaled duration', () => {
-  it('the samurai (attack speed 1.45) cuts faster than the authored 0.55s, never under the tell floor', () => {
+  it('the samurai (tier C attack speed) cuts faster than the authored 0.55s, never under the tell floor', () => {
     const world = new World();
     const e = new Spawner(world, new Rng(1)).spawnUnit('unit.samurai', 0, 0);
-    expect(e.attributes!.get('atkSpeed')).toBeCloseTo(1.45, 6); // tier C
+    const speed = tierStats('C').atkSpeed;
+    expect(e.attributes!.get('atkSpeed')).toBeCloseTo(speed, 6); // tier C
     const abilities = new AbilitySystem(world, new EffectSystem(world), {} as StrikeResolver, new Rng(1)); // no contact is resolved here
     expect(abilities.activate(e, 'ability.kesa')).toBe(true);
-    const expected = Math.max(0.55 / 1.45, TELL_FLOOR / medium.windup); // the rule, in the knob's terms
+    const expected = Math.max(0.55 / speed, TELL_FLOOR / medium.windup); // the rule, in the knob's terms
     expect(e.melee!.dur).toBeCloseTo(expected, 6);
     expect(e.melee!.dur).toBeLessThan(0.55);
     expect(e.melee!.dur * e.melee!.phases.windup).toBeGreaterThanOrEqual(TELL_FLOOR - 1e-9);

@@ -16,7 +16,7 @@ function makeFighter(): Entity {
       granted: new Set(innate),
       innate,
       cd: new Map(),
-      cdMax: new Map(),
+      cdMax: new Map(), utilities: [],
       primary: 'ability.punch',
       heavy: 'ability.kick',
       dash: 'ability.roll',

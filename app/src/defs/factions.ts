@@ -13,7 +13,9 @@ export type FactionId =
   | 'marine'
   | 'revolutionary'
   | 'worldgov'
-  | 'pirates';
+  | 'pirates'
+  | 'ronin'
+  | 'challengers';
 
 export type Stance = 'ally' | 'neutral' | 'hostile';
 
@@ -83,6 +85,24 @@ export const FactionDefs: Record<FactionId, FactionDef> = {
     color: 0x6a3f8a,
     default: 'neutral',
     stances: { marine: 'hostile', worldgov: 'hostile' },
+  },
+  ronin: {
+    id: 'ronin',
+    name: 'Wandering Ronin',
+    color: 0x8a1f2a, // crimson — a masterless blade owes no banner
+    default: 'neutral', // at war with NOBODY else: a ronin fights whoever draws on him (the provoke rule), never on sight…
+    stances: { challengers: 'hostile' }, // …except a CHALLENGER — one who came to his arena has already drawn: he accepts on sight
+  },
+  // CHALLENGERS — swordsmen who came for the arena's master: hostile toward the RONIN alone, neutral to everyone else, and
+  // the ronin returns it — MUTUAL, so both close the moment they see each other (a one-way stance left the master standing
+  // until the first cut landed: a duel you watch needs two who want it). Both leave the watching player alone until struck
+  // (the Samurai-vs-Officer "witness the world" pattern, aimed at the arena).
+  challengers: {
+    id: 'challengers',
+    name: 'Challengers',
+    color: 0x3f8a4a, // green — the one who came to cut the master down
+    default: 'neutral',
+    stances: { ronin: 'hostile' },
   },
 };
 

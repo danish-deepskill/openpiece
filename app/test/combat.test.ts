@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Registry } from '../src/core/Registry';
 import { StatBlock } from '../src/combat/StatBlock';
 import { TagSet } from '../src/combat/TagSet';
-import { tierFromScore, tierIndex, tierStats } from '../src/combat/PowerTier';
+import { TIER_CURVE, tierFromScore, tierIndex, tierStats } from '../src/combat/PowerTier';
 
 describe('StatBlock', () => {
   it('applies flat → addPct → mulPct in order', () => {
@@ -78,6 +78,6 @@ describe('PowerTier', () => {
     expect(ePlus.hp).toBeGreaterThan(fMinus.hp); // higher tier = more hp
     expect(ePlus.atk).toBeGreaterThan(fMinus.atk);
     expect(ePlus.atkSpeed).toBeGreaterThan(fMinus.atkSpeed); // and faster recovery
-    expect(fMinus.atkSpeed).toBeCloseTo(0.45); // fodder swings slowly
+    expect(fMinus.atkSpeed).toBeCloseTo(TIER_CURVE.atkSpeedBase); // fodder swings at the curve's floor
   });
 });

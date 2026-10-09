@@ -1,3 +1,6 @@
+import { stamCap } from '../combat/stamina';
+import { STAM_REGEN_STAT, VIGOR_RECOVER_STAT, WILL_REGEN_STAT } from '../combat/stats';
+import { TAG_PACE_CONSERVE } from '../combat/Effect';
 import { isRanged } from '../combat/equip';
 import { Weapons } from '../defs/layers';
 import { POSTURE_REGEN } from '../combat/guard';
@@ -8,6 +11,8 @@ import {
   SPREAD_MOVE_PENALTY,
   SPREAD_SETTLE_TAU,
   STAM_REGEN,
+  VIGOR_RECOVER,
+  WILL_REGEN,
 } from '../config/constants';
 import { smoothFactor } from '../core/math';
 import type { World } from '../ecs/World';
@@ -30,8 +35,43 @@ export class CombatantSystem {
       // (CC clocks live on the EFFECT system now — EffectSystem ticks effect.staggered/stunned/…; the gates
       //  read the granted state tags. No bespoke timers here.)
       // stamina regen waits out the post-spend delay, THEN refills — so it only recovers when you're not fighting
-      if (c.regenT && c.regenT > 0) c.regenT = Math.max(0, c.regenT - dt);
-      else if (c.stam < c.maxStam) c.stam = Math.min(c.maxStam, c.stam + STAM_REGEN * dt);
+      if (c.regenT && c.regenT > 0) {
+        c.regenT = Math.max(0, c.regenT - dt);
+        // a MEASURED BREATH mends the day's reserve even under pressure — slowly (half rate): the conserve pace's whole point
+        if (e.tags?.has(TAG_PACE_CONSERVE) && (c.vigor ?? 1) < 1) c.vigor = Math.min(1, (c.vigor ?? 1) + VIGOR_RECOVER * 0.5 * (e.attributes?.get(VIGOR_RECOVER_STAT) ?? 1) * dt);
+      } else {
+        const cap = stamCap(c); // never past VIGOR's ceiling (combat/stamina)
+        if (c.stam < cap) {
+          const deficit = cap - c.stam;
+          const gain = Math.min(deficit, STAM_REGEN * (e.attributes?.get(STAM_REGEN_STAT) ?? 1) * dt); // × the body's pace
+          c.stam += gain;
+          // THE DAY PAYS FOR THE BREATH THAT COMES BACK: the debt booked at the spends (combat/stamina.spendStamina — at the
+          // pace held THEN) is paid off in proportion to the deficit this gain closes; the ceiling sinks by that much.
+          const debt = c.vigorDebt ?? 0;
+          if (debt > 0) {
+            const pay = Math.min(debt, debt * (gain / deficit));
+            c.vigor = Math.max(0, (c.vigor ?? 1) - pay);
+            c.vigorDebt = debt - pay;
+          }
+          const sunk = stamCap(c); // the refill just lowered the ceiling a hair — keep "never past the ceiling" exact within the tick
+          if (c.stam > sunk) c.stam = sunk;
+          if (c.stam >= sunk - 1e-6) c.vigorDebt = 0; // the breath is back: whatever rounding left is settled
+        } else {
+          if (c.stam > cap) c.stam = cap; // the ceiling slid under the fill — the fill follows
+          // the day's reserve comes back only ONCE THE BREATH IS BACK (bar at the ceiling, not fighting), slowly — and it
+          // returns WITH its breath: the full bar grows with the ceiling, so recovery never opens a sliver that the next
+          // tick would refill and wear (that leak halved the rate and leaked 15% of every recovered point)
+          if ((c.vigor ?? 1) < 1) {
+            c.vigor = Math.min(1, (c.vigor ?? 1) + VIGOR_RECOVER * (e.attributes?.get(VIGOR_RECOVER_STAT) ?? 1) * dt); // × the pace: a push can't rest, a measured breath rests better
+            c.stam = Math.min(stamCap(c), c.stam + (stamCap(c) - cap));
+          }
+        }
+      }
+      // WILL trickles back after its own delay (a coating is a commitment; the pool refills slower than breath)
+      if (c.maxWill !== undefined && c.will !== undefined) {
+        if (c.willRegenT && c.willRegenT > 0) c.willRegenT = Math.max(0, c.willRegenT - dt);
+        else if (c.will < c.maxWill) c.will = Math.min(c.maxWill, c.will + WILL_REGEN * (e.attributes?.get(WILL_REGEN_STAT) ?? 1) * dt); // × the pace (a push lifts the spirit a little)
+      }
       // guard upkeep: the parry window closes, the whiff cooldown re-arms, and posture recovers ONLY while
       // the guard is DOWN — holding block banks the strain (turtling is a slowly-losing position by design)
       if (c.parryT && c.parryT > 0) c.parryT = Math.max(0, c.parryT - dt);

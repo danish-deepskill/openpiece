@@ -16,6 +16,7 @@ Weapons.register({
   name: 'Test Hammer',
   weaponClass: 'heavy',
   primary: 'ability.punch',
+  visual: { kind: 'club', length: 40, width: 8, color: 0x8a7a6a }, // a melee weapon must draw something: its length is its reach (the Weapons validator)
   modifiers: [],
   tags: [],
   hitVolumes: [{ kind: 'weaponSegment', from: 0.85 }],
@@ -31,32 +32,32 @@ describe('strikeVolumes — the override chain (ability ?? kit weapon ?? synthes
 
   it('an ability\'s own volumes win over the weapon\'s (arrays replace wholesale)', () => {
     const own = [{ kind: 'arc', radius: 60, halfAngle: 0.5, thickness: 20 }] as const;
-    expect(strikeVolumes(armed, def({ range: 0, arc: 0, swing: 'melee', hitVolumes: [...own] }, 'ability.punch'), WHOLE)[0].kind).toBe('arc');
-    expect(strikeVolumes(armed, def({ range: 0, arc: 0, swing: 'melee' }, 'ability.punch'), WHOLE)).toBe(Weapons.get('weapon.testHammer').hitVolumes);
+    expect(strikeVolumes(armed, def({ arc: 0, swing: 'melee', hitVolumes: [...own] }, 'ability.punch'), WHOLE)[0].kind).toBe('arc');
+    expect(strikeVolumes(armed, def({ arc: 0, swing: 'melee' }, 'ability.punch'), WHOLE)).toBe(Weapons.get('weapon.testHammer').hitVolumes);
   });
 
   it("the weapon rung applies ONLY to the weapon's own kit — a kick can't inherit the blade's dead zone", () => {
     // 'ability.punch' IS the test hammer's primary (in kit) → hammer volumes; a kick is NOT → default
-    expect(strikeVolumes(armed, def({ range: 0, arc: 0, swing: 'melee' }, 'ability.kick'), WHOLE)).toEqual([{ kind: 'weaponSegment' }]);
+    expect(strikeVolumes(armed, def({ arc: 0, swing: 'melee' }, 'ability.kick'), WHOLE)).toEqual([{ kind: 'weaponSegment' }]);
     // and a flurry keeps its per-jab windows instead of being preempted by the weapon's volumes
-    const flurry = strikeVolumes(armed, def({ range: 0, arc: 0, swing: 'melee', jabs: 4 }, 'ability.gomuGatling'), WHOLE);
+    const flurry = strikeVolumes(armed, def({ arc: 0, swing: 'melee', jabs: 4 }, 'ability.gomuGatling'), WHOLE);
     expect(flurry).toHaveLength(4);
   });
 
   it('an explicitly EMPTY list means a visual-only swing (not a fall-through)', () => {
-    expect(strikeVolumes(BARE, def({ range: 0, arc: 0, swing: 'melee', hitVolumes: [] }), WHOLE)).toEqual([]);
+    expect(strikeVolumes(BARE, def({ arc: 0, swing: 'melee', hitVolumes: [] }), WHOLE)).toEqual([]);
   });
 
   it('bare default = the whole drawn weapon; jabs > 1 synthesize one volume per jab window IN the active span', () => {
-    const whole = strikeVolumes(BARE, def({ range: 0, arc: 0, swing: 'melee' }), WHOLE);
+    const whole = strikeVolumes(BARE, def({ arc: 0, swing: 'melee' }), WHOLE);
     expect(whole).toEqual([{ kind: 'weaponSegment' }]);
-    const jabs = strikeVolumes(BARE, def({ range: 0, arc: 0, swing: 'melee', jabs: 4 }), WHOLE);
+    const jabs = strikeVolumes(BARE, def({ arc: 0, swing: 'melee', jabs: 4 }), WHOLE);
     expect(jabs).toHaveLength(4);
     expect(jabs[0].active).toEqual([0, 0.25]); // the Gatling flurry, expressed as windows (no bespoke reset code)
     expect(jabs[3].active).toEqual([0.75, 1]);
-    expect(strikeVolumes(BARE, def({ range: 0, arc: 0, swing: 'melee', jabs: 4 }), WHOLE)).toBe(jabs); // memoized — no per-frame alloc
+    expect(strikeVolumes(BARE, def({ arc: 0, swing: 'melee', jabs: 4 }), WHOLE)).toBe(jabs); // memoized — no per-frame alloc
     // a real phase clock: jabs pulse only through the ACTIVE span (matching the pumping arms)
-    const phased = strikeVolumes(BARE, def({ range: 0, arc: 0, swing: 'melee', jabs: 4 }), [0.1, 0.9]);
+    const phased = strikeVolumes(BARE, def({ arc: 0, swing: 'melee', jabs: 4 }), [0.1, 0.9]);
     expect(phased[0].active).toEqual([0.1, 0.30000000000000004]); // 0.1 + (1/4)·0.8 — windup is hit-free
     expect(phased[3].active?.[1]).toBeCloseTo(0.9, 10);
   });
@@ -90,7 +91,7 @@ describe('MeleeSystem — timed volumes through a real swing', () => {
     cooldown: 1,
     damageStat: 'atk',
     // one swing, two strike moments — a target caught through the whole swing is hit at BOTH windows
-    shape: { range: 0, arc: 0.3, swing: 'melee', swingTime: 0.4, hitVolumes: [
+    shape: { arc: 0.3, swing: 'melee', swingTime: 0.4, hitVolumes: [
       { kind: 'weaponSegment', active: [0, 0.3] },
       { kind: 'weaponSegment', active: [0.6, 1] },
     ] },
@@ -101,7 +102,7 @@ describe('MeleeSystem — timed volumes through a real swing', () => {
     cooldown: 1,
     damageStat: 'atk',
     // two volumes live simultaneously — per-volume hits mean BOTH may connect on the same target (deliberate)
-    shape: { range: 0, arc: 0.3, swing: 'melee', swingTime: 0.4, hitVolumes: [
+    shape: { arc: 0.3, swing: 'melee', swingTime: 0.4, hitVolumes: [
       { kind: 'weaponSegment' },
       { kind: 'arc', radius: 40, halfAngle: 1, thickness: 40 },
     ] },

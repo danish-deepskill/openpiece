@@ -23,7 +23,7 @@ describe('unit.samurai — the katana kit lands on every slot through the one eq
     expect(lo.primary).toBe('ability.kesa');
     expect(lo.heavy).toBe('ability.iai'); // the weapon's own heavy, not the base kick
     expect(lo.dash).toBe('ability.shukuchi');
-    expect(lo.utility).toBe('ability.kiai');
+    expect(lo.utilities).toEqual(['ability.kiai']);
     expect(lo.slots[0]).toBe('ability.kamaitachi'); // the ulti on key 1
     expect(lo.granted.has('ability.kiriage')).toBe(true); // the chain's second cut is granted with the entry
     expect(lo.granted.has('ability.tsuki')).toBe(true); // … and its third (a thrust)

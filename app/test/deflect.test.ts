@@ -37,7 +37,7 @@ function body(world: World, x: number, y: number, faction: FactionId, deflect = 
 function shot(world: World, owner: Entity, x: number, y: number, vx: number): Entity {
   return world.create({
     transform: { x, y, angle: 0, r: 2 },
-    projectile: { owner: owner.id, ability: 'ability.musketShot', vx, vy: 0, life: 2, hit: [] },
+    projectile: { owner: owner.id, ability: 'ability.musketShot', vx, vy: 0, life: 2, hit: [], kind: 'ball', scale: 1 },
   });
 }
 

@@ -1,12 +1,21 @@
-import { Registry, type ContentId, type Def } from '../core/Registry';
+import { Registry, type ContentId, type Def, type Validator } from '../core/Registry';
 import { SWING_SPEED_FLOOR } from '../config/constants';
-import { tierStats } from './PowerTier';
-import { flurryWindows, type HitVolume } from './hitVolume';
+import { TAG_ARMAMENT, TAG_PUMPED } from './Effect';
+import { letters, tierStats } from './PowerTier';
+import { FULL_TURN_ARC, TWO_HAND_MOTIONS } from './swing';
+import { cutWindows, flurryWindows, type HitVolume } from './hitVolume';
 import type { StatId } from './Modifier';
 import type { AttackPhases } from './phases';
 
+/** The hit radius (px) of a shot that authors no `shotRadius` — a point: a musket ball connects by its centerline. */
+export const SHOT_POINT_R = 2;
+
 export interface AbilityShape {
-  range: number;
+  /** FIXED reach (px) of a 'pistol' cone, a 'shot' (its ball's life = range / shotSpeed) or a Gomu 'stretch' (the
+   *  rubber arm's full length). NOT authored on any other melee swing: a swing reaches as far as the WIELDER's
+   *  body + the EQUIPPED weapon's drawn length (combat/swing.abilityReach — the same geometry the hitbox swings),
+   *  so a blade's length lives on its weapon row ONCE and the AI's engage distance can't drift from the steel. */
+  range?: number;
   arc: number; // half-angle of the hit cone (radians) — used by 'arc' pattern
   single?: boolean; // hits only the nearest target in the cone/line
   /** Attack DELIVERY: 'melee' = a moving hitbox resolved on contact (MeleeSystem); 'pistol' = an INSTANT
@@ -34,10 +43,13 @@ export interface AbilityShape {
    *  `shotArt` (art wins if both set). A proc ball keeps art out of the repo for simple shapes + lets a variant
    *  (electric) recolor without a second file. */
   shotProc?: 'ball' | 'slash'; // 'slash' = a flying crescent (a wind cut)
-  /** 'shot' only: on-screen size of the drawn projectile (px diameter). Default 6. Visual only — the hit
-   *  radius is the ball's own tiny transform.r; a big cannonball art can still be a small point-hit, or set
-   *  the projectile's r via a future field. */
+  /** 'shot' only: on-screen size of the drawn projectile (px diameter). Default 6. Visual — the HIT radius is
+   *  `shotRadius` (a point by default), so a big cannonball art can still be a small point-hit. */
   shotSize?: number;
+  /** 'shot' only: the ball's HIT radius (px) — the body it strikes is swept against (its radius + this), so a wide
+   *  crescent whose EDGE brushes a shoulder connects, not only its centerline. Default SHOT_POINT_R (2: the point-hit
+   *  a musket ball has always had). Boot-validated ≤ half `shotSize`: what hits may never be bigger than what's drawn. */
+  shotRadius?: number;
   /** 'shot' only: PASS-THROUGH at close range — a long musket jammed in someone's face often can't get a clean
    *  shot off (the barrel can't bear, a rushing body spoils it), so a point-blank shot has a chance to phase
    *  THROUGH with no hit (the reload's still spent — punishable). This is the peak pass-through probability
@@ -56,8 +68,15 @@ export interface AbilityShape {
   procEffect?: { chance: number; effect: ContentId; dur: number; damageMult?: number };
   /** Hit shape: 'arc' = swing (sweep); 'line' = stab (thrust); 'mixed' = random; 'stretch' = Gomu rubber arm;
    *  'gore' = headbutt capsule; 'axe' = overhead axe-kick (the limb rises/scales UP, then slams an AoE straight down);
-   *  'flurry' = `jabs` rapid ALTERNATING blade sweeps through the active phase (a thousand-cuts channel). */
-  pattern?: 'arc' | 'line' | 'mixed' | 'stretch' | 'gore' | 'axe' | 'flurry';
+   *  'flurry' = `jabs` rapid ALTERNATING blade sweeps through the active phase (a thousand-cuts channel).
+   *  'crossCut' = a two-blade DASH-THROUGH iai (swing.crossCut): both blades sheathe back through the windup, ride tucked
+   *  through the launched step, and snap out into an X once it LANDS — pair it with a 'trail' volume (the cut is the path).
+   *  'twinCleave' = the two-sword GREAT CUT (swing.twinCleave): both blades rise together to one side (charge-held), then
+   *  come down across the whole front as ONE blow — author one window, not a flurry.
+   *  'scissorIn' / 'scissorOut' = both blades at once, closing from ±arc to the front / opening from the front to ±arc
+   *  (the Nigiri climb and pattern cuts); 'twinThrust' = both blades thrust side by side, tips converging (the flash).
+   *  Each of these poses BOTH hands: author the off blade's hit as a second weaponSegment with `hand: 'off'`. */
+  pattern?: 'arc' | 'line' | 'mixed' | 'stretch' | 'gore' | 'axe' | 'flurry' | 'crossCut' | 'twinCleave' | 'scissorIn' | 'scissorOut' | 'twinThrust';
   width?: number; // 'line' corridor half-width (px)
   /** Melee swing duration (s) at attack speed 1: the window the animated fist/blade is a live hitbox. Default 0.18.
    *  The REAL duration is swingTime / atkSpeed, floored so a readable tell never drops under TELL_FLOOR
@@ -75,7 +94,9 @@ export interface AbilityShape {
   /** Multiplies the body's natural reach for this strike — a short jab (< 1), a long kick (> 1). Default 1. */
   reachMul?: number;
   /** SWING FX theme — an extra visual played as the swing goes ACTIVE, to read the move as elemental. 'electric'
-   *  = a cyan crackle burst at the striking limb (the Shock Kick). Unset ⇒ a plain swing. Presentation-only. */
+   *  = a cyan crackle burst at the striking limb (the Shock Kick). Unset ⇒ a plain swing. Presentation-only. (A
+   *  body's STATE re-themes its visuals on its own — a coated swordsman's cuts are haki by combat/fxTheme, never by a
+   *  flag here.) */
   swingFx?: 'electric';
   /** Render BOTH limbs for a stretch (Gomu Rocket's two-armed grab) instead of one. */
   bothHands?: boolean;
@@ -114,6 +135,29 @@ export type AbilityTrigger = 'tap' | 'hold' | 'combo';
 
 export const AI_ROLE_POINT_BLANK = 'ai.role.pointBlank';
 export const AI_ROLE_DISENGAGE = 'ai.role.disengage';
+/** The SITUATIONAL roles a reading brain (AIProfileDef.readsSituations) reaches for BEFORE its flat special roll — a special
+ *  chosen for a reason, not a dice throw: gapCloser = reaches a foe well outside primary reach (a dash-through, a lunge);
+ *  guardBreak = the posture-heavy blow for a foe who is blocking or whose guard is cracked; finisher = the big one for a
+ *  foe under FINISHER_HP; ranged = the flying slash for a foe regrouping out of reach. A row may carry several. */
+export const AI_ROLE_GAP_CLOSER = 'ai.role.gapCloser';
+export const AI_ROLE_GUARD_BREAK = 'ai.role.guardBreak';
+export const AI_ROLE_FINISHER = 'ai.role.finisher';
+export const AI_ROLE_RANGED = 'ai.role.ranged';
+
+/** A GROUND HAZARD a swing leaves where its cut lands (ecs/components.Hazard, systems/HazardSystem): STROKES as angles off
+ *  the aim + lengths (an X is two at ±lean), centered `ahead` × the steel's reach in front of the swinger at the cut's end,
+ *  `width` wide. It lives `life` seconds and ticks every `tickEvery`, each tick a hit of `damageMul` × the ability's base
+ *  damage with `stun` hitstun, at most `maxHits` per body — stand in it and you keep paying; step off and it's done. */
+export interface HazardSpec {
+  strokes: { angle: number; len: number }[];
+  width: number;
+  ahead: number;
+  life: number;
+  tickEvery: number;
+  maxHits: number;
+  damageMul: number;
+  stun?: number;
+}
 
 export interface AbilityDef extends Def {
   name: string;
@@ -121,6 +165,9 @@ export interface AbilityDef extends Def {
   /** Input shape (see AbilityTrigger). Default 'tap'. Guard reads it (block=hold, parry=tap). */
   trigger?: AbilityTrigger;
   costStam?: number; // stamina drained on use AND the gate — you can't use what you can't pay for (clamped to 0)
+  /** WILL spent on use AND the gate (the haki pool — combat/stamina.spendWill): a technique's price. A body with no
+   *  pool can never afford it, which is how "has haki" is enforced without a flag. */
+  costWill?: number;
   /** SUSTAINED drain (stamina/sec) for a continuous 'hold' ability that isn't a discrete cast — sprint burns
    *  this every frame it's active (movement modifier, resolved outside activate()). Distinct from costStam
    *  (a one-shot spend). Read by combat/stamina.trySprint. */
@@ -190,8 +237,43 @@ export interface AbilityDef extends Def {
    *  a normal ground attack (fully dodged by a jump). The counterplay to jump-spam — and the ONE place a jump-vs-
    *  attack outcome can be random, on the specific counter-move, not baseline melee. */
   airCatch?: number;
-  launchAt?: number; // with a stretch shape: fire `selfImpulse` at this fraction of the swing (grab → THEN rocket)
+  /** Progress cues (0..1, ascending) at which the swing fires `selfImpulse` — a swing that CARRIES its own body-impulses:
+   *  the Rocket's single `[0.42]` (grab → THEN rocket), a dash-cut's `[windup]` (the step lands with the cut), Sandan's
+   *  three. Each fires once; the swing is held after the last until the impulse ends (`landed`). Without it a
+   *  selfImpulse is an immediate dash that FORFEITS any swing (the dodge rule). */
+  launchAt?: number[];
+  /** Times the self-impulse REPEATS back to back (default 1): each step fires the moment the previous one ends, re-aimed
+   *  at the actor's live movement direction (else facing) — the player steers between steps, a brain re-faces its
+   *  target. A multi-step FLASH-STEP (Sandan: three), not a swing: no hitbox, no launch cues. A swing started mid-chain
+   *  or a stun ends it. */
+  dashes?: number;
+  /** RAGDOLL on a landed hit (combat/ragdoll — the knockdown CC class): REPLACES the hit's knockback + hitstun with a
+   *  FLIGHT (`force` px/s for `airTime` s, tumbling, through bodies, a wall ends it with a thud) then a DOWNED beat
+   *  (`downed` s sprawled, hittable, pushable, un-launchable), then the get-up. The dominance rung scales it like any
+   *  shove/stun — a lower tier's ragdoll does NOTHING to a dominant body; on fodder it flings farther and keeps them
+   *  down longer. A target already ragdolled is not re-launched (the anti-juggle rule). */
+  ragdoll?: { force: number; airTime: number; downed: number };
+  /** Pause (s) between a dash string's steps (default 0 = back to back). The pause is where the next step is AIMED: the
+   *  player's movement keys are read only while not dashing, so a string with no gap re-aims from a single tick and
+   *  feels locked to its first direction; a short gap lets the held direction land, and reads as a step-step-step. */
+  dashGap?: number;
+  /** Bands the wielder counts HIGHER when the defender asks whether a PARRY can turn this blow (and for nothing else —
+   *  combat/dominance.dominance's attackerShift). `letters(1)` makes a technique no one at or below the wielder's
+   *  letter can parry, while a letter above still turns it; a coated defender's own +letter cancels a coating's.
+   *  Tier-relative by design — an absolute "unparryable" would hold against an S-tier, which the ladder forbids. */
+  parryShift?: number;
   grantEffect?: ContentId; // self-effect on use (e.g. i-frames)
+  /** A STANCE CYCLE: each press advances through these effects — none → [0] → [1] → … → none — ending the current one and
+   *  applying the next (free, instant, no cooldown: a stance, not a cast). The pace (Second Wind → Measured Breath →
+   *  normal) is the first; a fourth mode is one more row in the list. Lives in `loadout.stance` (the Z key). */
+  cycle?: ContentId[];
+  /** A HELD state's switch: pressing this while its `grantEffect` is already active ENDS the effect instead of
+   *  re-applying it (free — no cost, no cooldown; the on-press paid). Pairs with EffectDef.drainStamPerSec for a coating
+   *  you switch on and hold (the Geppo-hover model). The brain never presses a toggle whose effect is up (tryUtility). */
+  toggle?: boolean;
+  /** The zone this swing leaves behind at its cut's end (HazardSpec) — Samon's scored X. Spawned by AbilitySystem the tick the
+   *  active phase closes; HazardSystem owns it from there. Unset ⇒ the cut leaves nothing. Boot-validated. */
+  hazard?: HazardSpec;
   requireTags?: string[];
   blockTags?: string[];
   /** Tags describing THIS ability — the classification seam backlog #16 plans for elements/delivery
@@ -212,12 +294,56 @@ export interface AbilityDef extends Def {
 }
 
 // validated at boot: a typo'd negative cooldown/cost/range fails loud on load, not as a weird mid-game bug
-export const Abilities = new Registry<AbilityDef>('Abilities', (a) => {
+/** The ability validator as a PURE function (the `modifierProblem` pattern): a problem string or null. Exported so a
+ *  test can judge a bad row without registering it — the registry resolves every raw row on first access, so one
+ *  planted bad row poisons every later lookup in that test file. */
+export const abilityProblem: Validator<AbilityDef> = (a) => {
   if (a.cooldown < 0) return 'cooldown must be ≥ 0';
   if ((a.costStam ?? 0) < 0) return 'costStam must be ≥ 0';
+  if ((a.costWill ?? 0) < 0) return 'costWill must be ≥ 0';
   if (a.damageMul !== undefined && !(a.damageMul > 0)) return `damageMul must be > 0 (got ${a.damageMul})`;
   if (a.volleys && !a.shape) return 'volleys need a shape (they are loosed from a swing in flight)';
-  if (a.shape?.swing === 'shot' && !(a.shape.range > 0)) return `a 'shot' ability needs range > 0 (its life is range / shotSpeed; got ${a.shape.range})`;
+  if (a.shape?.hitVolumes?.some((v) => v.kind === 'trail') && !a.launchAt) return "a 'trail' volume cuts the path of a LAUNCHED step — the row needs launchAt (+ selfImpulse)"; // else it is never live: it waits for a landing that never comes
+  if (a.hazard) {
+    const h = a.hazard;
+    if (!a.shape || a.shape.swing !== 'melee') return 'a hazard is left by a melee swing (it spawns where the cut ends)';
+    if (h.strokes.length === 0) return 'hazard.strokes must name at least one stroke';
+    for (const st of h.strokes) if (!(st.len > 0)) return `hazard stroke len must be > 0 (got ${st.len})`;
+    if (!(h.width > 0) || !(h.life > 0) || !(h.tickEvery > 0) || !(h.damageMul > 0)) return 'hazard width/life/tickEvery/damageMul must all be > 0';
+    if (!(Number.isInteger(h.maxHits) && h.maxHits >= 1)) return `hazard.maxHits must be an integer ≥ 1 (got ${h.maxHits})`;
+    if (!(h.ahead >= 0)) return `hazard.ahead must be ≥ 0 (got ${h.ahead})`;
+    if (h.stun !== undefined && !(h.stun >= 0)) return `hazard.stun must be ≥ 0 (got ${h.stun})`;
+    if (!((a.shape.phases?.recover ?? 0) > 0)) return 'a hazard row needs authored phases with recover > 0 — the zone is left as the active phase closes, and a swing with no recovery is gone before that tick (the melee tick deletes it first)';
+  }
+  if (a.shape?.hitVolumes?.some((v) => v.kind === 'weaponSegment' && v.hand === 'off') && !TWO_HAND_MOTIONS.has(a.shape.pattern ?? '')) return `an off-blade segment needs a two-hand pattern (${[...TWO_HAND_MOTIONS].join(' | ')}) — a one-hand motion poses no off blade, so it would never hit`;
+  if (a.launchAt) {
+    if (!a.selfImpulse) return 'launchAt needs selfImpulse (the cues fire it)';
+    let prev = -1;
+    for (const at of a.launchAt) {
+      if (!(at >= 0 && at <= 1)) return `launchAt cues must be in [0, 1] (got ${at})`;
+      if (at <= prev) return 'launchAt cues must ascend';
+      prev = at;
+    }
+  }
+  if (a.dashGap !== undefined && (!(a.dashGap >= 0) || !a.dashes)) return `dashGap needs dashes ≥ 2 and must be ≥ 0 (got ${a.dashGap})`;
+  if (a.toggle && !a.grantEffect) return 'toggle needs grantEffect (the effect it switches off)';
+  if (a.cycle !== undefined && (a.cycle.length < 1 || a.shape || a.grantEffect)) return 'cycle needs ≥ 1 effect and no shape/grantEffect (a stance only switches states)';
+  if (a.ragdoll && !(a.ragdoll.force > 0 && a.ragdoll.airTime > 0 && a.ragdoll.downed >= 0)) return `ragdoll needs force > 0, airTime > 0, downed ≥ 0 (got ${JSON.stringify(a.ragdoll)})`;
+  if (a.dashes !== undefined) {
+    if (!Number.isInteger(a.dashes) || a.dashes < 2) return `dashes must be an integer ≥ 2 (got ${a.dashes}; omit it for a single dash)`;
+    if (!a.selfImpulse || a.launchAt) return 'dashes needs selfImpulse and no launchAt (a repeat DASH, not a launching swing)';
+  }
+  if (a.parryShift !== undefined && !(a.parryShift >= 0)) return `parryShift must be ≥ 0 (got ${a.parryShift})`;
+  if (a.shape) {
+    const fixed = a.shape.swing !== 'melee' || a.shape.pattern === 'stretch'; // a cone, a ball or a rubber arm reaches an AUTHORED distance
+    if (fixed && !((a.shape.range ?? 0) > 0)) return `a '${a.shape.swing}'${a.shape.pattern === 'stretch' ? ' stretch' : ''} ability needs range > 0 (got ${a.shape.range})`;
+    if (!fixed && a.shape.range !== undefined) return `a melee swing reaches as far as its wielder's body + equipped weapon (combat/swing.abilityReach) — don't author shape.range (got ${a.shape.range})`;
+  }
+  if (a.shape?.shotRadius !== undefined) {
+    if (a.shape.swing !== 'shot') return 'shotRadius is for a shot (a swing\'s hitbox is its drawn blade)';
+    if (!(a.shape.shotRadius > 0)) return `shotRadius must be > 0 (got ${a.shape.shotRadius})`;
+    if (a.shape.shotRadius * 2 > (a.shape.shotSize ?? 6)) return `shotRadius ${a.shape.shotRadius} exceeds the drawn ball (shotSize ${a.shape.shotSize ?? 6}): what hits may not be bigger than what's drawn`;
+  }
   if (a.shape?.shotProc === 'slash' && a.shape.procEffect) return "shotProc 'slash' has no charged (proc) texture yet — use 'ball' or drop procEffect";
   if (a.shape?.pattern === 'flurry' && a.shape.hitVolumes && a.shape.phases) {
     // the authored windows ARE the cuts (swing.flurryCuts): they must tile the active phase back to back, or the
@@ -244,7 +370,6 @@ export const Abilities = new Registry<AbilityDef>('Abilities', (a) => {
       prev = v.at;
     }
   }
-  if (a.shape && a.shape.range < 0) return 'shape.range must be ≥ 0';
   if (a.shape?.swing === 'shot' && !((a.shape.shotSpeed ?? 0) > 0)) return `a 'shot' ability needs shotSpeed > 0 (got ${a.shape.shotSpeed})`;
   // an authored 0 makes the swing clock divide by zero (t/dur → NaN: the ball never fires, the swing never ends);
   // OMITTING it is fine (engine default) — only the explicit-zero/negative typo crashes here
@@ -291,7 +416,9 @@ export const Abilities = new Registry<AbilityDef>('Abilities', (a) => {
     if (a.shape?.swingTime !== undefined && win <= slowest) return `comboWindow (${win}) must outlast the slowest possible swing (${slowest.toFixed(2)}s) or the chain is unreachable`;
   }
   return null;
-});
+};
+
+export const Abilities = new Registry<AbilityDef>('Abilities', abilityProblem);
 
 // NOTE: `cooldown` is the BASE recovery; effective recovery = cooldown / atkSpeed (a tier stat), so attack
 // speed is tier-driven, not a hardcoded player advantage. Stamina gates EVERY costed ability by AFFORDABILITY:
@@ -315,11 +442,28 @@ const KAMAITACHI_WINDOWS = flurryWindows(KAMAITACHI_PLAN, KAMAITACHI_PHASES.wind
   shotSpread: 0.35, // ±20°: forward, but no two slashes on the same line
 });
 
+// ── NITŌRYŪ's clocks (the rows are at the end of the list): each double cut's windows are laid over ITS phases (cutWindows),
+//    so the cuts and the swing can't drift. windup = the tell; active = the two cuts' span; recover = the settle.
+const NIGIRI: AttackPhases = { windup: 0.3, active: 0.4, recover: 0.3 };
+const SAMON: AttackPhases = { windup: 0.5, active: 0.12, recover: 0.38 }; // a long HOLD, a SNAP of a cut (~0.07s at Zoro's speed), a heavy follow-through — the weight is in the beats around the blow, not in a slow blow
+const SAI_KURU: AttackPhases = { windup: 0.3, active: 0.5, recover: 0.2 };
+const NIGORI_ZAKE: AttackPhases = { windup: 0.55, active: 0.15, recover: 0.3 }; // a long HOLD, a FAST blow (~0.13s at Zoro's speed), a heavy follow-through — Samon's beat, bigger
+const RASHOMON: AttackPhases = { windup: 0.3, active: 0.6, recover: 0.1 }; // the step fires at the windup's end; the long active (0.62s at Zoro's speed) outlasts the 0.44s dash so the trail is live once he lands
+/** A two-blade cut's volumes: the lead blade and the off blade, each a HALF-plus share (0.6 — both landing = 1.2 cuts,
+ *  one = 0.6), one window = the active phase (both blades move at once). Frozen: defs are shared by every cast. */
+const TWIN_CUT = Object.freeze<HitVolume[]>([{ kind: 'weaponSegment', damageMul: 0.6 }, { kind: 'weaponSegment', hand: 'off', damageMul: 0.6 }]) as HitVolume[]; // readonly at runtime; the shape field's type is what rows take (cutWindows' precedent)
+const TWIN_CUT_HEAVY = Object.freeze<HitVolume[]>([{ kind: 'weaponSegment', damageMul: 0.7 }, { kind: 'weaponSegment', hand: 'off', damageMul: 0.7 }]) as HitVolume[];
+/** SAMON's SAND PATTERN — the X it scores on the ground: two 64px strokes at ±0.65 off the aim, a blade's reach ahead, 2.5s on
+ *  the ground, cutting every half-second for 35% of the blow (×3 at most = about one more full cut) — step off it. */
+const SAND_PATTERN: HazardSpec = { strokes: [{ angle: -0.65, len: 64 }, { angle: 0.65, len: 64 }], width: 10, ahead: 0.8, life: 2.5, tickEvery: 0.5, maxHits: 3, damageMul: 0.35, stun: 0.2 };
+/** The twin THRUST's volumes: two narrow points (the converging tips) — width 8 each, the thrust hits what it skewers. */
+const TWIN_POINT = Object.freeze<HitVolume[]>([{ kind: 'weaponSegment', width: 8, damageMul: 0.6 }, { kind: 'weaponSegment', hand: 'off', width: 8, damageMul: 0.6 }]) as HitVolume[];
+
 Abilities.registerAll([
   // base kit (unarmed): a committed fist jab — the fist itself is the hitbox on contact. Windup ~200ms — the
   // FLOOR of the ladder (the fastest readable tell; nothing winds up quicker). Fists sit at the minimum because
   // they're fast/weak/short; heavier weapons scale UP from here. Still parryable (the Deepwoken model).
-  { id: 'ability.punch', name: 'Punch', cooldown: 0.5, shape: { range: 0, arc: 0.22, swing: 'melee', pattern: 'line', swingTime: 0.5, reachMul: 0.85, phases: { windup: 0.4, active: 0.3, recover: 0.3 } }, damageStat: 'atk', knockback: 165, costStam: 3, stun: 0.24 },
+  { id: 'ability.punch', name: 'Punch', cooldown: 0.5, shape: { arc: 0.22, swing: 'melee', pattern: 'line', swingTime: 0.5, reachMul: 0.85, phases: { windup: 0.4, active: 0.3, recover: 0.3 } }, damageStat: 'atk', knockback: 165, costStam: 3, stun: 0.24 },
   // ROLL — a committed evasive tumble: longer travel + duration than the old quick hop, and NO i-frames — the
   // roll dodges by REPOSITIONING (you roll out of the blade's path), not by damage immunity. `roll: true` opts
   // into the ball-up+spin animation (drawActor, driven off mover.rollT). This is the BASE mobility move that
@@ -349,16 +493,16 @@ Abilities.registerAll([
   // base kit HEAVY: a committed kick — slower + harder than the jab. The foot only appears for this swing (right-click).
   // the base-kit heavy KICK — a committed leg strike. Windup ~200ms (the light/unarmed FLOOR, with the punch) —
   // a readable foot-draw-back tell, reaction-parryable. Unarmed sits at the floor; weapons scale up from here.
-  { id: 'ability.kick', name: 'Kick', cooldown: 0.9, shape: { range: 0, arc: 0.3, swing: 'melee', pattern: 'line', swingTime: 0.55, limb: 'foot', reachMul: 1.1, phases: { windup: 0.36, active: 0.3, recover: 0.34 } }, damageStat: 'atk', damageFlat: 6, knockback: 320, costStam: 7, stun: 0.9 },
+  { id: 'ability.kick', name: 'Kick', cooldown: 0.9, shape: { arc: 0.3, swing: 'melee', pattern: 'line', swingTime: 0.55, limb: 'foot', reachMul: 1.1, phases: { windup: 0.36, active: 0.3, recover: 0.34 } }, damageStat: 'atk', damageFlat: 6, knockback: 320, costStam: 7, stun: 0.9 },
   // Haki — Armament: a timed coating that counters Devil Fruits (bypasses Logia intangibility) + boosts damage
-  { id: 'ability.armament', name: 'Armament', cooldown: 8, grantEffect: 'effect.armament' },
+  { id: 'ability.armament', name: 'Armament', cooldown: 5, grantEffect: 'effect.armament', toggle: true }, // no ignition cost: the coating is pure DRAIN (6 will/s, held until you switch off or run dry; breath stays for the cuts). Lighting it needs a second of fuel in the pool (ready()); the cooldown stops flicking it on and off
   // weapon (cutlass) — the basic, deliberate sword move: a real swing/stab whose blade must connect (windup ~143ms)
   // authored phases so the cutlass tell clears reaction time (~200ms) — a real ENEMY attack (the Brute), and
   // every hostile attack must be parryable. 0.4 × 0.55s = 0.22s cock-back; the default medium rung (0.26)
   // gave only 143ms, unreactable. Active/recover stay quick so the swing itself still lands snappily.
-  { id: 'ability.cut', name: 'Cut', cooldown: 1.4, shape: { range: 18, arc: 0.5, swing: 'melee', pattern: 'mixed', width: 12, swingTime: 0.6, phases: { windup: 0.5, active: 0.25, recover: 0.25 } }, damageStat: 'atk', damageFlat: 2, knockback: 170, costStam: 6, stun: 0.44 }, // MEDIUM: windup 0.5×0.6=0.30s — clearly slower than the ~0.2s light floor. range 18 → abilityRange ~28, sits at the drawn cutlass tip so reach matches the sprite
+  { id: 'ability.cut', name: 'Cut', cooldown: 1.4, shape: { arc: 0.5, swing: 'melee', pattern: 'mixed', width: 12, swingTime: 0.6, phases: { windup: 0.5, active: 0.25, recover: 0.25 } }, damageStat: 'atk', damageFlat: 2, knockback: 170, costStam: 6, stun: 0.44 }, // MEDIUM: windup 0.5×0.6=0.30s — clearly slower than the ~0.2s light floor.
   // RESERVED for a late-game / high-tier weapon: fast + powerful. Not granted by the starter cutlass.
-  { id: 'ability.slash', name: 'Slash', cooldown: 0.5, shape: { range: 30, arc: 0.5, swing: 'melee', pattern: 'mixed', width: 12, swingTime: 0.35 }, damageStat: 'atk', damageFlat: 6, knockback: 210, costStam: 3.5, stun: 0.4 },
+  { id: 'ability.slash', name: 'Slash', cooldown: 0.5, shape: { arc: 0.5, swing: 'melee', pattern: 'mixed', width: 12, swingTime: 0.35 }, damageStat: 'atk', damageFlat: 6, knockback: 210, costStam: 3.5, stun: 0.4 },
   // the DAGGER's 2-hit chain: a quick SLICE (swing) that flows into a finishing STAB. The dagger's primary is the
   // slice (chain ROOT); the stab is the payoff — it hits a touch harder + staggers longer, and its cooldown
   // locks the root afterward (the post-combo recovery, same rule as the sword finisher). Both steps are FIXED
@@ -367,16 +511,16 @@ Abilities.registerAll([
   // authored phases so the dagger's tell clears reaction time (~200ms) — a real ENEMY attack (the Bandit) must parry.
   // hitVolume `from: 0.45` = the hitbox is only the BLADE half (the outer part of the drawn dagger), NOT the
   // grip/hand — so the damage zone matches the visible steel, not a circle at the empty hand (what you see hits).
-  { id: 'ability.daggerSlice', name: 'Slice', cooldown: 0.4, shape: { range: 22, arc: 0.42, swing: 'melee', pattern: 'arc', width: 10, swingTime: 0.5, phases: { windup: 0.4, active: 0.3, recover: 0.3 }, hitVolumes: [{ kind: 'weaponSegment', from: 0.45 }] }, damageStat: 'atk', damageFlat: 1, knockback: 130, costStam: 4, stun: 0.28, comboNext: 'ability.stab' }, // windup 0.4×0.5=0.20s: the LIGHT floor
-  { id: 'ability.stab', name: 'Stab', cooldown: 1.1, shape: { range: 22, arc: 0.34, swing: 'melee', pattern: 'line', width: 8, swingTime: 0.45, phases: { windup: 0.44, active: 0.26, recover: 0.3 }, hitVolumes: [{ kind: 'weaponSegment', from: 0.45 }] }, damageStat: 'atk', damageFlat: 2, knockback: 150, costStam: 6, stun: 0.34 }, // windup 0.44×0.45≈0.20s: the light floor; blade-only hitbox
+  { id: 'ability.daggerSlice', name: 'Slice', cooldown: 0.4, shape: { arc: 0.42, swing: 'melee', pattern: 'arc', width: 10, swingTime: 0.5, phases: { windup: 0.4, active: 0.3, recover: 0.3 }, hitVolumes: [{ kind: 'weaponSegment', from: 0.45 }] }, damageStat: 'atk', damageFlat: 1, knockback: 130, costStam: 4, stun: 0.28, comboNext: 'ability.stab' }, // windup 0.4×0.5=0.20s: the LIGHT floor
+  { id: 'ability.stab', name: 'Stab', cooldown: 1.1, shape: { arc: 0.34, swing: 'melee', pattern: 'line', width: 8, swingTime: 0.45, phases: { windup: 0.44, active: 0.26, recover: 0.3 }, hitVolumes: [{ kind: 'weaponSegment', from: 0.45 }] }, damageStat: 'atk', damageFlat: 2, knockback: 150, costStam: 6, stun: 0.34 }, // windup 0.44×0.45≈0.20s: the light floor; blade-only hitbox
   // the SWORD's 3-hit chain: two committed heavy cuts (~228ms windups — REACTION-parryable, the price of the
   // reach + damage), then a finisher whose slash-wave (a 'swing'-following arc volume) reaches past the
   // steel — after it, the chain ROOT locks for the finisher's cooldown (the post-combo recovery).
-  { id: 'ability.swordSlash1', name: 'Slash', cooldown: 0.85, shape: { range: 0, arc: 0.55, swing: 'melee', pattern: 'arc', swingTime: 0.8 }, damageStat: 'atk', damageFlat: 3, knockback: 180, costStam: 5, stun: 0.4, comboNext: 'ability.swordSlash2' }, // HEAVY: no authored phases → the heavy rung (windup 0.5×0.8=0.40s, a big punishable rear-back)
-  { id: 'ability.swordSlash2', name: 'Backslash', cooldown: 0.85, shape: { range: 0, arc: 0.55, swing: 'melee', pattern: 'arc', swingTime: 0.8, mirror: true }, damageStat: 'atk', damageFlat: 4, knockback: 200, costStam: 5, stun: 0.44, comboNext: 'ability.swordFinisher' },
+  { id: 'ability.swordSlash1', name: 'Slash', cooldown: 0.85, shape: { arc: 0.55, swing: 'melee', pattern: 'arc', swingTime: 0.8 }, damageStat: 'atk', damageFlat: 3, knockback: 180, costStam: 5, stun: 0.4, comboNext: 'ability.swordSlash2' }, // HEAVY: no authored phases → the heavy rung (windup 0.5×0.8=0.40s, a big punishable rear-back)
+  { id: 'ability.swordSlash2', name: 'Backslash', cooldown: 0.85, shape: { arc: 0.55, swing: 'melee', pattern: 'arc', swingTime: 0.8, mirror: true }, damageStat: 'atk', damageFlat: 4, knockback: 200, costStam: 5, stun: 0.44, comboNext: 'ability.swordFinisher' },
   // the wave's window sits INSIDE the heavy rung's active phase [0.38, 0.72] — a telegraph must never
   // deal damage (the canon review caught the old [0.15, 0.7], authored against the deleted pre-phase timeline)
-  { id: 'ability.swordFinisher', name: 'Cross Cut', cooldown: 2.4, shape: { range: 0, arc: 0.7, swing: 'melee', pattern: 'arc', swingTime: 0.85, chargeHold: true, hitVolumes: [{ kind: 'weaponSegment', from: 0.3 }, { kind: 'arc', radius: 52, halfAngle: 0.9, thickness: 26, follow: 'swing', active: [0.38, 0.72] }] }, damageStat: 'atk', damageFlat: 8, knockback: 320, costStam: 8, stun: 1.0, shake: 4 }, // chargeHold: snap-and-hold the load = a big readable wind-up tell // keeps the blade's dead zone; the wave still covers the mid-range
+  { id: 'ability.swordFinisher', name: 'Cross Cut', cooldown: 2.4, shape: { arc: 0.7, swing: 'melee', pattern: 'arc', swingTime: 0.85, chargeHold: true, hitVolumes: [{ kind: 'weaponSegment', from: 0.3 }, { kind: 'arc', radius: 52, halfAngle: 0.9, thickness: 26, follow: 'swing', active: [0.38, 0.72] }] }, damageStat: 'atk', damageFlat: 8, knockback: 320, costStam: 8, stun: 1.0, shake: 4 }, // chargeHold: snap-and-hold the load = a big readable wind-up tell // keeps the blade's dead zone; the wave still covers the mid-range
   // MUSKET SHOT — the first TRAVELLING projectile (docs DESIGN_BACKLOG #19). swing:'shot' spawns a ball
   // (ProjectileSystem) that flies straight + dodgeable + wall-stopped — NOT the instant hitscan cone the
   // Gomu Pistol uses. RELOAD is the counterplay that balances range: the long `cooldown` (2.2s) IS the
@@ -391,7 +535,7 @@ Abilities.registerAll([
   // reloading gun. LOW damage, HIGH knockback + stun — it's about creating SPACE (knock them back so you can
   // reload or step away), not killing. A committed line-thrust (the rifle butt jabs forward). The melee answer
   // a ranged weapon needs against a rusher — pairs with the shot's long reload (the distance-war counterplay).
-  { id: 'ability.musketBash', name: 'Buttstroke', cooldown: 5, shape: { range: 20, arc: 0.32, swing: 'melee', pattern: 'line', width: 14, swingTime: 0.5, reverseGrip: true, phases: { windup: 0.36, active: 0.3, recover: 0.34 } }, damageStat: 'atk', damageFlat: 2, knockback: 430, costStam: 9, stun: 0.9, shake: 3 }, // reverseGrip: mirror the musket so the STOCK leads the thrust
+  { id: 'ability.musketBash', name: 'Buttstroke', cooldown: 5, shape: { arc: 0.32, swing: 'melee', pattern: 'line', width: 14, swingTime: 0.5, reverseGrip: true, phases: { windup: 0.36, active: 0.3, recover: 0.34 } }, damageStat: 'atk', damageFlat: 2, knockback: 430, costStam: 9, stun: 0.9, shake: 3 }, // reverseGrip: mirror the musket so the STOCK leads the thrust
   // MARINE BUTTSTROKE — the marine musket's butt-stroke, a PARENT row (registry inheritance: child fields win,
   // the shape/damage/knockback all inherit — a flat copy would drift). Differs only in: a SHORTER cooldown (4s
   // vs 5s — the drilled officer recovers faster) and the WALL-SLAM proc: 30% of shoves are a LONG launch (950),
@@ -415,7 +559,7 @@ Abilities.registerAll([
   // resets to firing range. A BIGGER hitbox than the base kick (arc 0.45 vs 0.3, reachMul 1.4 vs 1.1 — easier to
   // land in a scramble) + a LONG stun (1.3, the zap-lock). Visually distinct: cyan swing crackle (swingFx) + cyan
   // impact spark (hitFx). Long cooldown/high stamina = a committed escape, not spammable.
-  { id: 'ability.marineShockKick', name: 'Shock Kick', tags: [AI_ROLE_DISENGAGE], cooldown: 6, shape: { range: 0, arc: 0.45, swing: 'melee', pattern: 'line', swingTime: 0.5, limb: 'foot', reachMul: 1.4, swingFx: 'electric', phases: { windup: 0.36, active: 0.3, recover: 0.34 } }, recoilPush: 560, hitFx: 0x6cf0ff, damageStat: 'atk', damageFlat: 7, knockback: 360, costStam: 12, stun: 1.3, shake: 3 }, // windup 0.36×0.5 = 0.18s tell
+  { id: 'ability.marineShockKick', name: 'Shock Kick', tags: [AI_ROLE_DISENGAGE], cooldown: 6, shape: { arc: 0.45, swing: 'melee', pattern: 'line', swingTime: 0.5, limb: 'foot', reachMul: 1.4, swingFx: 'electric', phases: { windup: 0.36, active: 0.3, recover: 0.34 } }, recoilPush: 560, hitFx: 0x6cf0ff, damageStat: 'atk', damageFlat: 7, knockback: 360, costStam: 12, stun: 1.3, shake: 3 }, // windup 0.36×0.5 = 0.18s tell
   // fighting style (flash step)
   { id: 'ability.flashDash', name: 'Flash Dash', cooldown: 0.45, costStam: 10, selfImpulse: 420, grantEffect: 'effect.invuln' },
   // ── KENJUTSU (the Samurai's kit — weapon.katana + style.kenjutsu). Designed as ANSWERS to the Marine Officer's
@@ -424,24 +568,24 @@ Abilities.registerAll([
   //    faster than the sword's 0.8 swings, and LOW knockback on purpose — against a kiter every pixel of shove
   //    is a gift; the cuts keep him in reach and the iai's posture does the finishing. Two steps, not three: his
   //    kick/buttstroke recharge too fast for a third auto-chained cut to land; the third beat is a decision (iai).
-  { id: 'ability.kesa', name: 'Kesa', cooldown: 0.8, shape: { range: 36, arc: 0.5, swing: 'melee', pattern: 'arc', swingTime: 0.55 }, damageStat: 'atk', damageFlat: 3, knockback: 150, costStam: 5, stun: 0.4, comboNext: 'ability.kiriage' },
-  { id: 'ability.kiriage', name: 'Kiri-age', cooldown: 0.8, shape: { range: 36, arc: 0.5, swing: 'melee', pattern: 'arc', swingTime: 0.55, mirror: true }, damageStat: 'atk', damageFlat: 4, knockback: 170, costStam: 5, stun: 0.45, comboNext: 'ability.tsuki' },
+  { id: 'ability.kesa', name: 'Kesa', cooldown: 0.8, shape: { arc: 0.5, swing: 'melee', pattern: 'arc', swingTime: 0.55 }, damageStat: 'atk', damageFlat: 3, knockback: 150, costStam: 5, stun: 0.4, comboNext: 'ability.kiriage' },
+  { id: 'ability.kiriage', name: 'Kiri-age', cooldown: 0.8, shape: { arc: 0.5, swing: 'melee', pattern: 'arc', swingTime: 0.55, mirror: true }, damageStat: 'atk', damageFlat: 4, knockback: 170, costStam: 5, stun: 0.45, comboNext: 'ability.tsuki' },
   //  TSUKI (the thrust): the chain's THIRD press — a STAB, not a third sweep (two cuts then the point: the chain
   //    reads as three different motions). The stab motion cocks back then lunges (the 'line' corridor + a longer
   //    reach); the one with real posture and shove. After it the root (Kesa) locks for THIS cooldown (the
   //    post-combo recovery, the chain engine's rule).
-  { id: 'ability.tsuki', name: 'Tsuki', cooldown: 1.4, shape: { range: 36, arc: 0.3, swing: 'melee', pattern: 'line', width: 12, swingTime: 0.6, reachMul: 1.2 }, damageStat: 'atk', damageFlat: 6, knockback: 240, costStam: 6, stun: 0.6, posture: 10 },
+  { id: 'ability.tsuki', name: 'Tsuki', cooldown: 1.4, shape: { arc: 0.3, swing: 'melee', pattern: 'line', width: 12, swingTime: 0.6, reachMul: 1.2 }, damageStat: 'atk', damageFlat: 6, knockback: 240, costStam: 6, stun: 0.6, posture: 10 },
   //  IAI: the draw cut — the HEAVY (RMB) and the brain's special. A narrow arc from the sheath with a CHARGE-HOLD
   //    tell (0.55 × 0.9 = 0.5s: honest, answerable), a flash of an active window, a long punishable recovery.
   //    Its job is posture (20 — breaks a block) and ending a stagger, not raw damage. reachMul: the drawn blade.
-  { id: 'ability.iai', name: 'Iai', cooldown: 3, shape: { range: 36, arc: 0.3, swing: 'melee', pattern: 'arc', swingTime: 0.9, chargeHold: true, reachMul: 1.25, phases: { windup: 0.55, active: 0.15, recover: 0.3 } }, damageStat: 'atk', damageFlat: 9, knockback: 220, costStam: 10, stun: 1.0, posture: 20, shake: 3, comboNext: 'ability.kirioroshi', comboWindow: 1.3 }, // comboWindow > the 0.9s swing, or the second press could never chain
+  { id: 'ability.iai', name: 'Iai', cooldown: 3, shape: { arc: 0.3, swing: 'melee', pattern: 'arc', swingTime: 0.9, chargeHold: true, reachMul: 1.25, phases: { windup: 0.55, active: 0.15, recover: 0.3 } }, damageStat: 'atk', damageFlat: 9, knockback: 220, costStam: 10, stun: 1.0, posture: 20, shake: 3, comboNext: 'ability.kirioroshi', comboWindow: 1.3 }, // comboWindow > the 0.9s swing, or the second press could never chain
   //  KIRIOROSHI (the overhead finishing cut that follows the draw in iaido): the HEAVY chain's second press —
   //    heavier than the iai, no charge-hold (the draw was the tell), the biggest single hit in the kit. It must
   //    READ differently from the draw it follows: the iai is a NARROW cut from the lead side; this is a WIDE
   //    sweep MIRRORED from the off side (arc 0.9 — well past the twist floor the narrow draw sits on), with a
   //    visible WAVE reaching a little past the blade (the overhead cut's shock), so the two heavies can't be
   //    confused. Top-down can't show "overhead" — width, side, and the wave are what it has.
-  { id: 'ability.kirioroshi', name: 'Kirioroshi', cooldown: 3.5, shape: { range: 36, arc: 0.9, swing: 'melee', pattern: 'arc', swingTime: 0.8, mirror: true, phases: { windup: 0.45, active: 0.2, recover: 0.35 }, hitVolumes: [{ kind: 'weaponSegment' }, { kind: 'arc', radius: 80, halfAngle: 0.9, thickness: 56, follow: 'swing', active: [0.45, 0.65] }] }, damageStat: 'atk', damageFlat: 11, knockback: 260, costStam: 11, stun: 1.1, posture: 14, shake: 3 },
+  { id: 'ability.kirioroshi', name: 'Kirioroshi', cooldown: 3.5, shape: { arc: 0.9, swing: 'melee', pattern: 'arc', swingTime: 0.8, mirror: true, phases: { windup: 0.45, active: 0.2, recover: 0.35 }, hitVolumes: [{ kind: 'weaponSegment' }, { kind: 'arc', radius: 80, halfAngle: 0.9, thickness: 56, follow: 'swing', active: [0.45, 0.65] }] }, damageStat: 'atk', damageFlat: 11, knockback: 260, costStam: 11, stun: 1.1, posture: 14, shake: 3 },
   //  SHUKUCHI ("shrinking the earth"): the style's dash — longer + more committal than Flash Dash, and NOT i-frames:
   //    melee still lands, but for the dash window a musket ball has 50% odds (effect.deflecting) of being turned
   //    back at its shooter — the closer's answer to the kite, with the kiter's own shot as the punishment.
@@ -450,10 +594,17 @@ Abilities.registerAll([
   //    +10% attack with a visible label, popped on engagement (the beat where the kite is decided). Short and
   //    pricey on purpose: a long/cheap haste makes the kiter a slower melee unit and kills the duel's rhythm.
   { id: 'ability.kiai', name: 'Kiai', cooldown: 12, costStam: 12, grantEffect: 'effect.kiai' },
+  // PACE — the stance cycle on Z (combat/stats PACE stats): Second Wind (push: half-price actions, breath back sooner, the
+  // day's reserve burns ×1.5 per refilled point) → Measured Breath (conserve: slow breath, the reserve barely wears and
+  // mends even mid-fight) → normal. Granted by
+  // trait.pace (trained fighters); the brain picks a mode by stamina + pressure (ai/brains.tryPace).
+  { id: 'ability.pace', name: 'Pace', cooldown: 0, cycle: ['effect.secondWind', 'effect.measuredBreath'] },
+  // the RONIN's shout — the same beat, a bigger surge (effect.kiaiElite): battōjutsu's buff, on his X beside Armament's C
+  { id: 'ability.kiaiElite', name: 'Kiai', cooldown: 12, costStam: 14, grantEffect: 'effect.kiaiElite' },
   //  WIND SLASH — the projectile Kamaitachi LOOSES on its 'S' windows (never pressed; fired by the channel's volley
   //    cues along the blade's live angle, so the flurry fans them). A flying crescent (shotProc 'slash'), ~9 tiles,
   //    a real hit on whoever it meets first.
-  { id: 'ability.kamaitachiSlash', name: 'Wind Slash', cooldown: 0, shape: { range: 288, arc: 0, swing: 'shot', shotSpeed: 480, muzzle: 30, shotProc: 'slash', shotSize: 30, swingTime: 0.2, noHit: true }, damageStat: 'atk', damageMul: 0.7, knockback: 200, stun: 0.4 },
+  { id: 'ability.kamaitachiSlash', name: 'Wind Slash', cooldown: 0, shape: { range: 288, arc: 0, swing: 'shot', shotSpeed: 480, muzzle: 30, shotProc: 'slash', shotSize: 30, shotRadius: 10, swingTime: 0.2, noHit: true }, damageStat: 'atk', damageMul: 0.7, knockback: 200, stun: 0.4 },
   //  KAMAITACHI (the sickle-weasel wind — invisible rapid cuts): the ULTI, the katana's slot (key 1). A ROOTED
   //    channel SIX seconds long: a 0.4s charge-hold tell, then the PLAN (KAMAITACHI_PLAN) over ~5.2s at about half
   //    the kesa chain's cadence (~6/s; the flurry motion): plain blade cuts, LARGE sweeps that reach past the blade
@@ -465,12 +616,13 @@ Abilities.registerAll([
   {
     id: 'ability.kamaitachi', name: 'Kamaitachi', cooldown: 30, costStam: 30, channel: true,
     shape: {
-      range: 36, arc: 0.55, swing: 'melee', pattern: 'flurry', swingTime: 6, chargeHold: true, reachMul: 1.1, // the cut count = the windows (flurryCuts)
+      arc: 0.55, swing: 'melee', pattern: 'flurry', swingTime: 6, chargeHold: true, reachMul: 1.1, // the cut count = the windows (flurryCuts)
       phases: KAMAITACHI_PHASES,
       hitVolumes: KAMAITACHI_WINDOWS.hitVolumes,
     },
     volleys: KAMAITACHI_WINDOWS.volleys,
     damageStat: 'atk', damageMul: 0.24, knockback: 25, stun: 0.15, posture: 2.5, shake: 1,
+    tags: [AI_ROLE_RANGED], // the brain's reason: a foe regrouping out of reach eats the wind
   },
   // devil fruit (gomu) — rubber-arm STRETCH punches: the fist cocks back then shoots far out (the arm is the hitbox)
   // fruit phases are AUTHORED (never the weight ladder): the Pistol's long rubber cock-back IS its telegraph
@@ -481,40 +633,126 @@ Abilities.registerAll([
   // intent's tool), with i-frames on the leap. The damaging overhead slam that used to live here is now its own
   // telegraphed move, Gomu Ono (below) — one ability, one job. Fast startup is correct for a leap; its cost is
   // the long recovery (open on landing), not a windup you could never dodge anyway.
-  { id: 'ability.gomuRocket', name: 'Gomu Rocket', cooldown: 2.5, costStam: 18, selfImpulse: 1100, impulseDur: 0.2, launchAt: 0.42, grantEffect: 'effect.invuln', shape: { range: 95, arc: 0.12, swing: 'melee', pattern: 'stretch', stretchMode: 'grab', swingTime: 0.8, bothHands: true, noHit: true, phases: { windup: 0.12, active: 0.3, recover: 0.58 } } }, // noHit + no landRadius → moves only; arm snaps back over the first half of recovery (swing.ts)
+  { id: 'ability.gomuRocket', name: 'Gomu Rocket', cooldown: 2.5, costStam: 18, selfImpulse: 1100, impulseDur: 0.2, launchAt: [0.42], grantEffect: 'effect.invuln', shape: { range: 95, arc: 0.12, swing: 'melee', pattern: 'stretch', stretchMode: 'grab', swingTime: 0.8, bothHands: true, noHit: true, phases: { windup: 0.12, active: 0.3, recover: 0.58 } } }, // noHit + no landRadius → moves only; arm snaps back over the first half of recovery (swing.ts)
   // GOMU ONO (Axe): a committed OVERHEAD axe-kick — the leg stretches straight UP to the sky (the drawn foot
   // SCALES UP through the windup = the readable rising-leg tell), reaches max height, then CRASHES down as an
   // AoE slam where he stands. A punch-class telegraph (long windup, like Pistol/Stamp) — you SEE the leg rise and
   // clear the zone. The AoE + shake sell the impact. `pattern: 'axe'` is the new rising-leg motion (swing.ts);
   // landRadius makes the fall an area slam (like Rocket's old one, now on a telegraphed attack that earns it).
-  { id: 'ability.gomuOno', name: 'Gomu Ono', cooldown: 3.5, shape: { range: 0, arc: 0.3, swing: 'melee', pattern: 'axe', limb: 'foot', swingTime: 1.1, noHit: true, landRadius: 70, phases: { windup: 0.5, active: 0.22, recover: 0.28 } }, damageStat: 'atk', damageFlat: 16, knockback: 300, costStam: 20, stun: 1.1, shake: 5, posture: 8 }, // noHit → the SWING deals nothing (the AoE is the hit); windup 0.5×1.1=0.55s rising-leg tell; slam lands at active-start (foot hits ground)
+  { id: 'ability.gomuOno', name: 'Gomu Ono', cooldown: 3.5, shape: { arc: 0.3, swing: 'melee', pattern: 'axe', limb: 'foot', swingTime: 1.1, noHit: true, landRadius: 70, phases: { windup: 0.5, active: 0.22, recover: 0.28 } }, damageStat: 'atk', damageFlat: 16, knockback: 300, costStam: 20, stun: 1.1, shake: 5, posture: 8 }, // noHit → the SWING deals nothing (the AoE is the hit); windup 0.5×1.1=0.55s rising-leg tell; slam lands at active-start (foot hits ground)
   // gomu HEAVY (the kick version of the Pistol): the leg cocks back then stamps far out — the stretched-leg stomp
   { id: 'ability.gomuStamp', name: 'Gomu Stamp', cooldown: 1.35, shape: { range: 140, arc: 0.12, single: true, swing: 'melee', pattern: 'stretch', stretchMode: 'punch', limb: 'foot', swingTime: 1.15, phases: { windup: 0.46, active: 0.2, recover: 0.34 } }, damageStat: 'atk', damageFlat: 14, knockback: 340, costStam: 16, stun: 1.0, posture: 8 }, // posture 8 (2× unarmed fallback). the leg version of the Pistol — same committed rubber cock-back (~530ms), heavier tail for the harder stomp
   // enemy melee — the SAME ability path as the player. Their phases are AUTHORED (kit-less abilities would
   // fall to the twitchy unarmed rung): the PLAYER parries these, so their windups must clear reaction time.
-  { id: 'ability.banditStrike', name: 'Strike', cooldown: 0.8, shape: { range: 0, arc: 0.28, swing: 'melee', pattern: 'line', swingTime: 0.5, phases: { windup: 0.4, active: 0.25, recover: 0.35 } }, damageStat: 'atk', knockback: 175, costStam: 3, stun: 0.3 }, // 200ms tell
+  { id: 'ability.banditStrike', name: 'Strike', cooldown: 0.8, shape: { arc: 0.28, swing: 'melee', pattern: 'line', swingTime: 0.5, phases: { windup: 0.4, active: 0.25, recover: 0.35 } }, damageStat: 'atk', knockback: 175, costStam: 3, stun: 0.3 }, // 200ms tell
   // the Brawler boss's bare-fist haymaker — a big, committed swing (315ms tell): unarmed but AUTHORED, so
   // the guard-master's OWN blows are reactable and the parry duel goes both ways. The boss REWARDS the read.
-  { id: 'ability.brawlerStrike', name: 'Haymaker', cooldown: 1.0, shape: { range: 0, arc: 0.55, swing: 'melee', swingTime: 0.7, phases: { windup: 0.45, active: 0.25, recover: 0.3 } }, damageStat: 'atk', knockback: 240, costStam: 4, stun: 0.7 },
+  { id: 'ability.brawlerStrike', name: 'Haymaker', cooldown: 1.0, shape: { arc: 0.55, swing: 'melee', swingTime: 0.7, phases: { windup: 0.45, active: 0.25, recover: 0.3 } }, damageStat: 'atk', knockback: 240, costStam: 4, stun: 0.7 },
   // the BULL's headbutt GORE — a heavy contact ram: wide arc (the horns sweep), huge knockback + a long stun
   // (you get bowled over), authored slow tell (~330ms) so the charge reads and the dodge-roll is the answer.
   // Screen-shake on the slam (a beast this size lands hard). Damage off 'atk' like everything (the Moat).
   // the HEAD is the hitbox (like the fist is the punch's): a compact head-sized capsule that LUNGES with the drawn
   // head (combat/swing.gore) — not a wide fan. `hitVolumes` width ≈ the head diameter so the damage matches the
   // head. Narrow arc (unused by a capsule, kept small). The wide knockback/stun/shake sell the ram.
-  { id: 'ability.gore', name: 'Gore', cooldown: 1.4, shape: { range: 0, arc: 0.3, swing: 'melee', pattern: 'gore', swingTime: 0.55, phases: { windup: 0.6, active: 0.2, recover: 0.2 }, hitVolumes: [{ kind: 'weaponSegment', width: 30 }] }, damageStat: 'atk', damageFlat: 25, knockback: 420, costStam: 5, stun: 1.1, shake: 5, posture: 8 }, // atk(~10) + 25 flat ≈ 35 per ram; posture 8 = 2× the unarmed-fallback 4 (a headbutt crushes a guard)
-]);
+  { id: 'ability.gore', name: 'Gore', cooldown: 1.4, shape: { arc: 0.3, swing: 'melee', pattern: 'gore', swingTime: 0.55, phases: { windup: 0.6, active: 0.2, recover: 0.2 }, hitVolumes: [{ kind: 'weaponSegment', width: 30 }] }, damageStat: 'atk', damageFlat: 25, knockback: 420, costStam: 5, stun: 1.1, shake: 5, posture: 8 }, // atk(~10) + 25 flat ≈ 35 per ram; posture 8 = 2× the unarmed-fallback 4 (a headbutt crushes a guard)
+  // ═══ THE RONIN'S KIT (weapon.katanaElite) — every piece a row on a generic seam ═══════════════════════════════════
+  //  LMB chain: SHUKUCHI-GIRI (a flash-step FORWARD with the blade live — launchAt fires the step as the cut goes
+  //    active, so he closes AS he cuts; the brain opens from blade + travel) → KAESHI (the mirrored return) → SHIPPŪ
+  //    (a charge-hold overhead that looses ONE big wind crescent at its active start — the volley seam, one shot).
+  { id: 'ability.shukuchiGiri', name: 'Shukuchi-giri', cooldown: 0.9, shape: { arc: 0.5, swing: 'melee', pattern: 'arc', swingTime: 0.5, phases: { windup: 0.3, active: 0.3, recover: 0.4 } }, selfImpulse: 500, impulseDur: 0.14, launchAt: [0.3], damageStat: 'atk', damageFlat: 4, knockback: 150, costStam: 6, stun: 0.4, comboNext: 'ability.kaeshi' }, // ~70px step
+  { id: 'ability.kaeshi', name: 'Kaeshi', cooldown: 0.9, shape: { arc: 0.5, swing: 'melee', pattern: 'arc', swingTime: 0.5, mirror: true }, damageStat: 'atk', damageFlat: 5, knockback: 170, costStam: 5, stun: 0.45, comboNext: 'ability.shippu' },
+  { id: 'ability.shippu', name: 'Shippū', cooldown: 2.4, shape: { arc: 0.8, swing: 'melee', pattern: 'arc', swingTime: 0.8, chargeHold: true, phases: { windup: 0.5, active: 0.2, recover: 0.3 } }, volleys: [{ at: 0.5, ability: 'ability.shippuSlash' }], damageStat: 'atk', damageFlat: 8, knockback: 240, costStam: 9, stun: 0.6, posture: 10, shake: 2 }, // the blade still hits in close; the crescent carries the range
+  { id: 'ability.shippuSlash', name: 'Shippū', cooldown: 0, shape: { range: 360, arc: 0.1, swing: 'shot', shotSpeed: 420, muzzle: 34, shotProc: 'slash', shotSize: 60, shotRadius: 22 }, damageStat: 'atk', damageFlat: 10, knockback: 320, costStam: 0, stun: 0.6, posture: 14 }, // the gale: one BIG crescent (Kamaitachi's are 30px; this is 60)
+  //  RMB chain: SHUKUCHI-ZUKI (the stab motion with a short flash-step ON the thrust — the point arrives with the body
+  //    behind it; also his RIPOSTE, the brain's punish heavy) → SENPŪ (a charge-hold that loads a half-turn, then ONE
+  //    full revolution — FULL_TURN_ARC — the blade sweeps everything around him once; a wind ring hits + draws past it).
+  { id: 'ability.shukuchiZuki', name: 'Shukuchi-zuki', cooldown: 3, shape: { arc: 0.3, swing: 'melee', pattern: 'line', width: 12, swingTime: 0.9, reachMul: 1.2, phases: { windup: 0.3, active: 0.55, recover: 0.15 } }, selfImpulse: 600, impulseDur: 0.3, launchAt: [0.3], damageStat: 'atk', damageFlat: 8, knockback: 260, costStam: 10, stun: 0.6, posture: 12, comboNext: 'ability.senpu', comboWindow: 1.2, tags: [AI_ROLE_GAP_CLOSER] }, // ~180px lunge; the active phase spans it (the blade is live on arrival)
+  { id: 'ability.senpu', name: 'Senpū', cooldown: 4, shape: { arc: FULL_TURN_ARC, swing: 'melee', pattern: 'arc', swingTime: 1.1, chargeHold: true, phases: { windup: 0.45, active: 0.3, recover: 0.25 }, hitVolumes: [{ kind: 'weaponSegment' }, { kind: 'arc', radius: 90, halfAngle: Math.PI, thickness: 60, follow: 'swing', active: [0.45, 0.75] }] }, damageStat: 'atk', damageFlat: 12, knockback: 340, costStam: 14, stun: 1.0, posture: 16, shake: 4 },
+  //  KOKUTŌ ("black blade") — the ARMAMENT TECHNIQUE, slot 2: a draw usable ONLY while the coating is up (requireTags —
+  //    the brain's pickAttack sees it through ready() like any special). The DRAW: a charge-hold tell, then he STEPS
+  //    IN as the blade leaves the sheath (launchAt at the windup's end — ~60px) and the cut throws a BLACK WAVE: an
+  //    arc volume reaching 110px past him (the hit) — drawn as haki like every cut a coated body makes (combat/fxTheme). A guard-crusher (posture 40 ≥ a stock guard); parryShift letters(1):
+  //    for the parry question he counts a letter higher — no one at or below his letter turns it (a coated equal's
+  //    own letter cancels), a master above still does. The hit RAGDOLLS (flight → sprawled → get-up). The answer is the
+  //    dodge: out of the wave's reach during the tell.
+  {
+    id: 'ability.kokutoIai', name: 'Kokutō', cooldown: 7, costStam: 16, costWill: 8, // the swing is breath; the black draw's edge is will
+    shape: {
+      arc: 0.35, swing: 'melee', pattern: 'arc', swingTime: 1.0, chargeHold: true, reachMul: 1.6,
+      phases: { windup: 0.5, active: 0.3, recover: 0.2 }, // the active phase spans the step (0.15s real) at his attack speed
+      hitVolumes: [{ kind: 'weaponSegment' }, { kind: 'arc', radius: 110, halfAngle: 0.75, thickness: 72, follow: 'swing', active: [0.5, 0.8] }], // the blade + the black wave past it
+    },
+    selfImpulse: 420, impulseDur: 0.15, launchAt: [0.5],
+    damageStat: 'atk', damageFlat: 14, knockback: 300, stun: 1.2, posture: 40, shake: 5,
+    ragdoll: { force: 720, airTime: 0.35, downed: 0.8 }, // the black draw PUTS YOU ON THE GROUND (knockback/stun above = the fallback when the rung or a prior fall refuses it)
+    requireTags: [TAG_ARMAMENT], parryShift: letters(1),
+    tags: [AI_ROLE_GUARD_BREAK, AI_ROLE_FINISHER], // the brain's reasons: a cracked or raised guard, a foe nearly done
+  },
+  //  SANDAN ("three steps") — his DASH (Q, style.battojutsu): three flash-steps back to back, each re-aimed at the
+  //    live direction (the player steers between steps; the brain re-faces its target — the AI's gap-closer uses the
+  //    dash slot, so he triple-steps to close), PHASING for the run (bodies don't stop him; walls do). No hitbox:
+  //    movement, not an attack — cut on arrival with the chains.
+  { id: 'ability.sandan', name: 'Sandan', cooldown: 4, costStam: 14, selfImpulse: 520, impulseDur: 0.18, dashes: 3, dashGap: 0.14, grantEffect: 'effect.phasing' }, // ~95px a step, a 0.14s plant between — steer with WASD in the plant
 
-/**
- * Effective reach of a melee ability — used by AI to choose its engage distance (the real hit is by contact
- * in MeleeSystem). A bare fist reaches an arm's length (`bodyReach`); an armed swing barely extends the arm,
- * so the weapon's length (`shape.range`) does the reaching. Ranged abilities are a fixed range.
- */
-export function abilityRange(ab: AbilityDef, bodyReach: number): number {
-  if (!ab.shape) return 0;
-  if (ab.shape.swing !== 'melee') return ab.shape.range; // pistol cone + shot both reach their fixed range
-  if (ab.shape.pattern === 'stretch') return ab.shape.range; // rubber arm reaches its full stretch length
-  const weaponLen = ab.shape.range; // 0 for fists
-  const arm = weaponLen > 0 ? 0.3 : 1; // armed → arm stays home; fist → arm extends fully
-  return Math.round(bodyReach * arm * (ab.shape.reachMul ?? 1) + weaponLen);
-}
+  // ── NITŌRYŪ — ZORO (ADVANCED)'s two-sword art (weapon.nitoryu, the PAIR hold). The pair is what makes the kit: every
+  //    'flurry' below is a DOUBLE CUT — the windows tile the active phase (cutWindows) and under a pair hold the cuts
+  //    ALTERNATE hands (swing.activeSide), so each step is "lead blade, then off blade", each its own hit from its own
+  //    hand (what you see is what hits). damageMul splits a step's damage across its two cuts (2 × 0.6 ≈ 1.2 single cuts).
+  //  NIGIRI (LMB chain) — three double cuts, each a different SHAPE (identifiable from a paused frame by the blades alone),
+  //    each hitting with BOTH blades as two half shares (centered = full, clipped = half: precision pays), on a rhythm of
+  //    short · short · held:
+  //    Tōrō ("tower climb"): the blades start spread WIDE and close like scissors as he steps in — the closing V.
+  //    Hirameki ("flash"): a longer step, both blades thrust side by side, the tips converging — two points, the longest and
+  //      narrowest hit of the chain.
+  //    Samon ("sand pattern"): held, then the blades open OUT from crossed — the opening V — heavy, the stagger (posture 18),
+  //      the blades following through WAY back past the shoulders (the power of it), and it scores an X on the ground where
+  //      it lands: the pattern, the one trace a move leaves — a HAZARD: stand on it and it cuts again, up to three times.
+  { id: 'ability.toro', name: 'Tōrō', cooldown: 0.9, shape: { arc: 0.9, swing: 'melee', pattern: 'scissorIn', swingTime: 0.6, phases: NIGIRI, hitVolumes: TWIN_CUT }, selfImpulse: 760, impulseDur: 0.12, launchAt: [NIGIRI.windup], damageStat: 'atk', damageFlat: 4, knockback: 110, costStam: 6, stun: 0.35, comboNext: 'ability.hirameki' }, // ~90px step
+  { id: 'ability.hirameki', name: 'Hirameki', cooldown: 0.9, shape: { arc: 0.2, swing: 'melee', pattern: 'twinThrust', swingTime: 0.55, phases: { windup: 0.3, active: 0.35, recover: 0.35 }, hitVolumes: TWIN_POINT }, selfImpulse: 960, impulseDur: 0.14, launchAt: [0.3], damageStat: 'atk', damageFlat: 5, knockback: 170, costStam: 6, stun: 0.4, comboNext: 'ability.samon' }, // ~135px step
+  { id: 'ability.samon', name: 'Samon', cooldown: 2.4, shape: { arc: 0.95, swing: 'melee', pattern: 'scissorOut', swingTime: 0.9, chargeHold: true, phases: SAMON, hitVolumes: TWIN_CUT_HEAVY }, hazard: SAND_PATTERN, damageStat: 'atk', damageFlat: 7, knockback: 260, costStam: 9, stun: 0.8, posture: 18, shake: 4 },
+  //  SAI KURU (RMB heavy, "rhino rotation") → TAKA NAMI ("hawk wave"): the charge — both blades live through a long dash
+  //    THROUGH the target (phasing, four alternating cuts along the way; tiny knockback so bodies stay in the path) —
+  //    then the finisher: a full turn that looses a WIDE wind wave (the volley) with a near ring at the blades, the wave
+  //    flinging whoever it meets (a short ragdoll — the shove that reads as a gust, not a cut).
+  { id: 'ability.saiKuru', name: 'Sai Kuru', cooldown: 3, shape: { arc: 0.6, swing: 'melee', pattern: 'flurry', swingTime: 1.0, phases: SAI_KURU, hitVolumes: cutWindows(4, SAI_KURU) }, selfImpulse: 1120, impulseDur: 0.38, launchAt: [SAI_KURU.windup], grantEffect: 'effect.phasing', damageStat: 'atk', damageFlat: 4, damageMul: 0.5, knockback: 60, costStam: 12, stun: 0.3, posture: 6, comboNext: 'ability.takaNami', comboWindow: 1.4, tags: [AI_ROLE_GAP_CLOSER] }, // ~425px charge
+  { id: 'ability.takaNami', name: 'Taka Nami', cooldown: 4, shape: { arc: FULL_TURN_ARC, swing: 'melee', pattern: 'arc', swingTime: 1.0, chargeHold: true, phases: { windup: 0.4, active: 0.3, recover: 0.3 }, hitVolumes: [{ kind: 'weaponSegment' }, { kind: 'arc', radius: 80, halfAngle: Math.PI, thickness: 50, follow: 'swing', active: [0.4, 0.7] }] }, volleys: [{ at: 0.55, ability: 'ability.takaNamiWave' }], damageStat: 'atk', damageFlat: 8, knockback: 260, costStam: 12, stun: 0.8, posture: 14, shake: 3 },
+  { id: 'ability.takaNamiWave', name: 'Taka Nami', cooldown: 0, shape: { range: 300, arc: 0.1, swing: 'shot', shotSpeed: 380, muzzle: 34, shotProc: 'slash', shotSize: 84, shotRadius: 30 }, damageStat: 'atk', damageFlat: 10, knockback: 380, costStam: 0, stun: 0.5, posture: 12, ragdoll: { force: 540, airTime: 0.3, downed: 0.5 } }, // the gust: wider than the Ronin's gale (60), flings
+  //  USHI BARI ("bull needles") — his DASH (Q, style.nitoryu; the brain's gap-closer): ONE committed lunge with the blades
+  //    thrust forward — a step-in that is itself a hit (the Shukuchi-zuki shape), not a flash-step. The off blade rides at
+  //    guard. No phasing: he arrives ON you.
+  { id: 'ability.ushiBari', name: 'Ushi Bari', cooldown: 4, shape: { arc: 0.3, swing: 'melee', pattern: 'line', width: 14, swingTime: 0.9, reachMul: 1.2, phases: { windup: 0.3, active: 0.55, recover: 0.15 } }, selfImpulse: 1300, impulseDur: 0.27, launchAt: [0.3], damageStat: 'atk', damageFlat: 6, knockback: 200, costStam: 12, stun: 0.5, posture: 10 }, // ~350px lunge, a shade quicker
+  //  NI GORILLA (X, the style's utility) — the arm pump: effect.niGorilla (+25% atk, hardened arms) and the TAG the great
+  //    double cut requires. Pump, then commit — the finisher is a decision, not a cooldown.
+  { id: 'ability.niGorilla', name: 'Ni Gorilla', cooldown: 14, costStam: 12, grantEffect: 'effect.niGorilla' },
+  //  NIGORI ZAKE ("unfiltered sake", slot 1) — the great cut: pumped arms ONLY (requireTags — Ni Gorilla's tag), both swords
+  //    raised together on one side and HELD (the tell: 0.5 × 1.2s of wound-up stillness), then brought down across the
+  //    whole front as ONE blow (twinCleave — not a flurry: both edges land together). The blades plus a short wide force
+  //    arc in front (the themed crescent) — posture 50, a stock guard breaks on it; the hit RAGDOLLS. The dodge is the tell.
+  {
+    id: 'ability.nigoriZake', name: 'Nigori Zake', cooldown: 10, costStam: 20,
+    shape: { arc: 0.6, swing: 'melee', pattern: 'twinCleave', swingTime: 1.2, chargeHold: true, phases: NIGORI_ZAKE, hitVolumes: [{ kind: 'weaponSegment' }, { kind: 'arc', radius: 85, halfAngle: 1.2, thickness: 50, follow: 'swing', damageMul: 0.6 }] },
+    damageStat: 'atk', damageFlat: 22, knockback: 380, stun: 1.2, posture: 50, shake: 6,
+    ragdoll: { force: 700, airTime: 0.35, downed: 0.8 }, requireTags: [TAG_PUMPED],
+    tags: [AI_ROLE_GUARD_BREAK, AI_ROLE_FINISHER], // the brain's reasons (still pump-gated: ready() refuses it unpumped)
+  },
+  //  NANAJŪNI POUND HŌ ("72 pound cannon", slot 2) — one cross cut that LOOSES two flying slashes in a tight fan (volleys
+  //    a hair apart along the swing): his range, the two-sword half of the 108. The blade still hits in close.
+  { id: 'ability.nanajuniPound', name: 'Nanajūni Pound Hō', cooldown: 6, shape: { arc: 0.5, swing: 'melee', pattern: 'arc', swingTime: 0.8, chargeHold: true, phases: { windup: 0.45, active: 0.25, recover: 0.3 } }, volleys: [{ at: 0.5, ability: 'ability.poundSlash', spread: 0.1 }, { at: 0.56, ability: 'ability.poundSlash', spread: 0.1 }], damageStat: 'atk', damageFlat: 6, knockback: 150, costStam: 14, stun: 0.4, tags: [AI_ROLE_RANGED] },
+  { id: 'ability.poundSlash', name: 'Pound Hō', cooldown: 0, shape: { range: 420, arc: 0.1, swing: 'shot', shotSpeed: 460, muzzle: 32, shotProc: 'slash', shotSize: 44, shotRadius: 16 }, damageStat: 'atk', damageFlat: 9, knockback: 260, costStam: 0, stun: 0.5, posture: 10 },
+  //  RASHŌMON (slot 3) — the two-sword IAI as the games play it: a short sheathe tell, then a PHASING dash THROUGH everything
+  //    on a line (~725px), both blades tucked — nothing is cut on the way — and once he LANDS behind them the cut arrives:
+  //    the 'trail' volume (the path he ran, 44px wide) goes live, everyone on it takes one posture-30 blow and is flung
+  //    along his line (ragdoll). The crossCut motion sheathes both blades back, rides them tucked, and snaps them out in an
+  //    X at the landing — the drawn moment the trail fires. Coated only (requireTags Armament; Will for the edge), parryShift
+  //    letters(1): no one at or below his letter turns it. The Ronin's Kokutō steps IN with one black wave; Zoro goes THROUGH.
+  //    Counterplay: step off the line during the tell — the trail cuts the path, not the room.
+  {
+    id: 'ability.rashomon', name: 'Rashōmon', cooldown: 8, costStam: 16, costWill: 10,
+    shape: { arc: 0.3, swing: 'melee', pattern: 'crossCut', swingTime: 1.5, phases: RASHOMON, hitVolumes: [{ kind: 'trail', width: 44 }] }, // windowless → live through the active phase, once landed
+    selfImpulse: 1650, impulseDur: 0.44, launchAt: [RASHOMON.windup], grantEffect: 'effect.phasing', // ~725px through bodies (27px a tick — under the one-tile wall the collider can't sweep); walls still stop him
+    damageStat: 'atk', damageFlat: 16, knockback: 300, stun: 1.0, posture: 30, shake: 5,
+    ragdoll: { force: 520, airTime: 0.3, downed: 0.7 }, // along his line (MeleeSystem knocks along the attack direction)
+    requireTags: [TAG_ARMAMENT], parryShift: letters(1),
+    tags: [AI_ROLE_GAP_CLOSER, AI_ROLE_GUARD_BREAK], // the brain's reasons: a foe across the ring, or one who turtles
+  },
+]);

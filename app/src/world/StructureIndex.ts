@@ -120,11 +120,11 @@ export class StructureIndex {
  *  the future build verb all come through here, so entity + index can never drift). Transform sits at the
  *  footprint's center with r spanning its narrow side — structures are first-class entities (inspectable,
  *  damageable later), not render props. */
-export function placeStructure(world: World, index: StructureIndex, def: ContentId, tx: number, ty: number): Entity {
+export function placeStructure(world: World, index: StructureIndex, def: ContentId, tx: number, ty: number, warp?: { x: number; y: number }): Entity {
   const d = Structures.get(def);
   const e = world.create({
     transform: { x: (tx + d.size.w / 2) * TILE, y: (ty + d.size.h / 2) * TILE, angle: 0, r: (Math.min(d.size.w, d.size.h) * TILE) / 2 },
-    structure: { def, tx, ty },
+    structure: warp ? { def, tx, ty, warp } : { def, tx, ty },
   });
   if (d.holdSlots !== undefined) e.hold = { stacks: [], slots: d.holdSlots }; // a container structure (a chest) is born with its hold
   index.place(e);

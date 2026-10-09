@@ -38,7 +38,7 @@ export class ProjectileRenderer {
       const key = shape?.shotArt
         ? shotArtKey(shape.shotArt)
         : shape?.shotProc
-          ? shotProcKey(shape.shotProc, procColor)
+          ? shotProcKey(shape.shotProc, pr.theme ? undefined : procColor, pr.theme) // a coated shooter's crescent/ball is the themed bake
           : undefined;
       if (!key) continue; // artless + procless shot — nothing to draw (still flies + hits; just invisible)
       seen.add(e.id);
@@ -48,7 +48,7 @@ export class ProjectileRenderer {
         this.imgs.set(e.id, img);
       }
       const t = e.transform;
-      const size = shape?.shotSize ?? 6;
+      const size = (shape?.shotSize ?? 6) * e.projectile.scale; // the drawn size follows the stamped scale — the hit radius already did at spawn
       const vy = this.view.y(e);
       img
         .setPosition(this.view.x(e), vy)

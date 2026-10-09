@@ -56,8 +56,8 @@ describe('Kamaitachi — the big sweeps and the wind really land', () => {
     const base = near.blows.map((b) => b + def);
     const doubled = base.map((b, i) => (i > 0 ? b / base[i - 1]! : 1)).filter((r) => r > 1.5);
     expect(doubled).toHaveLength(5);
-    for (const r of doubled) expect(r).toBeGreaterThan(1.9); // 2 × (atk+combo)/(atk+combo−1): just under 2
-    for (const r of doubled) expect(r).toBeLessThan(2.05);
+    for (const r of doubled) expect(r).toBeGreaterThan(1.9); // 2 × (atk+combo)/(atk+combo−1): just over 2 (the +1 combo step)
+    for (const r of doubled) expect(r).toBeLessThan(2.1); // at the C-tier atk of 25 the step is 1/26 — ≈2.08 at most
     const mid = hitsAt(88); // past the blade's tip, inside the large sweeps' 24–96px band
     expect(mid.reach).toBeLessThan(88); // proves "past the blade"
     expect(mid.hits).toBe(6); // the 5 large sweeps + the wind, and NOTHING from the blade windows

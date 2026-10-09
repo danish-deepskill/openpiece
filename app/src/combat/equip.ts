@@ -1,15 +1,16 @@
 import type { ContentId } from '../core/Registry';
+import { Abilities } from './Ability';
 import type { Entity } from '../ecs/components';
 import { Accessories } from '../defs/accessories';
 import type { ItemRef } from '../defs/items';
 import { itemSlot } from '../defs/items';
-import { Fruits, Potentials, Styles, Weapons, type LayerDef } from '../defs/layers';
+import { Fruits, Hakis, Potentials, Styles, Weapons, type LayerDef } from '../defs/layers';
 import { BASE_KIT } from '../defs/units';
 import { removeAccessory, wearAccessory } from './apparel';
 import { syncDerivedResources } from './attributes';
 import { weaponKit } from './phases';
 
-export type LayerKind = 'weapon' | 'fruit' | 'style' | 'potential';
+export type LayerKind = 'weapon' | 'fruit' | 'style' | 'haki' | 'potential';
 
 // NOTE: the old giveWeapon/giveStyle "simpler AI paths" are GONE — they hand-patched the loadout beside
 // refreshLoadout and the two drifted repeatedly (missing heavy, missing slots, styles granting a dash ability
@@ -17,7 +18,7 @@ export type LayerKind = 'weapon' | 'fruit' | 'style' | 'potential';
 // path: equip() → refreshLoadout() (the Moat: the AI isn't special, and neither is the spawn).
 
 function registryFor(kind: LayerKind) {
-  return kind === 'weapon' ? Weapons : kind === 'fruit' ? Fruits : kind === 'style' ? Styles : Potentials;
+  return kind === 'weapon' ? Weapons : kind === 'fruit' ? Fruits : kind === 'style' ? Styles : kind === 'haki' ? Hakis : Potentials;
 }
 
 function applyMods(e: Entity, d: LayerDef): void {
@@ -85,7 +86,7 @@ export function refreshLoadout(e: Entity): void {
   let heavy: ContentId = granted.has(BASE_KIT.heavy) ? BASE_KIT.heavy : '';
   let dash: ContentId = granted.has(BASE_KIT.dash) ? BASE_KIT.dash : '';
   let slots: ContentId[] = [];
-  let utility: ContentId | undefined; // the C buff slot — a style's, overridden by a fruit's (the fruit is the louder power)
+  const utilities: ContentId[] = []; // the buff KEYS in precedence order (haki, fruit, style — filled below in that order); nothing is shadowed, each gets a key
 
   if (eq?.weapon) {
     const d = Weapons.get(eq.weapon);
@@ -110,23 +111,26 @@ export function refreshLoadout(e: Entity): void {
       granted.add(d.heavy);
       if (!eq.weapon) heavy = d.heavy;
     }
-    if (d.utility) {
-      granted.add(d.utility);
-      utility = d.utility;
-    }
+    if (d.utility) granted.add(d.utility); // the style's buff: keyed below, after the louder layers
   }
   if (eq?.fruit) {
     const d = Fruits.get(eq.fruit);
     granted.add(d.primary);
     if (d.heavy) granted.add(d.heavy);
     for (const s of d.slots) granted.add(s);
-    if (d.utility) {
-      granted.add(d.utility);
-      utility = d.utility;
-    }
+    if (d.utility) granted.add(d.utility);
     primary = d.primary; // the fruit's power takes over the LIGHT attack while held…
     if (d.heavy) heavy = d.heavy; // …and the HEAVY (toggle back to fist/kick with R)
     slots = [...d.slots];
+  }
+  if (eq?.haki) {
+    const d = Hakis.get(eq.haki);
+    if (d.utility) granted.add(d.utility);
+  }
+  // the buff KEYS: haki first (the layer that counters the others gets C), then the fruit's, then the style's — each
+  // on its own key, so a coated swordsman keeps his shout on X instead of losing it to the coating
+  for (const id of [eq?.haki ? Hakis.get(eq.haki).utility : undefined, eq?.fruit ? Fruits.get(eq.fruit).utility : undefined, eq?.style ? Styles.get(eq.style).utility : undefined]) {
+    if (id && !utilities.includes(id)) utilities.push(id);
   }
 
   lo.granted = granted;
@@ -134,7 +138,8 @@ export function refreshLoadout(e: Entity): void {
   lo.heavy = heavy;
   lo.dash = dash;
   lo.slots = slots;
-  lo.utility = utility;
+  lo.utilities = utilities;
+  lo.stance = [...granted].find((id) => Abilities.get(id).cycle !== undefined); // the stance key: the one cycling ability the body holds (a trait's grant)
 }
 
 /** Does the entity hold a RANGED weapon (a musket)? The one place input, AI, and draw ask "can this actor

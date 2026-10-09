@@ -18,7 +18,7 @@ const GOMU: ItemRef = { cat: 'fruit', id: 'fruit.gomu' };
  *  dialogue is stubbed — takePickup never touches it (safe: {} as T with this note). */
 function take(world: World, sp: Spawner, hero: ReturnType<Spawner['spawnHero']>, ref: ItemRef): void {
   sp.spawnPickup(ref, hero.transform!.x, hero.transform!.y);
-  new InteractionSystem(world, {} as DialogueSystem, new Items(world, sp, new SpatialQuery(world))).interact(hero);
+  new InteractionSystem(world, {} as DialogueSystem, new Items(world, sp, new SpatialQuery(world)), sp).interact(hero);
 }
 
 describe('ItemRef — one reference resolves across all three registries', () => {

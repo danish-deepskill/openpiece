@@ -1,15 +1,19 @@
-import { Abilities, abilityRange, AI_ROLE_DISENGAGE, AI_ROLE_POINT_BLANK } from '../combat/Ability';
+import { Abilities, AI_ROLE_DISENGAGE, AI_ROLE_FINISHER, AI_ROLE_GAP_CLOSER, AI_ROLE_GUARD_BREAK, AI_ROLE_POINT_BLANK, AI_ROLE_RANGED, type AbilityDef } from '../combat/Ability';
+import { dominance } from '../combat/dominance';
+import { BASE_KIT } from '../defs/units';
+import { abilityReach } from '../combat/swing';
 import type { ContentId } from '../core/Registry';
 import { TILE } from '../config/constants';
 import { isRanged } from '../combat/equip';
 import { ABILITY_BLOCK, endGuard, PARRY_WINDOW, tryGuard } from '../combat/guard';
-import { phaseAt } from '../combat/phases';
-import { trySprint } from '../combat/stamina';
+import { phaseAt, swingWeight, type CombatWeight } from '../combat/phases';
+import { TAG_SLOWED, TAG_STUNNED } from '../combat/Effect';
+import { stamCap, trySprint } from '../combat/stamina';
 import { attackMoveSpeed } from '../combat/attackMove';
 import { facesTarget, heavyHeading, isHeavy, steerFacing } from './steering';
 import { angleDiff, dist, norm, smoothFactor } from '../core/math';
 import { events } from '../core/EventBus';
-import { combatStance, type AIProfileDef } from '../defs/aiProfiles';
+import { combatStance, CRACKED_GUARD, FINISHER_HP, PACE_PUSH_BAND, type AIProfileDef } from '../defs/aiProfiles';
 import { deckCellAtLocal, deckOf, deckToWorld, gangplankOutward, nearestGangplank, worldToDeck, type DeckGrid, type ShipPose } from '../defs/decks';
 import { hullBlocksWorldPoint } from '../world/deckCollision';
 import { Bodies } from '../defs/bodies';
@@ -17,7 +21,7 @@ import { Races } from '../defs/races';
 import { Sizes } from '../defs/sizes';
 import { factions } from '../defs/factions';
 import { ShipHulls } from '../defs/ships';
-import type { Entity, Loadout } from '../ecs/components';
+import type { Blackboard, Entity, Loadout, MeleeSwing } from '../ecs/components';
 import type { World } from '../ecs/World';
 import type { AIContext } from './Brain';
 import { FsmBrain, type FsmState } from './FsmBrain';
@@ -71,15 +75,32 @@ function faceAndHeading(e: Entity, want: number, rate: number, dt: number): [num
  * how often it reaches for one at all — so it still throws the quick primary most of the time, punctuated by a
  * special, rather than only ever casting the biggest move it can afford.
  */
-export function pickAttack(e: Entity, ctx: AIContext, targetDist: number): ContentId {
+export function pickAttack(e: Entity, ctx: AIContext, targetDist: number, foe?: Entity): ContentId {
   const lo = e.loadout!;
   const p = profileOf(e);
   // REGROUPING = conserve: a harrying regrouper only throws its CHEAP primary (a jab), never a pricey special —
   // else it'd blow the bar it's trying to refill. The whole point of the reset survives the harry pressure.
   if (e.ai?.bb.regrouping === true) return lo.primary;
+  // A SPECIAL's CHAIN IS CONTINUED (Sai Kuru → Taka Nami): with a chain armed whose ROOT is a special, pressing that root again
+  // is what fires the next step — so press it, as a hand would, rather than rolling a fresh special and losing the follow-up.
+  // Combo intent (holdFinisher, at the press) still holds a finisher after a whiff. The primary's chain continues on its own
+  // (every beat presses the primary anyway).
+  if (lo.chain && lo.chain.root !== lo.primary && lo.granted.has(lo.chain.root) && ctx.abilities.ready(e, lo.chain.root)) return lo.chain.root;
+  // RIPOSTE (profile.punishChance): an OPEN foe — staggered (parried, guard-broken, rebounded, hit-stunned) or recovering
+  // from a swing that hit NOTHING (the whiff: the dodge's payoff) — inside the heavy's reach is the opening: the heavy goes
+  // in at that chance before the ordinary rotation gets a roll. Same gates as any special (affordable, off cooldown, in
+  // ITS reach); the roll is LAST so a 0 profile draws nothing.
+  if (foe && (p.punishChance ?? 0) > 0 && lo.heavy && foeOpen(foe)) {
+    const ab = Abilities.get(lo.heavy);
+    if ((ab.costStam ?? 0) <= (e.combatant?.stam ?? 0) && ctx.abilities.ready(e, lo.heavy) && targetDist <= abilityReach(e, ab) && ctx.rng.next() < p.punishChance!) return lo.heavy;
+  }
+  // A SPECIAL FOR A REASON (profile.readsSituations): the role-tagged pick the situation calls for, before any dice
+  if (foe && p.readsSituations === true) {
+    const pick = situationalPick(e, ctx, targetDist, foe);
+    if (pick) return pick;
+  }
   const chance = p.specialChance ?? 0;
   if (chance <= 0 || ctx.rng.next() >= chance) return lo.primary; // fodder (chance 0) always jabs; else roll to reach for a special
-  const reach = e.attributes?.get('reach') ?? 0;
   const stam = e.combatant?.stam ?? 0;
   // slots (fruit specials / style payoff) first, then the heavy as the fallback — the rotation's priority order
   const candidates = [...lo.slots, lo.heavy];
@@ -91,9 +112,162 @@ export function pickAttack(e: Entity, ctx: AIContext, targetDist: number): Conte
     // the target must be inside THIS ability's own range — a special has its own reach, not the primary's (a
     // 140px Stamp reaches far, an 85px Gatling only close). Center-to-center vs ability range; the strike-point
     // already ensured we're in primary reach, this just filters which specials can also connect from here.
-    if (targetDist <= abilityRange(ab, reach)) return id;
+    if (targetDist <= abilityReach(e, ab)) return id;
   }
   return lo.primary; // nothing special is ready/in-range → the reliable jab
+}
+
+/** Is the foe OPEN to a riposte this tick: staggered/stunned, or in the RECOVERY of a swing that landed on nobody (a whiff
+ *  — every per-volume hit list still empty past the active phase). The read that makes a dodge pay. */
+export function foeOpen(foe: Entity): boolean {
+  if (foe.tags?.has(TAG_SLOWED) || foe.tags?.has(TAG_STUNNED)) return true;
+  const fm = foe.melee;
+  if (!fm || fm.lock) return false;
+  const fp = fm.dur > 0 ? Math.min(1, fm.t / fm.dur) : 1;
+  return phaseAt(fm.phases, fp) === 'recover' && fm.hitByVolume.every((h) => !h || h.length === 0);
+}
+
+/** The first GRANTED, READY, AFFORDABLE special carrying `role` whose own reach covers `d` — scanned over the loadout's heavy
+ *  + slots by the role PROPERTY (never a slot position). Undefined ⇒ nothing in the kit answers this situation right now. */
+function readyWithRole(e: Entity, ctx: AIContext, lo: Loadout, role: string, d: number): ContentId | undefined {
+  const stam = e.combatant?.stam ?? 0;
+  for (const id of [...lo.slots, lo.heavy]) {
+    if (!id || id === lo.primary) continue;
+    const ab = Abilities.get(id);
+    if (!ab.tags?.includes(role)) continue;
+    if ((ab.costStam ?? 0) > stam || !ctx.abilities.ready(e, id)) continue; // ready() owns cooldown, cost (will too) and requireTags
+    if (d <= roleReach(e, ab)) return id;
+  }
+  return undefined;
+}
+
+/** How far a role pick REACHES: a swing that LOOSES volleys (the 72 Pound, Kamaitachi) reaches as far as its flying slashes
+ *  fly — the steel's reach would read a ranged move as melee; anything else, the ability's own reach (steel + any step). */
+function roleReach(e: Entity, ab: AbilityDef): number {
+  let far = 0;
+  for (const v of ab.volleys ?? []) far = Math.max(far, Abilities.get(v.ability).shape?.range ?? 0);
+  return Math.max(far, abilityReach(e, ab));
+}
+
+/** IN REACH: the special the situation calls for — a GUARD BREAKER against a raised or cracked guard, a FINISHER against a
+ *  foe nearly done. Checked in that order; each must be ready and able to reach. Undefined ⇒ no reason this beat. */
+export function situationalPick(e: Entity, ctx: AIContext, d: number, foe: Entity): ContentId | undefined {
+  const lo = e.loadout;
+  if (!lo) return undefined;
+  const fc = foe.combatant;
+  const cracked = fc !== undefined && fc.maxPosture > 0 && fc.posture / fc.maxPosture >= CRACKED_GUARD;
+  if ((fc?.blocking === true || cracked)) {
+    const pick = readyWithRole(e, ctx, lo, AI_ROLE_GUARD_BREAK, d);
+    if (pick) return pick;
+  }
+  const fh = foe.health;
+  if (fh && fh.maxHp > 0 && fh.hp / fh.maxHp <= FINISHER_HP) {
+    const pick = readyWithRole(e, ctx, lo, AI_ROLE_FINISHER, d);
+    if (pick) return pick;
+  }
+  return undefined;
+}
+
+/** OUT OF REACH: the special that closes or reaches — a GAP CLOSER whose own reach covers the distance (a dash-through, a
+ *  lunge: it arrives cutting), or a RANGED poke at a foe who is REGROUPING out there (he's banking his bar; make him pay for
+ *  the space). Undefined ⇒ walk / dash as usual. */
+export function situationalCloser(e: Entity, ctx: AIContext, d: number, foe: Entity): ContentId | undefined {
+  const lo = e.loadout;
+  if (!lo) return undefined;
+  const p = profileOf(e);
+  // the RANGED poke first when it's warranted: a regrouper always; otherwise at rangedChance per DECISION beat (the same
+  // cadence gate as every chance-roll — a miss waits out the beat instead of re-rolling every tick)
+  const ranged = readyWithRole(e, ctx, lo, AI_ROLE_RANGED, d);
+  if (ranged) {
+    if (foe.ai?.bb.regrouping === true) return ranged;
+    if ((p.rangedChance ?? 0) > 0 && e.ai && (e.ai.bb.decideCd ?? 0) <= 0) {
+      e.ai.bb.decideCd = DECIDE_CADENCE; // consume this decision slot (armed whether the roll hits or misses)
+      if (ctx.rng.chance(p.rangedChance!)) return ranged;
+    }
+  }
+  return readyWithRole(e, ctx, lo, AI_ROLE_GAP_CLOSER, d);
+}
+
+/** THE GUARD CHOICE — one roll, four outcomes: parry | block | dodge | nothing, by the incoming blow's weight. GUARD READS
+ *  (profile.guardReads) move chance between them instead of raising any: a blow the ladder says CAN'T be parried spends its
+ *  parry share on a dodge (else a block); a CRACKED guard spends its block share on a dodge (else a parry) — the right guard,
+ *  not a luckier one. Pure: the brain supplies the facts and the roll. */
+export function guardChoice(p: AIProfileDef, weight: CombatWeight, canParry: boolean, postureFrac: number, roll: number): 'parry' | 'block' | 'dodge' | 'none' {
+  let parry = p.parryByWeight?.[weight] ?? p.parryChance;
+  let block = p.blockChance;
+  let dodge = p.dodgeByWeight?.[weight] ?? 0;
+  const canDodge = (p.dodgeByWeight?.[weight] ?? 0) > 0;
+  if (p.guardReads === true) {
+    if (!canParry) {
+      if (canDodge) dodge += parry; else block += parry;
+      parry = 0;
+    }
+    if (postureFrac >= CRACKED_GUARD) {
+      if (canDodge) dodge += block; else parry += block;
+      block = 0;
+    }
+  }
+  if (roll < parry) return 'parry';
+  if (roll < parry + block) return 'block';
+  if (roll < parry + block + dodge) return 'dodge';
+  return 'none';
+}
+
+/** WHICH WAY to dodge the incoming blow — read off ITS shape: a THRUST or a LUNGE (a 'line' cut, or a swing that carries a
+ *  step) is a line — step OFF it, sideways; a SWEEP (an arc, a scissor, a spin — anything else) covers the sides, so step BACK
+ *  out of its reach — but only if the roll's distance actually clears that reach; if it wouldn't, sideways is still the better
+ *  bet. 'side' when the foe isn't swinging (nothing to read). Deterministic, from the swing row + the ranges. */
+export function dodgeDirection(e: Entity, foe: Entity): 'side' | 'back' {
+  const fm = foe.melee;
+  const t = e.transform;
+  const ft = foe.transform;
+  if (!fm || !t || !ft) return 'side';
+  const fd = Abilities.get(fm.ability);
+  if (fd.shape?.pattern === 'line' || (fd.launchAt?.length ?? 0) > 0) return 'side';
+  const roll = Abilities.get(BASE_KIT.dash);
+  const rollDist = (roll.selfImpulse ?? 0) * (roll.impulseDur ?? 0.16);
+  // how far the BLOW reaches: the steel (+ any step), or its farthest wind arc — a sweep's hit volumes, not just its blade
+  let far = abilityReach(foe, fd);
+  for (const v of fd.shape?.hitVolumes ?? []) if (v.kind === 'arc' && v.radius > far) far = v.radius;
+  return dist(t.x, t.y, ft.x, ft.y) + rollDist > far + t.r ? 'back' : 'side';
+}
+
+/** The DODGE: the base roll thrown the way the blow calls for (dodgeDirection) — PERPENDICULAR to the foe (left or right by
+ *  the seeded coin) against a thrust, straight BACK against a sweep — so a committed blow whiffs. The roll's impulse follows
+ *  the mover's velocity, so the direction is seeded first (jukeRoll's trick). False when the base roll isn't granted/ready or
+ *  the body is mid-impulse — then the guard roll's outcome simply isn't taken. */
+export function sidestep(e: Entity, ctx: AIContext, foe: Entity): boolean {
+  const lo = e.loadout;
+  const m = e.mover;
+  const t = e.transform;
+  const ft = foe.transform;
+  if (!lo || !m || !t || !ft || !lo.granted.has(BASE_KIT.dash) || !ctx.abilities.ready(e, BASE_KIT.dash) || m.dodgeT > 0) return false;
+  const toFoe = Math.atan2(ft.y - t.y, ft.x - t.x);
+  const way = dodgeDirection(e, foe) === 'back' ? Math.PI : (ctx.rng.chance(0.5) ? 1 : -1) * (Math.PI / 2);
+  m.vx = Math.cos(toFoe + way) * m.speed;
+  m.vy = Math.sin(toFoe + way) * m.speed;
+  return ctx.abilities.activate(e, BASE_KIT.dash);
+}
+
+/** COMBO INTENT's memory, one tick: a NEW swing (the first tick we see one after none, or a clock that went back) resets the
+ *  flag; any volume landing sets it; no swing clears the clock so the next swing's first tick reads as new. The AI runs BEFORE
+ *  the melee tick, so a new swing is first seen at t = dt — "t went back" alone never fires; the undefined clock is the edge. */
+export function noteSwing(bb: Blackboard, m: MeleeSwing | undefined): void {
+  if (!m) {
+    bb.lastSwingT = undefined;
+    return;
+  }
+  if (bb.lastSwingT === undefined || m.t < bb.lastSwingT) bb.lastSwingLanded = false; // a new swing: nothing landed yet
+  if (m.hitByVolume.some((h) => h !== undefined && h.length > 0)) bb.lastSwingLanded = true;
+  bb.lastSwingT = m.t;
+}
+
+/** COMBO INTENT (profile.comboIntent): hold the press when the next step is the chain's FINISHER and the last swing hit nobody —
+ *  let the window lapse rather than commit the big one into air. The steps landed ⇒ finish. No chain armed ⇒ press. */
+export function holdFinisher(p: AIProfileDef, lo: Loadout, lastSwingLanded: boolean | undefined): boolean {
+  if (p.comboIntent !== true || !lo.chain) return false;
+  const next = Abilities.get(lo.chain.next);
+  return next.comboNext === undefined && lastSwingLanded === false;
 }
 
 /** THE BUFF BEAT: fire the loadout's `utility` (the C-slot self-buff — a kiai, a focus stance, Armament) when it's
@@ -103,11 +277,42 @@ export function pickAttack(e: Entity, ctx: AIContext, targetDist: number): Conte
  *  true if it fired. Skipped while regrouping (conserve — a buff spends the bar being refilled). */
 export function tryUtility(e: Entity, ctx: AIContext): boolean {
   const lo = e.loadout;
-  const id = lo?.utility;
-  if (!lo || !id || !lo.granted.has(id)) return false;
-  if (e.ai?.bb.regrouping === true) return false;
-  if (!ctx.abilities.ready(e, id)) return false; // ready() owns cooldown AND affordability
-  return ctx.abilities.activate(e, id);
+  if (!lo) return false;
+  // ONE press per beat, walking the buff keys in precedence order (the coating before the shout) — a brain presses
+  // like a hand does, not every key at once; the next beat takes the next ready buff
+  for (const id of lo.utilities) {
+    if (!lo.granted.has(id)) continue;
+    const d = Abilities.get(id);
+    const held = d.toggle === true && d.grantEffect !== undefined && (e.effects?.active.some((a) => a.id === d.grantEffect) ?? false);
+    if (e.ai?.bb.regrouping === true) {
+      // a regrouper banks its bar: a HELD state (a coating draining stamina) is switched OFF, nothing new is lit
+      if (held) return ctx.abilities.activate(e, id);
+      continue;
+    }
+    if (held) continue; // the switch is already on — pressing again would turn it off
+    if (!ctx.abilities.ready(e, id)) continue; // ready() owns cooldown AND affordability
+    return ctx.abilities.activate(e, id);
+  }
+  return false;
+}
+
+/** THE PACE BEAT: a unit with a stance (trait.pace) picks a mode by its situation — CONSERVE while regrouping (guard the
+ *  day), PUSH when its bar runs low under pressure OR the fight is going badly (HP under the profile's line — borrow from
+ *  tomorrow to turn it), NORMAL otherwise. No-op without a trigger knob or the stance. Idempotent: cycleTo presses only
+ *  when the mode differs. */
+export function tryPace(e: Entity, ctx: AIContext, stamFrac: number, regrouping: boolean, hpFrac = 1): void {
+  const lo = e.loadout;
+  const p = profileOf(e);
+  if (!lo?.stance || (p.pushBelowStam === undefined && p.pushBelowHp === undefined)) return;
+  const cycle = Abilities.get(lo.stance).cycle!; // a stance IS a cycling ability (equip sets lo.stance from `cycle`)
+  // HYSTERESIS on the stamina trigger (the regroupBelowStam/reengageStam pattern): the push's own regen lifts the bar back over
+  // the line within a beat, so a level trigger flipped push ↔ normal every tick (each flip an effect end + apply + a label
+  // flicker). Once pushing, stay until the bar is PACE_PUSH_BAND above the line. HP only falls in a fight — no band needed.
+  const pushing = e.effects?.active.some((a) => a.id === cycle[0]) ?? false;
+  const stamLine = p.pushBelowStam === undefined ? undefined : p.pushBelowStam + (pushing ? PACE_PUSH_BAND : 0);
+  const push = (stamLine !== undefined && stamFrac < stamLine) || (p.pushBelowHp !== undefined && hpFrac <= p.pushBelowHp);
+  const want = regrouping ? cycle[1] : push ? cycle[0] : undefined; // [0] push, [1] conserve — the cycle's authored order
+  ctx.abilities.cycleTo(e, lo.stance, want);
 }
 
 /** What a PINNED regrouper does this beat about the Rocket-reposition — a COMMIT-then-conserve mini-intent
@@ -657,6 +862,7 @@ const chase: FsmState = {
     syncFollow(e, ctx); // keep a follower's home on the leader, so it returns to the player after a fight
     const loadout = e.loadout; // the AI query doesn't guarantee a loadout — a kit-less actor can't fight
     if (!loadout) return 'wander';
+    noteSwing(bb, e.melee); // COMBO INTENT's memory: did my last swing land? (kept after it ends, for the chain-window decision)
 
     // squad focus-fire: engage the squad's chosen target if I can see it, else whatever I can see myself
     // (ids at rest → resolve to a live entity per tick; a destroyed target simply reads as undefined)
@@ -706,16 +912,25 @@ const chase: FsmState = {
       const fp = fm.dur > 0 ? Math.min(1, fm.t / fm.dur) : 1;
       const windupLeft = (fm.phases.windup - fp) * fm.dur; // seconds until his strike goes LIVE
       const fd = Abilities.get(fm.ability);
-      const threat = abilityRange(fd, foe.attributes?.get('reach') ?? 0) + t.r + 20; // his steel can actually reach us (+ a step)
+      const threat = abilityReach(foe, fd) + t.r + 20; // his steel can actually reach us (+ a step)
       // decide at the END of his windup (once the parry window can cover his active phase) — one roll per
       // swing (guardCd), so a low chance means "usually doesn't", never "re-rolls until it does"
       if (phaseAt(fm.phases, fp) === 'windup' && windupLeft <= PARRY_WINDOW && dist(t.x, t.y, foe.transform!.x, foe.transform!.y) <= threat) {
         bb.guardCd = 0.8;
         const roll = ctx.rng.next();
-        if (roll < p.parryChance) {
+        // READ THE WEIGHT: a profile with parryByWeight spends its parry on the blows worth reading (a committed
+        // weapon swing) and holds against jabs — classified by the one weight rule the posture table also uses.
+        // READ THE LADDER + MY GUARD (guardReads): can this blow be parried at all (the resolver's own question —
+        // dominance with the technique's parryShift), and is my guard cracked? guardChoice moves the shares.
+        const canParry = dominance(foe, e, fd.parryShift ?? 0).parryDeflects;
+        const postureFrac = e.combatant && e.combatant.maxPosture > 0 ? e.combatant.posture / e.combatant.maxPosture : 0;
+        const choice = guardChoice(p, swingWeight(foe, fd), canParry, postureFrac, roll);
+        if (choice === 'parry') {
           if (tryGuard(e, true)) bb.guardT = PARRY_WINDOW; // PARRY: open the deflection window, ride it, arms down
-        } else if (roll < p.parryChance + p.blockChance) {
+        } else if (choice === 'block') {
           if (tryGuard(e, false)) bb.guardT = Math.max(0.3, fm.dur - fm.t + 0.15); // BLOCK: pure hold, NO parry window (rolled block ≠ a free parry)
+        } else if (choice === 'dodge') {
+          sidestep(e, ctx, foe); // DODGE: step off the line — his blow lands on air, and the whiff is the riposte's opening
         }
       }
     }
@@ -797,12 +1012,13 @@ const chase: FsmState = {
 
     const d = dist(t.x, t.y, rx, ry);
     const ability = Abilities.get(loadout.primary);
-    const range = abilityRange(ability, e.attributes?.get('reach') ?? 0);
+    const range = abilityReach(e, ability);
     const reach = (range || 16) + (foe?.transform?.r ?? 11);
     const strike = reach * p.strikeFrac; // where it actually stops to attack — inside the edge so blows land
     const hpRatio = e.health ? e.health.hp / e.health.maxHp : 1;
     const broken = e.squad ? bb.broken === true : false;
-    const stamFrac = e.combatant && e.combatant.maxStam > 0 ? e.combatant.stam / e.combatant.maxStam : 1;
+    const stamFrac = e.combatant && e.combatant.maxStam > 0 ? e.combatant.stam / stamCap(e.combatant) : 1; // of what's LEFT of the bar today (vigor), not the day's full pool
+    tryPace(e, ctx, stamFrac, bb.regrouping === true, hpRatio); // choose the pace for this beat (push / conserve / normal)
     let stance = combatStance(p, d, strike, hpRatio, dist(rx, ry, bb.home.x, bb.home.y), stamFrac, bb.regrouping === true);
     // KITER INVESTIGATING (lost sight → rx/ry is the last-seen corner): the kite stance would read that nearby
     // point as "a target too close" and BACK AWAY from it — so he'd never peek the corner. Override: walk TO the
@@ -858,7 +1074,7 @@ const chase: FsmState = {
       const melee = p.meleeRange ?? 0;
       const heavyReady = ctx.abilities.ready(e, loadout.heavy);
       const blastReady = blast !== undefined && ctx.abilities.ready(e, blast);
-      const blastBand = blast !== undefined ? abilityRange(Abilities.get(blast), e.attributes?.get('reach') ?? 0) * BUCKSHOT_TRIGGER_FRAC : 0;
+      const blastBand = blast !== undefined ? abilityReach(e, Abilities.get(blast)) * BUCKSHOT_TRIGGER_FRAC : 0;
       // ONE roll per close ENGAGEMENT, edge-triggered: latch the gamble when the target ENTERS the close band,
       // clear it when they leave or after an answer fires. A per-tick Bernoulli here re-rolls 60×/s, turning a
       // 40% "gamble" into a near-certainty within 0.1s (the re-roll-until-it-hits bug the decide-cadence rule
@@ -993,6 +1209,18 @@ const chase: FsmState = {
     // gap-closer dash (tier-gated): when granted + ready, lunge across mid-range to close on the target. A HEAVY
     // body (bull) does NOT dash — it lumbers; a dash would SNAP its facing to the target (bypassing the turn cap),
     // instantly facing you after an attack (the flanking-counter bug). Its gap-closer is the sprint-charge instead.
+    // A REASONED CLOSER (readsSituations): a gap closer whose own reach covers the distance — he arrives cutting — or the ranged
+    // poke at a foe regrouping out there; before the plain dash, and from farther than the dash window (its reach is the gate)
+    if (!isHeavy(p) && p.readsSituations === true && foe && stance.move === 'approach' && d > reach && facingTarget) {
+      const closer = situationalCloser(e, ctx, d, foe);
+      if (closer) {
+        t.angle = Math.atan2(ry - t.y, rx - t.x); // aim it at the real target
+        m.vx = 0;
+        m.vy = 0;
+        ctx.abilities.activate(e, closer);
+        return;
+      }
+    }
     if (!isHeavy(p) && loadout.dash && stance.move === 'approach' && d > reach && d < reach + p.dashMax && ctx.abilities.ready(e, loadout.dash)) {
       t.angle = Math.atan2(ry - t.y, rx - t.x); // aim the lunge at the real target, not the lagged guess
       m.vx = 0;
@@ -1031,12 +1259,12 @@ const chase: FsmState = {
           // and let regen tick toward affordability; the next beats keep returning 'conserve' until it's ready.
           m.vx = 0;
           m.vy = 0;
-        } else if (facingTarget) {
+        } else if (facingTarget && !holdFinisher(p, loadout, bb.lastSwingLanded)) {
           // SAME instant punch the player throws; the reaction-lagged aim can still whiff a moving target.
           // A heavy body only strikes when the target is in its FACING cone (it must turn to bring you into arc).
           // pickAttack weaves in the loadout's specials for specialChance profiles; while regrouping it forces the
-          // cheap primary (conserve). d = center-to-center.
-          ctx.abilities.activate(e, pickAttack(e, ctx, d));
+          // cheap primary (conserve). d = center-to-center. COMBO INTENT holds the press on a finisher after a whiff.
+          ctx.abilities.activate(e, pickAttack(e, ctx, d, foe));
         }
       } else {
         // no token — orbit the target at the edge of range, waiting our turn (the "circle of death")

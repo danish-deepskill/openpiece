@@ -1,6 +1,6 @@
 import { Registry, type ContentId, type Def } from '../core/Registry';
 import type { AttributeId } from '../combat/attributes';
-import type { PowerTier } from '../combat/PowerTier';
+import { TIER_ORDER, tierIndex, type PowerTier } from '../combat/PowerTier';
 import type { BodyId } from './bodies';
 import type { RaceId } from './races';
 import type { SizeId } from './sizes';
@@ -56,6 +56,8 @@ export interface UnitDef extends Def {
    *  precedence (weapon ?? FRUIT ?? style ?? fist), so a fruit-user's light/heavy become the fruit's while
    *  unarmed. This is how an AI unit is BORN with a fruit (Luffy = fruit.gomu) — not a hero-only spawn hack. */
   fruit?: ContentId;
+  /** HAKI learned by spawn (defs/layers → Hakis) — its technique takes the C slot over a style's or fruit's. */
+  haki?: ContentId;
   /** Accessories worn at spawn (one per body slot — see defs/accessories). */
   accessories?: ContentId[];
   /** TRAITS — innate talents this unit HAS (defs/traits): each grants its modifiers/tags. A plain id list you
@@ -99,18 +101,32 @@ export const BASE_KIT = { primary: 'ability.punch', heavy: 'ability.kick', dash:
  *  via `noGuard`. One home for the ids; the guard engine + capability checks read the grant, not literals. */
 export const GUARD_KIT = ['ability.block', 'ability.parry'] as const;
 
-export const Units = new Registry<UnitDef>('Units', (u) => {
+/** The lowest rank that may carry HAKI — a design rule, not a stat curve: haki is earned at the top of the ladder (the
+ *  hero's spawn comment has said "A-tier+" since before the layer existed). Enforced on the def so a content row can't
+ *  hand a B a coating by mistake; the player's path to haki (a scroll, training) must clear this bar too. */
+export const HAKI_MIN_TIER: PowerTier = 'A-';
+
+/** The unit validator as a PURE function (the abilityProblem pattern): a problem string or null. Exported so a test
+ *  can judge a bad row without registering it (a planted bad row poisons every later lookup in that file). */
+export const unitProblem = (u: UnitDef): string | null => {
+  // a tier outside the ladder would index tierStats at −1 (finite nonsense, silently) — the union type guards
+  // TS literals; this guards the external-data future and the dominance ladder's lookups
+  if (!TIER_ORDER.includes(u.tier)) return `tier '${u.tier}' is not a power tier band (F- … X+)`;
+  if (u.statTier !== undefined && !TIER_ORDER.includes(u.statTier)) return `statTier '${u.statTier}' is not a power tier band`;
+  if (u.haki !== undefined && tierIndex(u.tier) < tierIndex(HAKI_MIN_TIER)) return `haki is ${HAKI_MIN_TIER}+ only (got ${u.tier} with ${u.haki}) — rank the unit up or take the layer off`;
   for (const [k, v] of Object.entries(u.attributes ?? {}))
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return `attributes.${k} must be a finite number ≥ 0 (got ${v})`;
   if (u.hpMult !== undefined && !(u.hpMult > 0)) return `hpMult must be > 0 (got ${u.hpMult})`; // ≤0 would spawn a corpse
   if (u.bagSlots !== undefined && (!Number.isInteger(u.bagSlots) || u.bagSlots < 0)) return `bagSlots must be an integer ≥ 0 (got ${u.bagSlots})`;
   if (u.betrayHpFrac !== undefined && (u.betrayHpFrac < 0 || u.betrayHpFrac > 1)) return `betrayHpFrac must be in [0, 1] (got ${u.betrayHpFrac})`;
   return null;
-});
+};
+
+export const Units = new Registry<UnitDef>('Units', unitProblem);
 
 // outfit palette (torso/shoulder garb + dialogue-ring hat color) — the per-unit LOOK on top of the body's
 // rig+skin. Named so the roster reads by intent, not hex; same-body units differ only by which they wear.
-const GARB = { hero: 0xb5342a, bandit: 0x6b4a3a, boss: 0x3a2f4a, civilian: 0x4a6a8a, soldier: 0x2f4a6a, marine: 0xffffff, samurai: 0x2b2d4f } as const; // samurai = indigo hakama // marine = TEMP white naval shirt (Marine Officer)
+const GARB = { hero: 0xb5342a, bandit: 0x6b4a3a, boss: 0x3a2f4a, civilian: 0x4a6a8a, soldier: 0x2f4a6a, marine: 0xffffff, samurai: 0x2b2d4f, ronin: 0x6b1f1f, dummy: 0xc9a55a, zoro: 0x1f4a3f } as const; // dummy = straw // samurai = indigo hakama // ronin = crimson, the blade's red // marine = TEMP white naval shirt (Marine Officer) // zoro = the dark green coat (docs/references/characters/zoro.png)
 const HAT = { hero: 0xf0c040, dark: 0x2a0d0d, civilian: 0x2e5a35 } as const;
 
 Units.registerAll([
@@ -152,7 +168,29 @@ Units.registerAll([
   // frame. Katana (kesa chain + iai) and the kenjutsu style (shukuchi dash + the kiai buff); sprinter for the
   // charge; Footwork (his PASSIVE: he keeps half his stride mid-swing where everyone else plants — a fencer's feet);
   // guard ON (parrying is his character). One line of dialogue so he's conversable while neutral.
-  { id: 'unit.samurai', name: 'Samurai', garb: GARB.samurai, hatColor: HAT.dark, tier: 'C', faction: 'pirates', aiProfile: 'ai.samurai', gold: 50, weapon: 'weapon.katana', style: 'style.kenjutsu', accessories: ['accessory.kasa', 'accessory.sode'], traits: ['trait.sprinter', 'trait.mobileAttackSlow'], dialogue: ['A blade answers only a blade. Walk on, captain.'] },
+  // the RONIN — the A- master the arena's duel gong summons (haki is A-+ by rule: HAKI_MIN_TIER). Faction ronin: neutral to all but challengers; struck, he
+  // answers (the provoke rule) — a fight you CHOOSE, inside walls no duel can spill out of. NOT a buffed Samurai: the
+  // tier adds QUALITY, each piece a row or a knob — his own chains on the elite katana (dash-cut → return → gale;
+  // dash-thrust → whirlwind), the Armament coating (+1 letter, cuts every ball, unlocks Kokutō — the black iai no
+  // equal can parry), Sandan as his DASH (Q: three re-aimed pass-through steps — battōjutsu), Flow (full stride mid-swing), Iron Will (+50% posture), and
+  // a brain that parries committed blows and ripostes a stagger. Perception is the Samurai's. The first unit wearing
+  // the HAKI layer; boss: the red minimap dot.
+  // the TRAINING DUMMY — a straw body on the humanoid rig so every hitbox, flinch and rung reads exactly as on a person.
+  // wildlife: neutral to all and huntable by all (the Ronin ignores it, anyone may strike it); noGuard; sees nothing;
+  // D- so a possessed Ronin practices at the gap he'd have over the hero (↓2L on the readout). hpMult: ~50 of his cuts.
+  { id: 'unit.dummy', name: 'Training Dummy', garb: GARB.dummy, hatColor: 0x8a6a3a, tier: 'D-', faction: 'wildlife', aiProfile: 'ai.dummy', noGuard: true, hpMult: 25 },
+  { id: 'unit.ronin', name: 'Ronin', garb: GARB.ronin, hatColor: HAT.dark, tier: 'A-', faction: 'ronin', aiProfile: 'ai.ronin', gold: 150, boss: true, attributes: { spiritual: 12 }, /* spiritual 12 → a 120 WILL pool: ~20s of coating, or the coating + a few Kokutō */ weapon: 'weapon.katanaElite', style: 'style.battojutsu', haki: 'haki.armament', accessories: ['accessory.kabuto', 'accessory.sodeRonin'], traits: ['trait.sprinter', 'trait.fleet', 'trait.mobileAttackFull', 'trait.ironWill', 'trait.pace'], dialogue: ['This sand has drunk better blood than yours.', 'Draw, or leave.'] },
+  // ZORO (ADVANCED) — the A-tier CHALLENGER posted in the arena against the Ronin: the epic duel you sail to WATCH. One band
+  // over the Ronin (same letter — the ladder gives neither an edge; coating cancels coating), so the fight is kit against
+  // kit: NITŌRYŪ, a blade in each hand (weapon.nitoryu, the PAIR hold — every Nigiri step cuts TWICE, lead blade then
+  // off), Sai Kuru → Taka Nami on the heavy, Ushi Bari as his dash, Ni Gorilla (X) gating Nigori Zake (1), the 72 Pound
+  // flying slashes (2), Rashōmon the coated two-sword iai (3). Faction challengers: hostile to the ronin ALONE — he
+  // leaves you alone until struck. Not placed at world-gen: the arena's DUEL GONG summons him and the Ronin face to face
+  // (structures.json `summon`), so the duel starts when you are there to watch it and can be rung again once it's over.
+  // Look from the concept art: green spiked hair (the top-down read), the dark green coat, the crimson sash, three gold
+  // earrings. spiritual 15 → 150 Will.
+  { id: 'unit.zoroAdvanced', name: 'Zoro (Advanced)', garb: GARB.zoro, hatColor: 0x8fd36a, tier: 'A', faction: 'challengers', aiProfile: 'ai.zoro', gold: 200, boss: true, attributes: { spiritual: 15 }, weapon: 'weapon.nitoryu', style: 'style.nitoryu', haki: 'haki.armament', accessories: ['accessory.hairZoro', 'accessory.sashZoro', 'accessory.earringsZoro'], traits: ['trait.sprinter', 'trait.fleet', 'trait.mobileAttackFull', 'trait.ironWill', 'trait.pace'], dialogue: ['I came for him, not you.', 'Nothing happened. Got it?'] },
+  { id: 'unit.samurai', name: 'Samurai', garb: GARB.samurai, hatColor: HAT.dark, tier: 'C', faction: 'pirates', aiProfile: 'ai.samurai', gold: 50, weapon: 'weapon.katana', style: 'style.kenjutsu', accessories: ['accessory.kasa', 'accessory.sode'], traits: ['trait.sprinter', 'trait.mobileAttackSlow', 'trait.pace'], dialogue: ['A blade answers only a blade. Walk on, captain.'] },
   // a townsperson: a FULL unit on the SAME stack as everyone (the Moat) — civilian build, work-shirt blue.
   // noGuard: an untrained civilian throws panicked punches but can't block/parry (the negative exception).
   {

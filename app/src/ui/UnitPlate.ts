@@ -56,12 +56,33 @@ export class UnitPlate {
     }
     this.card(g);
     this.bar(g, this.x + 12, this.y + 30, this.w - 114, 12, v.hp, v.maxHp, 0xd4483b);
-    if (v.stam !== null && v.maxStam !== null) this.bar(g, this.x + 12, this.y + 48, this.w - 114, 6, v.stam, v.maxStam, 0x5ea0d8);
+    if (v.stam !== null && v.maxStam !== null && v.maxStam > 0) {
+      // ONE row, two layers, both from the LEFT: the GREY bar is VIGOR (today's ceiling — how far stamina can fill),
+      // ending at a white divider; the BLUE stamina fills inside it; past the divider the dark track is what's spent
+      // for the day. (Greying the LOST tail instead read as a second bar filling from the right.)
+      const x = this.x + 12;
+      const y = this.y + 48;
+      const w = this.w - 114;
+      const cap = v.stamCap ?? v.maxStam;
+      const cw = (w * cap) / v.maxStam;
+      g.fillStyle(0x000000, 0.55);
+      g.fillRoundedRect(x - 2, y - 2, w + 4, 10, 4); // the full track
+      g.fillStyle(0x8e8e9a, 0.75); // VIGOR — the usable bar, grey, from the left
+      g.fillRect(x, y, cw, 6);
+      g.fillStyle(0x5ea0d8, 1); // STAMINA inside it
+      g.fillRect(x, y, w * clamp(v.stam / v.maxStam, 0, 1), 6);
+      if (cap < v.maxStam) {
+        g.fillStyle(0xffffff, 0.95); // the divider at the ceiling
+        g.fillRect(x + cw - 1, y - 2, 2, 10);
+      }
+    }
+    // WILL — the haki pool (violet, the coating's own color): only a body that HAS one shows the bar
+    if (v.will !== null && v.maxWill !== null && v.maxWill > 0) this.bar(g, this.x + 12, this.y + 62, this.w - 114, 4, v.will, v.maxWill, 0x8a5ad8);
     // posture is an INVERSE bar: it FILLS amber toward the guard break (empty = composed) — combat/guard
     if (v.posture !== null && v.maxPosture !== null && v.maxPosture > 0) this.bar(g, this.x + 12, this.y + 57, this.w - 114, 3, v.posture, v.maxPosture, 0xe8a33d);
     // BREATH — a CONTEXTUAL bar (only present when underwater): a cyan air-gauge that empties as you hold your
     // breath (drowning at 0). Slots just under the posture line so it never displaces the permanent bars.
-    if (v.breath !== null && v.maxBreath !== null && v.maxBreath > 0) this.bar(g, this.x + 12, this.y + 62, this.w - 114, 4, v.breath, v.maxBreath, 0x3fd4e8);
+    if (v.breath !== null && v.maxBreath !== null && v.maxBreath > 0) this.bar(g, this.x + 12, this.y + 68, this.w - 114, 4, v.breath, v.maxBreath, 0x3fd4e8);
 
     this.name.setText(v.name);
     this.tier.setText(v.tier).setColor(v.tierColor).setPosition(this.name.x + this.name.width + 8, this.tier.y);
@@ -71,7 +92,9 @@ export class UnitPlate {
     const a = v.attributes;
     const r = Math.round;
     this.attrs.setText(`HP ${r(a.health)}  EN ${r(a.endurance)}  DF ${r(a.defense)}  WP ${r(a.willpower)}  LK ${r(a.luck)}  SP ${r(a.spiritual)}`);
-    this.combat.setText(`ATK ${r(v.atk)}  DEF ${r(v.def)}  AS ${v.atkSpeed.toFixed(2)}  RCH ${r(v.reach)}`);
+    const vig = v.stamCap !== null && v.maxStam !== null && v.maxStam > 0 ? `  VIG ${Math.round((v.stamCap / v.maxStam) * 100)}%` : '';
+    const pace = v.pace ? `  PACE ${v.pace}` : '';
+    this.combat.setText(`ATK ${r(v.atk)}  DEF ${r(v.def)}  AS ${v.atkSpeed.toFixed(2)}  RCH ${r(v.reach)}${vig}${pace}`); // VIG = today's stamina ceiling; PACE = the held stance
     // gear: the worn slots (labels already read "Hat: X") on two lines so 4 slots fit the plate width;
     // bag: the owned-unequipped items
     this.gear.setText(`${v.equipped.slice(0, 2).join('   ')}\n${v.equipped.slice(2).join('   ')}`);

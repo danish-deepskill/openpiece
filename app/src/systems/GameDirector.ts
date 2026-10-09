@@ -91,7 +91,12 @@ export class GameDirector {
     e.health!.hp = e.health!.maxHp;
     e.health!.dead = false;
     e.health!.iframes = 0;
-    if (e.combatant) e.combatant.stam = e.combatant.maxStam;
+    if (e.combatant) {
+      e.combatant.stam = e.combatant.maxStam;
+      e.combatant.vigor = 1; // a respawn is a new day
+      e.combatant.vigorDebt = 0;
+      if (e.combatant.maxWill !== undefined) e.combatant.will = e.combatant.maxWill;
+    }
     e.transform!.x = this.level.playerSpawn.x;
     e.transform!.y = this.level.playerSpawn.y;
     e.mover!.dodgeT = 0;

@@ -4,7 +4,7 @@ import { hitVolumeProblem } from '../combat/hitVolume';
 import { Registry, type ContentId } from '../core/Registry';
 import { Accessories } from './accessories';
 import { AIProfiles } from './aiProfiles';
-import { Fruits, Styles, Weapons } from './layers';
+import { Fruits, Hakis, Styles, Weapons } from './layers';
 import { Manuals } from './manuals';
 import { Traits } from './traits';
 import { BASE_KIT, Units } from './units';
@@ -16,7 +16,7 @@ import './bodies';
 import './races';
 import './sizes';
 import './terrains';
-import './structures';
+import { Structures } from './structures';
 import './materials';
 
 /** The minimal registry surface a cross-ref check needs (any Registry<T> satisfies it structurally). */
@@ -58,6 +58,7 @@ export function validateAllContent(): void {
     check(u.id, 'aiProfile', u.aiProfile, AIProfiles);
     check(u.id, 'weapon', u.weapon, Weapons);
     check(u.id, 'style', u.style, Styles); // the fighting style (grants the unarmed attack) must resolve
+    check(u.id, 'haki', u.haki, Hakis);
     for (const a of u.accessories ?? []) check(u.id, 'accessories', a, Accessories);
     for (const tr of u.traits ?? []) check(u.id, 'traits', tr, Traits); // a typo'd trait id would silently grant nothing
   }
@@ -70,6 +71,7 @@ export function validateAllContent(): void {
     check(s.id, 'dash', s.dash, Abilities);
     check(s.id, 'utility', s.utility, Abilities); // a typo'd buff would grant a dead id into the C slot
   }
+  for (const h of Hakis.all()) check(h.id, 'utility', h.utility, Abilities); // a haki technique must resolve too
   for (const a of Abilities.all()) {
     check(a.id, 'grantEffect', a.grantEffect, Effects);
     check(a.id, 'comboNext', a.comboNext, Abilities); // a broken chain link would dead-end a combo mid-fight
@@ -80,6 +82,7 @@ export function validateAllContent(): void {
     const hv = hitVolumeProblem(a.shape?.hitVolumes); // a typo'd window/span = a swing that silently never hits
     if (hv) problems.push(`${a.id}: ${hv}`);
   }
+  for (const st of Structures.all()) for (const u of st.summon ?? []) check(st.id, 'summon', u.unit, Units); // a gong that rings for a typo'd unit would throw mid-game
   for (const w of Weapons.all()) {
     check(w.id, 'primary', w.primary, Abilities);
     const hv = hitVolumeProblem(w.hitVolumes);

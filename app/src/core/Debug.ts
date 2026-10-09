@@ -17,6 +17,7 @@ const DEFS: DebugFlagDef[] = [
   { key: 'combat.aim', label: 'Accuracy cone + close-pass ring (ranged units; green = aiming, red = point-blank fumble zone)', group: 'Combat', default: false },
   { key: 'combat.hitbox', label: 'Attack hitboxes (live volumes)', group: 'Combat', default: false },
   { key: 'combat.guard', label: 'Guard arc (block/parry cover)', group: 'Combat', default: false },
+  { key: 'combat.rung', label: 'Tier-gap rung per hit (↑/↓ letters · parry · clip · bounce · outcome)', group: 'Combat', default: false },
   { key: 'combat.god', label: 'God mode (invincible + free abilities)', group: 'Combat', default: false },
   { key: 'world.collision', label: 'Collision truth: solids + unit bodies (green=foot, blue=swim) + hull blocks', group: 'World', default: false },
   { key: 'world.frames', label: 'Movement frame (world/deck) readout', group: 'World', default: false },

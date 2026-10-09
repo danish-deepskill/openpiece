@@ -1,12 +1,14 @@
-import { Abilities, abilityRange, type AbilityDef } from '../combat/Ability';
-import { TAG_SLOWED, TAG_STUNNED } from '../combat/Effect';
+import { Abilities, SHOT_POINT_R, type AbilityDef, type HazardSpec } from '../combat/Ability';
+import { Effects, TAG_SLOWED, TAG_STUNNED } from '../combat/Effect';
+import { effectiveTier } from '../combat/dominance';
+import { fxThemeOf } from '../combat/fxTheme';
 import { phaseAt, resolvePhases, swingDuration } from '../combat/phases';
-import { flurryCuts } from '../combat/swing';
+import { abilityReach, flurryCuts, strikeReach } from '../combat/swing';
 import { beginFall } from './MovementSystem';
-import { spendStamina } from '../combat/stamina';
+import { spendStamina, spendWill, stamCostOf } from '../combat/stamina';
 import { harmableBy } from '../combat/targeting';
 import { SPREAD_SHOT_KICK } from '../config/constants';
-import { COMBO_RECOVERY_STAT } from '../combat/stats';
+import { COMBO_RECOVERY_STAT, SHOT_RANGE_STAT, SHOT_SCALE_STAT } from '../combat/stats';
 import { events } from '../core/EventBus';
 import { angleDiff, dist, norm } from '../core/math';
 import type { Rng } from '../core/Rng';
@@ -35,6 +37,11 @@ function setCooldown(lo: Loadout, id: ContentId, seconds: number): void {
  */
 /** Seconds a swing-wave crescent lingers past its hit window — a fade, not a second hitbox. */
 const WAVE_TAIL = 0.12;
+/** A HEAVY crescent's fading tail (s) — the great cut's sweep lingers longer than a flick's. */
+const HEAVY_TAIL = 0.28;
+
+/** Seconds of a held state's drain a body must hold in the pool to switch it on (combat/Ability `toggle` + EffectDef drains). */
+const HELD_MIN_FUEL_S = 1;
 
 export class AbilitySystem {
   // query DEFAULTED so standalone tests stand unchanged; the scene passes its SHARED instance (audit M1:
@@ -63,21 +70,49 @@ export class AbilitySystem {
         if (lo.chain.until <= 0) delete lo.chain; // window closed — the next press restarts the chain
       }
     }
+    // DASH CHAINS (a multi-step flash-step — Sandan): the next step fires the instant the previous impulse ends,
+    // re-aimed at the live direction (impulse() reads movement, else facing). A swing started mid-chain, a stun or
+    // death ends it — a dash string is movement, never a vehicle for a drive-by.
+    for (const e of this.world.with('mover', 'transform')) {
+      const m = e.mover;
+      const chain = m?.dashChain;
+      if (!m || !chain) continue;
+      if (e.melee || e.health?.dead || e.tags?.has(TAG_STUNNED)) {
+        delete m.dashChain;
+        continue;
+      }
+      if (m.dodgeT > 0) continue;
+      if (chain.wait > 0) {
+        chain.wait -= dt; // the plant between steps — the player's held direction lands here (InputSystem writes intent only while not dashing)
+        continue;
+      }
+      const d = Abilities.get(chain.ability);
+      this.impulse(e, d.selfImpulse!, d.impulseDur ?? 0.16); // boot-validated: dashes needs selfImpulse
+      chain.left--;
+      chain.wait = d.dashGap ?? 0;
+      if (chain.left <= 0) delete m.dashChain;
+    }
     // deferred launches (Gomu Rocket) + AoE slams (Gomu Ono): fire the body-impulse / area slam at its cue.
     for (const e of this.world.with('melee', 'mover', 'transform')) {
       const m = e.melee;
       if (!m) continue; // the snapshot can go stale: landAoe → a PARRIED slam deletes this entity's melee mid-loop
       const d = Abilities.get(m.ability);
-      if (d.selfImpulse) {
-        // LAUNCH ability (Rocket): rocket the body once the grab reached forward; on landing, slam the AoE IF it
-        // has one — else just mark landed (a pure-movement leap like the new Rocket has no AoE, but MUST still set
-        // `landed` or MeleeSystem keeps the swing alive forever waiting for a slam that never comes → the actor is
-        // stuck rooted mid-swing, unable to move/act. The `landed` flag is the "leap resolved" signal either way).
-        if (!m.launched && d.launchAt !== undefined && m.t / m.dur >= d.launchAt) {
-          m.launched = true;
+      if (d.selfImpulse && d.launchAt) {
+        // LAUNCH CUES: a swing that carries its own impulses (the Rocket's one, a dash-cut's one) fires each cue ONCE as
+        // progress crosses it, along the swing's locked aim. After the LAST cue the swing is HELD until that impulse
+        // ends, then `landed` — slam the AoE if one is authored. `landed` MUST be set either way or MeleeSystem keeps
+        // the swing alive forever waiting for a slam that never comes (the actor stuck rooted mid-swing).
+        const fired = m.launches ?? 0;
+        if (fired < d.launchAt.length && m.t / m.dur >= d.launchAt[fired]!) { // index-bounded by the length check
+          if (fired === 0) {
+            m.launchX = e.transform!.x; // the step's origin — a 'trail' volume cuts from here to wherever he stops
+            m.launchY = e.transform!.y;
+          }
+          m.launches = fired + 1;
           this.launch(e, m.angle, d.selfImpulse, d.impulseDur ?? 0.16);
-        } else if (m.launched && !m.landed && e.mover!.dodgeT <= 0) {
+        } else if (fired === d.launchAt.length && !m.landed && e.mover!.dodgeT <= 0) {
           m.landed = true;
+          m.landedAt = m.t;
           if (d.shape?.landRadius !== undefined) this.landAoe(e, d); // slam only if the ability authors one
         }
       } else if (d.shape?.pattern === 'axe' && d.shape.landRadius !== undefined && !m.landed) {
@@ -87,7 +122,14 @@ export class AbilitySystem {
           m.landed = true;
           this.landAoe(e, d);
         }
-      } else if (m.motion === 'shot' && !m.shotFired) {
+      }
+      // a HAZARD-leaving swing: the tick its ACTIVE phase closes (the cut has landed), leave the zone where the blades were —
+      // a blade's reach ahead along the committed aim, from where he stands NOW (Flow may have carried him). Once per swing.
+      if (d.hazard && !m.hazardLeft && m.t / m.dur >= m.phases.windup + m.phases.active) {
+        m.hazardLeft = true;
+        this.leaveHazard(e, m, d, d.hazard);
+      }
+      if (m.motion === 'shot' && !m.shotFired) {
         // SHOT: the ball leaves the barrel when the swing crosses into ACTIVE (after the windup) — so a big windup
         // (Buckshot) is a real "winding up the scatter" TELL you can dodge, not an instant spawn. Fired once.
         if (m.t / m.dur >= m.phases.windup) {
@@ -111,6 +153,24 @@ export class AbilitySystem {
         m.volleysFired = n;
       }
     }
+  }
+
+  /** Which of a cycle's effects the body holds now (−1 = none). */
+  cycleIndex(e: Entity, cycle: readonly ContentId[]): number {
+    const active = e.effects?.active;
+    if (!active) return -1;
+    return cycle.findIndex((id) => active.some((a) => a.id === id));
+  }
+
+  /** Put a cycling stance INTO a given mode (`target` an effect of its cycle, or undefined = none) — presses the cycle
+   *  as many times as it takes, bounded by its length. The brain's way to choose a pace without counting presses. */
+  cycleTo(e: Entity, id: ContentId, target: ContentId | undefined): boolean {
+    const d = Abilities.get(id);
+    if (!d.cycle) return false;
+    const want = target === undefined ? -1 : d.cycle.indexOf(target);
+    if (target !== undefined && want < 0) return false;
+    for (let i = 0; i <= d.cycle.length && this.cycleIndex(e, d.cycle) !== want; i++) if (!this.activate(e, id)) return false;
+    return this.cycleIndex(e, d.cycle) === want;
   }
 
   /** Gomu Rocket landing: a slam AoE where the body stops — damage + outward knockback to hostiles in radius. */
@@ -141,7 +201,15 @@ export class AbilitySystem {
     if (!lo || !lo.granted.has(id)) return false;
     if ((lo.cd.get(id) ?? 0) > 0) return false;
     const d = Abilities.get(id);
-    if (d.costStam && (e.combatant?.stam ?? 0) < d.costStam && !e.tags?.has('state.godMode')) return false; // can't use what you can't afford (god mode: free)
+    if (d.costStam && (e.combatant?.stam ?? 0) < stamCostOf(e, d.costStam) && !e.tags?.has('state.godMode')) return false; // can't use what you can't afford, at THIS body's price (god mode: free)
+    if (d.costWill && (e.combatant?.will ?? 0) < d.costWill && !e.tags?.has('state.godMode')) return false; // no will (or none at all) → no haki
+    // a HELD state needs FUEL to light: at least one second of its drain in the pool — so a dry body can't flash a coating
+    // on for a tick (the drain would end it at once, but the tag would have flickered), and "has haki" = has will
+    if (d.grantEffect && !e.tags?.has('state.godMode')) {
+      const held = Effects.get(d.grantEffect);
+      if (held.drainWillPerSec !== undefined && (e.combatant?.will ?? 0) < held.drainWillPerSec * HELD_MIN_FUEL_S) return false;
+      if (held.drainStamPerSec !== undefined && (e.combatant?.stam ?? 0) < held.drainStamPerSec * HELD_MIN_FUEL_S) return false;
+    }
     if (d.blockTags && e.tags && d.blockTags.some((t) => e.tags!.has(t))) return false;
     if (d.requireTags && (!e.tags || !d.requireTags.every((t) => e.tags!.has(t)))) return false;
     return true;
@@ -156,6 +224,25 @@ export class AbilitySystem {
     if (lo?.chain && lo.chain.root === id) {
       if (lo.granted.has(lo.chain.next)) actual = lo.chain.next;
       else delete lo.chain; // stale chain (weapon swapped mid-combo) — fall back to the pressed ability
+    }
+    // a TOGGLE whose effect is already up: this press switches it OFF — free (the on-press paid; the ignition's cooldown
+    // must never lock the switch ON), through the effect system's end path, so modifiers/tags leave exactly as a
+    // timer's expiry would. Checked before every gate below; nothing else runs for the off-press.
+    {
+      const td = Abilities.get(actual);
+      if (td.toggle && td.grantEffect && lo?.granted.has(actual) && this.effects.end(e, td.grantEffect)) return true;
+    }
+    // a STANCE CYCLE press: end the current mode, apply the next (none after the last). Free and instant — before every
+    // gate below except the grant (a stance is a thing you hold, not a cast).
+    {
+      const cd = Abilities.get(actual);
+      if (cd.cycle && lo?.granted.has(actual)) {
+        const cur = this.cycleIndex(e, cd.cycle);
+        if (cur >= 0) this.effects.end(e, cd.cycle[cur]!); // index-bounded by cycleIndex
+        const next = cur + 1;
+        if (next < cd.cycle.length) this.effects.apply(e, cd.cycle[next]!, actual);
+        return true;
+      }
     }
     if (!this.ready(e, actual)) return false;
     const d = Abilities.get(actual);
@@ -180,7 +267,8 @@ export class AbilitySystem {
       e.combatant.parryT = 0;
     }
     const god = e.tags?.has('state.godMode') === true; // debug: free abilities — no stamina, no cooldown
-    if (!god && d.costStam && e.combatant) spendStamina(e.combatant, d.costStam); // spend + regen pause, one rule
+    if (!god && d.costStam && e.combatant) spendStamina(e.combatant, stamCostOf(e, d.costStam), e); // spend at the body's price + regen pause, one rule
+    if (!god && d.costWill && e.combatant) spendWill(e.combatant, d.costWill); // the haki pool, its own one rule
     // attack speed is a tier stat: effective recovery = base cooldown / atkSpeed (default 1); the SWING itself
     // is scaled by the same stat in startSwing/fireShot (combat/phases.swingDuration)
     const atkSpeed = this.atkSpeedOf(e);
@@ -212,6 +300,7 @@ export class AbilitySystem {
       const dur = d.impulseDur ?? 0.16;
       this.impulse(e, d.selfImpulse, dur);
       if (d.roll && e.mover) { e.mover.rollT = dur; e.mover.rollDur = dur; } // start the roll-anim clock (drawActor reads it)
+      if ((d.dashes ?? 1) > 1 && e.mover) e.mover.dashChain = { ability: actual, left: d.dashes! - 1, wait: d.dashGap ?? 0 }; // the rest of the string fires in update() as each step ends (+ its plant)
     }
     // (A melee ability's recoilPush is now HIT-GATED — the leap-back fires from MeleeSystem only when the kick
     //  CONNECTS, not at cast, so a whiff leaves the kicker planted. The 'shot' path still recoils on fire.)
@@ -307,20 +396,67 @@ export class AbilitySystem {
     // flurry adds a trail that whips once per cut. Visuals FOLLOW the swinger and die with the swing (FxSystem).
     const sw = e.melee;
     const t = e.transform!;
+    const heavy = motion === 'twinCleave'; // the great cut's crescents are HEAVY (a thick glowing sweep) — the thin swoosh read as a flick
     for (const v of shape.hitVolumes ?? []) {
       if (v.kind !== 'arc') continue;
       const a0 = v.active ? v.active[0] : sw.phases.windup;
       const a1 = v.active ? v.active[1] : sw.phases.windup + sw.phases.active;
-      const life = sw.dur * (a1 - a0) + WAVE_TAIL;
-      events.emit('fx:swing', { type: 'melee', x: t.x, y: t.y, angle: sw.angle, len: v.radius, arc: v.halfAngle, life, max: life, enemy: !e.control, delay: sw.dur * a0, follow: e.id, ability: id });
+      const sweep = sw.dur * (a1 - a0); // the crescent crosses its arc in the volume's own window…
+      const life = sweep + (heavy ? HEAVY_TAIL : WAVE_TAIL); // …then fades in place
+      events.emit('fx:swing', { type: 'melee', x: t.x, y: t.y, angle: sw.angle, len: v.radius, arc: v.halfAngle, life, max: life, sweep, enemy: !e.control, delay: sw.dur * a0, follow: e.id, ability: id, theme: fxThemeOf(e), heavy });
     }
+    const reach = strikeReach(e, d); // the STEEL's radius — never the engagement reach (which adds a dash-cut's step and painted the crescent where no blade was)
+    const activeLife = sw.dur * sw.phases.active;
+    const cue = sw.dur * sw.phases.windup;
+    const theme = fxThemeOf(e);
     if (motion === 'flurry') {
-      const reach = abilityRange(d, e.attributes?.get('reach') ?? 0);
-      const trailLife = sw.dur * sw.phases.active;
-      events.emit('fx:swing', { type: 'melee', x: t.x, y: t.y, angle: sw.angle, len: reach, arc: shape.arc, life: trailLife, max: trailLife, enemy: !e.control, cuts: flurryCuts(shape), delay: sw.dur * sw.phases.windup, follow: e.id, ability: id });
+      events.emit('fx:swing', { type: 'melee', x: t.x, y: t.y, angle: sw.angle, len: reach, arc: shape.arc, life: activeLife, max: activeLife, enemy: !e.control, cuts: flurryCuts(shape), delay: cue, follow: e.id, ability: id, theme });
+    } else if (motion === 'scissorIn' || motion === 'scissorOut') {
+      // TWO crescents, one per blade, each sweeping its own half of the spread — meeting in the middle (in) or parting from
+      // it (out). The lead blade sweeps +spread→front for 'in' (the default direction); its mirror is the off blade.
+      const half = Math.max(0.05, shape.arc) / 2;
+      const inward = motion === 'scissorIn';
+      const life = activeLife + WAVE_TAIL; // the sweep plus a fading tail — a SNAP of a cut still leaves a visible flash
+      for (const side of [1, -1] as const) {
+        const centre = sw.angle + side * sw.side * half; // each blade's crescent sits on ITS side of the aim
+        events.emit('fx:swing', { type: 'melee', x: t.x, y: t.y, angle: centre, len: reach, arc: half, life, max: life, sweep: activeLife, enemy: !e.control, delay: cue, follow: e.id, ability: id, theme, mirror: (side * sw.side > 0) !== inward });
+      }
+    } else if (motion === 'twinCleave') {
+      // a heavy crescent riding the BLADES too (the force arc above sits out at its own radius): the sweep is anchored to
+      // the steel, and the two together read as one wide blow rolling outward from the swords
+      const life = activeLife + HEAVY_TAIL;
+      events.emit('fx:swing', { type: 'melee', x: t.x, y: t.y, angle: sw.angle, len: reach, arc: Math.max(0.6, shape.arc), life, max: life, sweep: activeLife, enemy: !e.control, delay: cue, follow: e.id, ability: id, theme, heavy: true });
+    } else if (motion === 'twinThrust') {
+      events.emit('fx:swing', { type: 'thrust', x: t.x, y: t.y, angle: sw.angle, len: reach, life: activeLife, max: activeLife, enemy: !e.control, delay: cue, follow: e.id, ability: id, theme });
     }
+
     // (ELECTRIC swing visual is now drawn ON the foot itself — draw/actorDraws.drawFoot reads shape.swingFx —
     //  so the charge is welded to the limb through the whole swing, not a one-shot spark guessed near it.)
+  }
+
+  /** Leave a ground hazard (AbilityDef.hazard) where a swing's cut landed: its own entity, the owner's theme stamped now (a
+   *  coating dropped later keeps the mark black — it was cut black), the strokes turned to world angles off the committed aim. */
+  private leaveHazard(e: Entity, m: MeleeSwing, d: AbilityDef, spec: HazardSpec): void {
+    const t = e.transform!; // the melee loop iterates with('melee', 'mover', 'transform')
+    const ahead = strikeReach(e, d) * spec.ahead;
+    this.world.create({
+      transform: { x: t.x + Math.cos(m.angle) * ahead, y: t.y + Math.sin(m.angle) * ahead, angle: m.angle, r: 0 },
+      hazard: {
+        ability: d.id,
+        owner: e.id,
+        strokes: spec.strokes.map((st) => ({ angle: m.angle + st.angle, len: st.len })),
+        width: spec.width,
+        life: spec.life,
+        maxLife: spec.life,
+        tickEvery: spec.tickEvery,
+        nextTick: spec.tickEvery,
+        maxHits: spec.maxHits,
+        damageMul: spec.damageMul,
+        stun: spec.stun ?? 0,
+        hits: {},
+        theme: fxThemeOf(e),
+      },
+    });
   }
 
   /** Rocket the body along `angle` (Gomu Rocket) — a far, committed leap, longer-carrying than a dodge hop. */
@@ -383,7 +519,8 @@ export class AbilitySystem {
     // hold aim) — so paced shots stay tight but a rapid string sprays. The "don't spray" skill (#19).
     if (e.combatant) e.combatant.spread = (e.combatant.spread ?? half) + SPREAD_SHOT_KICK;
     const speed = shape.shotSpeed!; // boot-validated present + > 0 for a 'shot' shape
-    const life = speed > 0 ? shape.range / speed : 0; // range / speed = seconds aloft (the ball fizzles at range)
+    const life = speed > 0 ? (shape.range! * (e.attributes?.get(SHOT_RANGE_STAT) ?? 1)) / speed : 0; // range (boot-validated > 0 for a shot) × the shooter's range stat / speed = seconds aloft (the ball fizzles at range)
+    const shotScale = e.attributes?.get(SHOT_SCALE_STAT) ?? 1; // the shooter's shot scale at fire (a pump's larger slashes)
     const muzzle = shape.muzzle ?? t.r; // born ahead of the shooter's body so it doesn't self-collide
     // CLOSE-RANGE PASS-THROUGH baked at FIRE time (shared by every pellet — same barrel, same jam risk).
     const passChance = this.closePass(e, shape);
@@ -404,8 +541,8 @@ export class AbilitySystem {
       const pe = shape.procEffect;
       const proc = pe && pe.chance > 0 && this.rng.chance(pe.chance) ? { effect: pe.effect, dur: pe.dur, damageMult: pe.damageMult ?? 1 } : undefined;
       this.world.create({
-        transform: { x: mx, y: my, angle: pa, r: 2 },
-        projectile: { owner: e.id, ability: abilityId, vx: Math.cos(pa) * speed, vy: Math.sin(pa) * speed, life, hit: [], passChance, proc },
+        transform: { x: mx, y: my, angle: pa, r: (shape.shotRadius ?? SHOT_POINT_R) * shotScale }, // the HIT radius (ProjectileSystem sweeps target.r + this), scaled with the drawn size (shotSize × scale in the renderer)
+        projectile: { owner: e.id, ability: abilityId, vx: Math.cos(pa) * speed, vy: Math.sin(pa) * speed, life, hit: [], passChance, proc, theme: fxThemeOf(e), kind: shape.shotProc === 'slash' ? 'slash' : 'ball', rung: effectiveTier(e), scale: shotScale }, // the shooter's state at FIRE time rides the shot (a coated crescent stays black — and keeps its rung and size — if the coating or pump drops mid-flight)
       });
     }
     const mx = t.x + Math.cos(aim) * muzzle; // muzzle flash at the barrel (the aim line, not a pellet)
@@ -459,7 +596,7 @@ export class AbilitySystem {
     const shape = d.shape!;
     const canHit = harmableBy(e);
     const base = this.strikes.baseDamage(e, d);
-    const range = abilityRange(d, e.attributes?.get('reach') ?? 0);
+    const range = abilityReach(e, d);
     const aim = this.scatter(t.angle); // the shot scatters slightly off true aim
     events.emit('fx:swing', { type: 'pistol', x: t.x, y: t.y, angle: aim, len: range, life: 0.16, max: 0.16, arc: shape.arc });
 

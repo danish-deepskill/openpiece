@@ -1,3 +1,4 @@
+import { stamCap } from '../src/combat/stamina';
 import { describe, expect, it } from 'vitest';
 import { applyEffect, TAG_SLOWED } from '../src/combat/Effect';
 import { TagSet } from '../src/combat/TagSet';
@@ -27,11 +28,12 @@ describe('CombatantSystem — delayed stamina regen + hitstun decay', () => {
     expect(e.combatant!.stam).toBeCloseTo(50 + STAM_REGEN, 5); // one second of regen at the tuned rate
   });
 
-  it('caps stamina at max', () => {
+  it('caps stamina at today\'s ceiling (the refill itself costs the day a hair — never past maxStam)', () => {
     const world = new World();
     const e = fighter(world, { stam: 98, regenT: 0 });
     new CombatantSystem(world).update(1);
-    expect(e.combatant!.stam).toBe(100);
+    expect(e.combatant!.stam).toBeLessThanOrEqual(100);
+    expect(e.combatant!.stam).toBeCloseTo(stamCap(e.combatant!), 6); // the two refilled points wore the ceiling to ~99.7 (combat/stamina)
   });
 
   it('hitstun is an EFFECT clock now — EffectSystem ticks it down and the tag lifts on expiry', () => {

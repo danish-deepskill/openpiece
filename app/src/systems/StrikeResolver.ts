@@ -1,14 +1,19 @@
 import { Abilities, type AbilityDef } from '../combat/Ability';
-import { applyEffect } from '../combat/Effect';
+import { dominance, REBOUND_STUN, tierGap, type GapRule } from '../combat/dominance';
+import { fxThemeOf } from '../combat/fxTheme';
+import { KNOCKBACK_STAT } from '../combat/stats';
+import { isRagdolled, launchRagdoll } from '../combat/ragdoll';
+import { applyEffect, TAG_ARMAMENT } from '../combat/Effect';
 import type { Rng } from '../core/Rng';
 import { damagePosture, PARRY_POSTURE, PARRY_STUN, resolveGuard, WEIGHT_POSTURE } from '../combat/guard';
-import { interruptChance, kitWeapon, phaseAt } from '../combat/phases';
+import { interruptChance, phaseAt, swingWeight } from '../combat/phases';
 import { COMBO_CAP, COMBO_WINDOW, FX_COLOR, GUARD_KNOCKBACK_CARRY, GUARD_KNOCKBACK_MULT, PARRY_KNOCKBACK_MULT } from '../config/constants';
 import { events } from '../core/EventBus';
 import { factions } from '../defs/factions';
 import { entityHostile, grudges } from '../combat/targeting';
 import type { Entity } from '../ecs/components';
 import type { Damage } from './Damage';
+import type { ClashOutcome } from '../core/EventBus';
 
 /**
  * The single place a confirmed hit becomes damage. Both the melee engine (contact, MeleeSystem) and ranged
@@ -31,14 +36,16 @@ export class StrikeResolver {
 
   /**
    * Land one hit from `e` on `o` (via ability `d`) with a forward (kx,ky) knockback. Resolution order:
-   * Logia intangibility → the target's GUARD (parry negates + punishes; block reroutes HP → posture) →
-   * damage + combo + hitstun + AI alert. Returns false when nothing landed (phased, parried, blocked, or
-   * refused by i-frames/god-mode inside Damage.apply) — a refused hit is the DEFENDER's small win, so it
+   * Logia intangibility → the tier-gap RUNG (combat/dominance: one lookup that scales what follows) → the target's
+   * GUARD (parry negates + punishes; block reroutes HP → posture; a dominant guard BOUNCES the attacker) →
+   * damage + combo + hitstun (a dominant body won't flinch or be clipped; a wall of a body rebounds any blade) +
+   * AI alert. Returns false when nothing landed (phased, parried, blocked, or refused by i-frames/god-mode inside
+   * Damage.apply) — a refused hit is the DEFENDER's small win, so it
    * must not feed the attacker's combo or launch latches (leap-backs, procs, slam flags).
    */
   hit(e: Entity, o: Entity, d: AbilityDef, base: number, kx: number, ky: number, shake = 0, stun = 0): boolean {
     const ot = o.transform!;
-    if (o.tags?.has('state.logia.intangible') && !e.tags?.has('haki.armament.active')) {
+    if (o.tags?.has('state.logia.intangible') && !e.tags?.has(TAG_ARMAMENT)) {
       events.emit('fx:burst', { x: ot.x, y: ot.y, color: FX_COLOR.phase, n: 6, speed: 110 });
       return false;
     }
@@ -58,8 +65,15 @@ export class StrikeResolver {
     // gore, has no weapon class, so the weight table would under-rate it as a bare 'light' hit), else it scales
     // by the attacker's combat WEIGHT (kit rule: a punch thrown while a sword is sheathed rattles a guard like a
     // fist, not like a heavy). Weaponless → 'light' (the fallback since 'unarmed' folded into it).
-    const posture = d.posture ?? WEIGHT_POSTURE[kitWeapon(e, d)?.weaponClass ?? 'light'];
-    const outcome = resolveGuard(e, o, posture);
+    // THE RUNG — read once; every quality of this hit below (posture, parry, shove, stun, interrupt, rebound) is
+    // the rung's call. Damage is deliberately NOT: the tier curves already own magnitude (combat/dominance).
+    const rung = dominance(e, o);
+    const gap = tierGap(e, o); // for the debug readout only (combat:clash) — the rules above already folded it in
+    // the PARRY question may be asked with the technique's shift (Kokutō counts a letter higher for it alone)
+    const parryDeflects = d.parryShift ? dominance(e, o, d.parryShift).parryDeflects : rung.parryDeflects;
+    const contact = d.shape?.swing === 'melee' && e.melee?.ability === d.id; // the rebound is a CONTACT rule: a blade IN HAND bounces; a ball from across the yard — or a ground zone ticking its owner's melee row (HazardSystem) — doesn't stagger its owner
+    const posture = (d.posture ?? WEIGHT_POSTURE[swingWeight(e, d)]) * rung.postureMul;
+    const outcome = resolveGuard(e, o, posture, parryDeflects);
     if (outcome === 'parried') {
       // the deflection backfires onto the attacker: posture spike (parry pressure can BREAK an aggressor),
       // a stagger, and the swing itself is gone — the defender's punish opening
@@ -69,6 +83,7 @@ export class StrikeResolver {
       this.guardKnockback(e, o, d, kx, ky, PARRY_KNOCKBACK_MULT); // a heavy blow jolts even a parry back a touch (< a block)
       events.emit('fx:burst', { x: ot.x, y: ot.y, color: FX_COLOR.parry, n: 12, speed: 240 });
       events.emit('fx:shake', { amount: 2 });
+      this.clash(ot.x, ot.y, gap, rung, 'parried');
       this.alertAI(o, e, false);
       return false;
     }
@@ -78,30 +93,54 @@ export class StrikeResolver {
       this.guardKnockback(e, o, d, kx, ky, 1);
       events.emit('fx:burst', { x: ot.x, y: ot.y, color: FX_COLOR.spark, n: 4, speed: 120 });
       if (outcome === 'guardBreak') events.emit('fx:shake', { amount: 5 }); // the break is the loud moment
+      else if (contact && rung.rebound !== 'never') this.rebound(e, ot.x, ot.y); // a dominant guard isn't just held — the blade BOUNCES (the counter opening)
+      this.clash(ot.x, ot.y, gap, rung, outcome === 'guardBreak' ? 'guardBreak' : contact && rung.rebound !== 'never' ? 'rebound' : 'blocked');
       this.alertAI(o, e, false);
       return false;
     }
+    kx *= rung.knockbackMul; // a dominant body isn't moved by a lesser blow (0 at two letters); a lesser one flies farther
+    ky *= rung.knockbackMul;
+    stun *= rung.stunMul;
+    // THE ATTACKER's own shove multiplier (stats.KNOCKBACK_STAT — a pump's harder push): on the ordinary shove, the wall-slam
+    // magnitude below (it rescales kx/ky, so it rides through) and a ragdoll's fling. Read once, applied once.
+    const shoveMul = e.attributes?.get(KNOCKBACK_STAT) ?? 1;
+    kx *= shoveMul;
+    ky *= shoveMul;
     // WALL-SLAM proc (the marine Buttstroke): roll `chance` to REPLACE the knockback with a LONG shove and arm the
     // target's slamStun — MovementSystem fires the electrified pin IF that shove slams them into a wall (else they
     // just fly far). Rescale the incoming kx/ky (already d.knockback-scaled) to the wallSlam magnitude, keeping dir.
+    // The RUNG applies to the slam too (it REPLACES the knockback it would otherwise have scaled): a dominant body is
+    // shoved and pinned less by a lesser Buttstroke, exactly as it is by a lesser kick — one rule, not two.
     const om = o.mover;
     const slam = d.wallSlam && om && this.rng.chance(d.wallSlam.chance) ? d.wallSlam : undefined;
     if (slam) {
       const mag = Math.hypot(kx, ky) || 1;
-      const scale = slam.knockback / mag;
+      const scale = (slam.knockback * rung.knockbackMul) / mag;
       kx *= scale;
       ky *= scale;
     }
+    // RAGDOLL (combat/ragdoll): the hit's knockback + hitstun become a FLIGHT then a DOWNED beat. The rung has already
+    // scaled the shove — a 0 means a dominant body that won't be launched, so the hit falls back to the plain path
+    // (which the same 0 also silences). A body already flung/down is never re-launched (anti-juggle): damage only.
+    const rag = d.ragdoll && o.mover && !isRagdolled(o) && rung.knockbackMul > 0 ? d.ragdoll : undefined;
+    const ragLen = Math.hypot(kx, ky) || 1; // the hit's own direction, kept before the shove is zeroed below
+    const ragX = kx / ragLen;
+    const ragY = ky / ragLen;
+    if (rag) { kx = 0; ky = 0; } // the fling replaces the ordinary shove
     const landed = this.damage.apply(o, base, kx, ky, !!o.control);
+    if (rag && landed) {
+      launchRagdoll(o, ragX, ragY, rag.force * rung.knockbackMul * shoveMul, rag.airTime, rag.downed * rung.stunMul, this.rng.next());
+      stun = 0; // the downed beat IS the stun
+    }
     // Arm the slam watch ONLY on a LANDED hit: an i-framed target takes no shove, so flags armed anyway would
     // ride the victim's OWN dodge impulse into the next wall — dodge-rolling through the Buttstroke must never
     // award its CC (the haunted-flag class the wallSlam boot validator warns about).
     if (slam && landed && om) {
-      om.slamStun = slam.stun; // MovementSystem: FREEZE if this shove hits a wall…
-      om.slamSlow = slam.slow; // …else the lighter SLOW when it ends free
+      om.slamStun = slam.stun * rung.stunMul; // MovementSystem: FREEZE if this shove hits a wall… (the rung's stun scale, like any hitstun)
+      om.slamSlow = slam.slow * rung.stunMul; // …else the lighter SLOW when it ends free
     }
     // impact spark — tinted by the ability (hitFx) so an ELECTRIC kick pops cyan, a plain blow the default spark.
-    events.emit('fx:burst', { x: ot.x, y: ot.y, color: d.hitFx ?? FX_COLOR.spark, n: 6, speed: 200 });
+    events.emit('fx:burst', { x: ot.x, y: ot.y, color: d.hitFx ?? FX_COLOR.spark, n: 6, speed: 200, theme: d.hitFx === undefined ? fxThemeOf(e) : undefined }); // an authored hitFx (the electric kick) keeps its color; the default spark takes the body's theme
     if (shake > 0) events.emit('fx:shake', { amount: shake }); // shake is opt-in per ability (powerful moves only)
     if (landed && e.combatant) { // an i-framed hit landed NOTHING — no combo feed (same rule as parry/block)
       e.combatant.combo++;
@@ -117,13 +156,13 @@ export class StrikeResolver {
       const phase = swing ? phaseAt(swing.phases, swing.dur > 0 ? swing.t / swing.dur : 1) : undefined;
       if (!swing) {
         applyEffect(o, 'effect.staggered', 'hit', stun); // not swinging → a jab still STAGGERS (slowed-class, not a freeze)
-      } else if (phase === 'windup' || Abilities.get(swing.ability).channel) {
+      } else if ((phase === 'windup' || Abilities.get(swing.ability).channel) && rung.interrupts) {
         // WINDUP → interruptible, but PROBABILISTICALLY by weight (Model D): a lighter hit only sometimes clips
         // the swing-arm and cancels a heavier windup. Roll on the seeded `combat` stream (determinism).
         // A CHANNEL (`channel`) stays breakable through its WHOLE swing by the same roll: commitment is a window
         // bought with a tell, and six seconds bought with a 0.4s tell is immunity, not a trade.
-        const atk = kitWeapon(e, d)?.weaponClass ?? 'light';
-        const def = kitWeapon(o, Abilities.get(swing.ability))?.weaponClass ?? 'light';
+        const atk = swingWeight(e, d);
+        const def = swingWeight(o, Abilities.get(swing.ability));
         if (this.rng.chance(interruptChance(atk, def))) {
           applyEffect(o, 'effect.staggered', 'interrupt', stun); // the interrupt STAGGERS + cancels the windup
           delete o.melee; // the windup is cancelled — the read/interrupt lands
@@ -131,9 +170,29 @@ export class StrikeResolver {
         // roll failed → the heavier swing shrugs off the clip and plays out (you traded)
       }
       // active/recover of an ORDINARY swing → COMMITTED: no cancel, no stun — the swing plays out and trades
+      // (a rung with interrupts=false lands here too: his commitment is beyond your weight class)
     }
+    if (landed && contact && rung.rebound === 'hit') this.rebound(e, ot.x, ot.y); // three letters down: it landed, and you still bounce off him
+    this.clash(ot.x, ot.y, gap, rung, !landed ? 'refused' : contact && rung.rebound === 'hit' ? 'rebound' : 'landed');
     this.alertAI(o, e, landed);
     return landed; // the honest outcome — consumers (Shock Kick leap-back, charged-round procs) gate on a real connect
+  }
+
+  /** The CLASH READOUT: one typed event per tiered hit with the rung that judged it — the debug overlay's
+   *  `combat.rung` layer prints it over the contact point (DebugOverlay), so a designer can SEE the ladder's verdict
+   *  instead of inferring it. Not emitted for a tier-less pair (nothing to read). */
+  private clash(x: number, y: number, gap: number | undefined, rule: GapRule, outcome: ClashOutcome): void {
+    if (gap === undefined) return;
+    events.emit('combat:clash', { x, y, gap, rule, outcome });
+  }
+
+  /** REBOUND (combat/dominance): the attacker's blade bounces off a dominant body or guard — a stagger and the
+   *  swing is lost, exactly the parry's punish shape minus the posture spike (a wall is passive; a parry is a
+   *  read). Deleting the swing here is safe mid-iteration for the same reason the parry path is. */
+  private rebound(e: Entity, x: number, y: number): void {
+    applyEffect(e, 'effect.staggered', 'rebound', REBOUND_STUN);
+    delete e.melee;
+    events.emit('fx:burst', { x, y, color: FX_COLOR.rebound, n: 8, speed: 180 });
   }
 
   /**
@@ -147,7 +206,7 @@ export class StrikeResolver {
     const m = o.mover;
     if (!m) return; // immovable defender (a docked ship) — no shove
     const authored = d.guardKnockback;
-    const isHeavy = (kitWeapon(e, d)?.weaponClass ?? 'light') === 'heavy';
+    const isHeavy = swingWeight(e, d) === 'heavy';
     const mag = authored ?? (isHeavy ? (d.knockback ?? 0) * GUARD_KNOCKBACK_MULT : 0);
     if (mag <= 0) return;
     const len = Math.hypot(kx, ky) || 1; // normalize the attack's knockback vector to a pure direction
@@ -199,14 +258,17 @@ export class StrikeResolver {
    * whoever strikes it — a grudge, so its AI acquires + charges its attacker (nearestHostile reads grudges).
    * This is the "provoke the bull" rule: unlike friendly-fire betrayal (formGrudge, ally-only), it fires for a
    * NON-ally, NON-hostile attacker — the neutral-animal case. Skipped for passive prey (they FLEE, not fight)
-   * and when the pair is already hostile (a real enemy hitting it needs no new grudge). Symmetric mutual grudge
-   * so the attacker can keep hitting it and it fights back (entityHostile reads either direction).
+   * and when the VICTIM already counts the attacker an enemy (a real enemy hitting it needs no new grudge). Judged
+   * from the victim's side on purpose: the faction matrix is directional, and a ONE-WAY stance (challengers → ronin:
+   * the challenger hunts on sight, the ronin is at war with nobody) is exactly the case that needs the grudge — asked
+   * from the attacker's side it read "already hostile" and the struck ronin never turned on the man cutting him.
+   * Symmetric mutual grudge so the attacker can keep hitting it and it fights back (entityHostile reads either direction).
    */
   private provokeTerritorial(attacker: Entity, victim: Entity): void {
     const bb = victim.ai!.bb;
     if (bb.profile.passive || !attacker.faction || !victim.faction) return; // prey flee; need factions to judge
     if (factions.isAlly(attacker.faction.id, victim.faction.id)) return; // ally case is formGrudge's betrayal path
-    if (entityHostile(attacker, victim)) return; // already at war (a real enemy) — no new grudge needed
+    if (entityHostile(victim, attacker)) return; // the VICTIM already at war with it (its own stance, or a grudge either way) — no new grudge needed
     (victim.grudge ??= { ids: new Set<number>() }).ids.add(attacker.id); // it now hunts its attacker (the charge)
   }
 }

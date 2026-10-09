@@ -2,7 +2,7 @@ import { angleDiff, segDist } from '../core/math';
 import type { AbilityDef } from './Ability';
 import type { ContentId } from '../core/Registry';
 import { kitWeapon } from './phases';
-import { HAND_R_FRAC, type SwingPose } from './swing';
+import { HAND_R_FRAC, weaponLenOf, type SwingPose } from './swing';
 import type { Entity, MeleeSwing } from '../ecs/components';
 
 /**
@@ -25,13 +25,21 @@ export type HitVolume = {
   damageMul?: number;
 } & (
   /** A span of the DRAWN weapon, `from`→`to` as 0..1 along grip→tip (default the whole weapon; a hammer's
-   *  head is {from: 0.85}). `width` overrides the weapon visual's width for this volume. */
-  | { kind: 'weaponSegment'; from?: number; to?: number; width?: number }
+   *  head is {from: 0.85}). `width` overrides the weapon visual's width for this volume. `hand: 'off'` tests the
+   *  OFF hand's blade instead (a two-hand motion poses it — SwingPose.off): a cut with two swords is two segments,
+   *  each a share (damageMul), so a target caught by both pays full and a clipped one pays half. A one-hand motion
+   *  poses no off blade, so such a volume never hits — boot-refused on a one-hand pattern (abilityProblem). */
+  | { kind: 'weaponSegment'; from?: number; to?: number; width?: number; hand?: 'lead' | 'off' }
   /** A FREE crescent, decoupled from the blade — the "the slash hits, not the steel" case. A band from
    *  `radius - thickness` out to `radius`, within ±`halfAngle` of its direction. `follow: 'swing'` makes it
    *  travel with the animated cut (pose.drawAngle); 'aim' (default) pins it to the committed attack line —
    *  keep its `active` window short so the burst read stays honest. */
   | { kind: 'arc'; radius: number; halfAngle: number; thickness: number; follow?: 'aim' | 'swing' }
+  /** The PATH a launched step travelled — a capsule `width` wide from where the step BEGAN (MeleeSwing.launchX/Y,
+   *  recorded at the first cue) to the body NOW. Live only once the step has LANDED (MeleeSystem gates it on
+   *  `landed`) and within its window: the cut that lands on everyone he passed, after he is behind them — the
+   *  dash-through iai (Rashōmon). A trail row must carry launchAt (abilityProblem). */
+  | { kind: 'trail'; width: number }
   // future kinds, documented not built: 'point' (free circle), 'projectile' (spawns a mover; unifies ranged)
 );
 
@@ -112,6 +120,8 @@ export function hitVolumeProblem(vols: readonly HitVolume[] | undefined): string
       const to = v.to ?? 1;
       if (!(from >= 0 && to <= 1 && from < to)) return `weaponSegment span [${from}, ${to}] must satisfy 0 ≤ from < to ≤ 1`;
       if (v.width !== undefined && !(v.width > 0)) return `weaponSegment width must be > 0 (got ${v.width})`;
+    } else if (v.kind === 'trail') {
+      if (!(v.width > 0)) return `trail width must be > 0 (got ${v.width})`;
     } else if (!(v.radius > 0) || !(v.thickness > 0) || !(v.halfAngle > 0)) {
       return 'arc radius/thickness/halfAngle must all be > 0';
     }
@@ -131,6 +141,10 @@ export interface StrikeFrame {
   aim: number; // the committed attack angle (MeleeSwing.angle)
   swingAngle: number; // where the ANIMATED cut points this frame (pose.drawAngle — twists through an arc)
   segmentHalfW: number; // default weaponSegment half-width: the weapon visual's, or the bare fist's radius
+  fromX: number; // where a launched step BEGAN (the trail volume's origin) — the body itself for an unlaunched swing
+  fromY: number;
+  /** The OFF hand's blade this frame (world grip → tip), when the motion poses both hands; absent ⇒ no off blade. */
+  off?: { handX: number; handY: number; tipX: number; tipY: number };
 }
 
 /** Build the frame for a swing — ONE home for this math: MeleeSystem (the hits) and DebugOverlay (the
@@ -142,7 +156,11 @@ export function strikeFrameOf(e: Entity, m: MeleeSwing, d: AbilityDef, pose: Swi
   // same LIMB rule as strikeVolumes: a slot-kit kick (Shock Kick) tests at the FIST radius, not the barrel's
   // half-width — being granted by the weapon doesn't make a foot a blade
   const wv = d.shape?.limb ? undefined : kitWeapon(e, d)?.visual;
+  const o = pose.off;
+  const len = o ? weaponLenOf(e) : 0; // the off blade's steel is the same def's (one pair, one length)
+  const off = o ? { handX: t.x + o.hx, handY: t.y + o.hy, tipX: t.x + o.hx + Math.cos(o.angle) * len, tipY: t.y + o.hy + Math.sin(o.angle) * len } : undefined;
   return {
+    off,
     x: t.x,
     y: t.y,
     handX: t.x + pose.hx,
@@ -152,21 +170,20 @@ export function strikeFrameOf(e: Entity, m: MeleeSwing, d: AbilityDef, pose: Swi
     aim: m.angle,
     swingAngle: pose.drawAngle,
     segmentHalfW: wv ? wv.width / 2 : t.r * HAND_R_FRAC, // blade half-width (the drawn blade IS the hitbox — no fat pad), or the fist radius
+    fromX: m.launchX ?? t.x,
+    fromY: m.launchY ?? t.y,
   };
 }
 
 /** Does `v` overlap the target circle (ox, oy, or) this frame? Pure geometry — headless-tested. */
 export function volumeHits(v: HitVolume, f: StrikeFrame, ox: number, oy: number, or: number): boolean {
   if (v.kind === 'weaponSegment') {
-    const from = v.from ?? 0;
-    const to = v.to ?? 1;
-    const ax = f.handX + (f.tipX - f.handX) * from;
-    const ay = f.handY + (f.tipY - f.handY) * from;
-    const bx = f.handX + (f.tipX - f.handX) * to;
-    const by = f.handY + (f.tipY - f.handY) * to;
+    const seg = segmentOf(v, f);
+    if (!seg) return false; // an off-blade volume on a frame with no off blade: nothing to hit with
     const halfW = v.width !== undefined ? v.width / 2 : f.segmentHalfW;
-    return segDist(ox, oy, ax, ay, bx, by) <= or + halfW;
+    return segDist(ox, oy, seg[0], seg[1], seg[2], seg[3]) <= or + halfW;
   }
+  if (v.kind === 'trail') return segDist(ox, oy, f.fromX, f.fromY, f.x, f.y) <= or + v.width / 2; // the path he cut through
   // arc: a crescent band around the attacker, facing the aim or the travelling swing angle
   const dir = v.follow === 'swing' ? f.swingAngle : f.aim;
   const dx = ox - f.x;
@@ -177,4 +194,25 @@ export function volumeHits(v: HitVolume, f: StrikeFrame, ox: number, oy: number,
   // angular test, padded by the target's own angular size so a big body clipped by the crescent still counts
   const pad = d > 0.001 ? Math.asin(Math.min(1, or / d)) : Math.PI;
   return Math.abs(angleDiff(Math.atan2(dy, dx), dir)) <= v.halfAngle + pad;
+}
+
+/** The world segment a weaponSegment volume tests this frame — the lead blade's span, or the off blade's for `hand:
+ *  'off'` (undefined when the frame has no off blade). ONE home: MeleeSystem's test and DebugOverlay's draw both read it. */
+export function segmentOf(v: Extract<HitVolume, { kind: 'weaponSegment' }>, f: StrikeFrame): [number, number, number, number] | undefined {
+  const from = v.from ?? 0;
+  const to = v.to ?? 1;
+  const b = v.hand === 'off' ? f.off : { handX: f.handX, handY: f.handY, tipX: f.tipX, tipY: f.tipY };
+  if (!b) return undefined;
+  return [b.handX + (b.tipX - b.handX) * from, b.handY + (b.tipY - b.handY) * from, b.handX + (b.tipX - b.handX) * to, b.handY + (b.tipY - b.handY) * to];
+}
+
+/** N equal blade-cut windows tiling the ACTIVE phase (the flurry rule: the windows ARE the cuts) — a double cut is
+ *  cutWindows(2, phases). One source with the row's phases, so the cuts can never drift off the swing's clock. Under a
+ *  PAIR hold the cuts alternate hands (swing.activeSide): window 0 the lead blade, window 1 the off blade. Frozen, like
+ *  flurryWindows: defs are shared by every cast. */
+export function cutWindows(n: number, ph: { windup: number; active: number }): HitVolume[] {
+  const out: HitVolume[] = [];
+  const w = ph.active / n;
+  for (let i = 0; i < n; i++) out.push({ kind: 'weaponSegment', active: [ph.windup + i * w, ph.windup + (i + 1) * w] });
+  return Object.freeze(out) as HitVolume[]; // readonly at runtime; the HitVolume[] type is what the row fields take
 }

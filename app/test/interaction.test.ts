@@ -8,7 +8,10 @@ import { Rng } from '../src/core/Rng';
 import { Spawner } from '../src/ecs/Spawner';
 import { SpatialQuery } from '../src/world/SpatialQuery';
 
-const sysFor = (world: World, dlg = new DialogueSystem()) => new InteractionSystem(world, dlg, new Items(world, new Spawner(world, new Rng(1)), new SpatialQuery(world)));
+const sysFor = (world: World, dlg = new DialogueSystem()) => {
+  const sp = new Spawner(world, new Rng(1));
+  return new InteractionSystem(world, dlg, new Items(world, sp, new SpatialQuery(world)), sp);
+};
 
 function actorAt(world: World, x: number, y: number): Entity {
   return world.create({ transform: { x, y, angle: 0, r: 12 } });

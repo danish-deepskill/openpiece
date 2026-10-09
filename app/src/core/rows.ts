@@ -74,6 +74,18 @@ export class RowReader {
     this.fail(field, 'an object');
   }
 
+  /** A LIST of nested objects → one reader each (unknown-field tracking applies inside every element). */
+  objs(field: string): RowReader[] {
+    const v = this.get(field);
+    if (!Array.isArray(v)) this.fail(field, 'an array of objects');
+    return v.map((el, i) => {
+      if (typeof el !== 'object' || el === null || Array.isArray(el)) this.fail(field, `an array of objects (element ${i} is not one)`);
+      const nested = new RowReader(el as Record<string, unknown>, `${this.where}.${field}[${i}]`); // narrowing at the untyped boundary
+      this.nested.push(nested);
+      return nested;
+    });
+  }
+
   // optional variants: ABSENT stays undefined; PRESENT must parse (a present-but-wrong value is a typo, not a default)
   optStr(field: string): string | undefined {
     return this.get(field) === undefined ? undefined : this.str(field);
@@ -89,6 +101,10 @@ export class RowReader {
 
   optColor(field: string): number | undefined {
     return this.get(field) === undefined ? undefined : this.color(field);
+  }
+
+  optObjs(field: string): RowReader[] | undefined {
+    return this.get(field) === undefined ? undefined : this.objs(field);
   }
 
   optOneOf<T extends string>(field: string, allowed: readonly T[]): T | undefined {

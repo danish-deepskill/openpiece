@@ -69,6 +69,67 @@ export const structureDraws: Record<string, StructureDrawFn> = {
   },
   // GROUND half of a tree only: root shadow + trunk on the 1-tile blocker (the crown is the treeCrown
   // OVERLAY row, baked above actors, so units walk UNDER the leaves)
+  // WAYSTONE — a squat standing stone from above: a dark slab, a pale rim, and a cyan rune ring that marks it as a
+  // thing you USE (the minimap dot shares the cyan). Static; a pulse would want the overlay pass (not worth it yet).
+  waystone: (g, x, y) => {
+    const cx = x * TILE + TILE / 2;
+    const cy = y * TILE + TILE / 2;
+    g.fillStyle(0x000000, 0.25);
+    g.fillEllipse(cx + 2, cy + 3, TILE * 0.8, TILE * 0.5);
+    g.fillStyle(0x3e4a58, 1);
+    g.fillRoundedRect(cx - TILE * 0.3, cy - TILE * 0.36, TILE * 0.6, TILE * 0.72, 5);
+    g.lineStyle(2, 0x8a98a8, 1);
+    g.strokeRoundedRect(cx - TILE * 0.3, cy - TILE * 0.36, TILE * 0.6, TILE * 0.72, 5);
+    g.lineStyle(2.5, 0x9fd0ff, 0.95);
+    g.strokeCircle(cx, cy - 2, TILE * 0.17);
+    g.fillStyle(0x9fd0ff, 0.9);
+    g.fillCircle(cx, cy - 2, 2.5);
+  },
+  // the DUEL GONG — a bronze disc hung in a dark frame, seen from above: the frame's two posts, the disc with its raised
+  // boss, a mallet resting against one post. Gold on the minimap (the def's `minimap`), so the arena's trigger reads from afar.
+  gong: (g, x, y) => {
+    const cx = x * TILE + TILE / 2;
+    const cy = y * TILE + TILE / 2;
+    g.fillStyle(0x000000, 0.25);
+    g.fillEllipse(cx + 2, cy + 3, TILE * 0.85, TILE * 0.5);
+    g.fillStyle(0x4a3a24, 1); // the frame: a crossbar with a post at each end
+    g.fillRect(cx - TILE * 0.42, cy - TILE * 0.08, TILE * 0.84, TILE * 0.16);
+    g.fillCircle(cx - TILE * 0.4, cy, TILE * 0.12);
+    g.fillCircle(cx + TILE * 0.4, cy, TILE * 0.12);
+    g.fillStyle(0xc9962e, 1); // the disc
+    g.fillCircle(cx, cy, TILE * 0.3);
+    g.lineStyle(2, 0x7a5a1a, 1);
+    g.strokeCircle(cx, cy, TILE * 0.3);
+    g.lineStyle(1, 0xe0b23a, 0.9);
+    g.strokeCircle(cx, cy, TILE * 0.18);
+    g.fillStyle(0xe8c45a, 1); // the boss
+    g.fillCircle(cx, cy, TILE * 0.08);
+    g.lineStyle(3, 0x6b4a2c, 1); // the mallet, leaning on the right post
+    g.lineBetween(cx + TILE * 0.3, cy + TILE * 0.3, cx + TILE * 0.46, cy - TILE * 0.1);
+    g.fillStyle(0x3a2a1a, 1);
+    g.fillCircle(cx + TILE * 0.3, cy + TILE * 0.3, 3.5);
+  },
+  // the TRAINING POST — a squat wooden post with a straw bundle bound to its top and a rope coil at the base: the arena's
+  // dummy summoner. Reads as "practice here" next to the gong's "fight here".
+  trainingPost: (g, x, y) => {
+    const cx = x * TILE + TILE / 2;
+    const cy = y * TILE + TILE / 2;
+    g.fillStyle(0x000000, 0.25);
+    g.fillEllipse(cx + 2, cy + 3, TILE * 0.7, TILE * 0.45);
+    g.fillStyle(0x6b4a2a, 1); // the post, seen from above: a thick round section
+    g.fillCircle(cx, cy, TILE * 0.22);
+    g.lineStyle(2, 0x3a2a1a, 1);
+    g.strokeCircle(cx, cy, TILE * 0.22);
+    g.fillStyle(0xc9a55a, 1); // the straw bundle lashed on top
+    g.fillCircle(cx, cy, TILE * 0.14);
+    g.lineStyle(1, 0x8a6a3a, 0.9);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      g.lineBetween(cx, cy, cx + Math.cos(a) * TILE * 0.14, cy + Math.sin(a) * TILE * 0.14);
+    }
+    g.lineStyle(2.5, 0x8a6a3a, 1); // the rope coil at the base
+    g.strokeCircle(cx + TILE * 0.3, cy + TILE * 0.28, TILE * 0.1);
+  },
   tree: (g, x, y) => {
     const cx = x * TILE + TILE / 2;
     const cy = y * TILE + TILE / 2;

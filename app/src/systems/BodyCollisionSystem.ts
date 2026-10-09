@@ -1,3 +1,5 @@
+import { TAG_PHASING } from '../combat/Effect';
+import { DOWNED_TORSO_R, isDowned, PART_R, pushPart } from '../combat/ragdoll';
 import { deckOf, deckToWorld } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
 import { deckTryMove } from '../world/deckCollision';
@@ -27,6 +29,12 @@ const MAX_BODY_R = 20; // largest body radius (+ margin) — bounds the neighbor
  * transient overlap at a handoff line beats resolving a push across two grids in relative motion. One
  * pass/frame; multi-body stacks settle over a few frames.
  */
+/** The mass a DOWNED body collides with — effectively none, so it yields the full overlap (combat/ragdoll). */
+const DOWNED_MASS = 0.001;
+/** How a downed body SLIDES when walked into: px/s along the push, carried this long (the dodge channel decays it). */
+const DOWNED_SLIDE = 110;
+const DOWNED_SLIDE_T = 0.14;
+
 export class BodyCollisionSystem {
   constructor(
     private readonly world: World,
@@ -38,25 +46,38 @@ export class BodyCollisionSystem {
    *  docs/design/MOVEMENT_AIR.md) is NOT solid: it's above the crowd, so it neither pushes others nor is pushed —
    *  you jump OVER units. Excluding it here covers both directions at once (skipped as `e`, filtered from neighbors). */
   private solid = (e: Entity): boolean =>
-    !!e.transform && !!e.mover && e.mover.mode === 'foot' && e.mover.layer !== 'air' && !e.health?.dead;
+    !!e.transform && !!e.mover && e.mover.mode === 'foot' && e.mover.layer !== 'air' && !e.health?.dead && !e.tags?.has(TAG_PHASING); // a PHASING body (a pass-through step) is as un-solid as an airborne one
+
+  /** A DOWNED body has no footing: it yields the WHOLE overlap to whoever walks into it (combat/ragdoll — the
+   *  Roblox rule: a ragdoll is a thing you shove along the floor). Everyone else pushes by mass. */
+  private yieldMass = (e: Entity): number => (isDowned(e) ? DOWNED_MASS : e.mover!.mass);
 
   update(): void {
     for (const e of this.world.with('transform', 'mover')) {
       if (!this.solid(e)) continue;
       const t = e.transform!;
-      const massE = e.mover!.mass;
+      const massE = this.yieldMass(e);
       // each unordered pair resolved once (only neighbors with a higher id), SAME FRAME only — shipId equality
       // also pairs two undefineds, so ashore×ashore and same-deck both pass; mixed and different-deck never do
-      const neighbors = this.query.within(t.x, t.y, t.r + MAX_BODY_R, (o) => o.id > e.id && this.solid(o) && o.onDeck?.shipId === e.onDeck?.shipId);
+      const neighbors = this.query.within(t.x, t.y, t.r + MAX_BODY_R + MAX_BODY_R, (o) => o.id > e.id && this.solid(o) && o.onDeck?.shipId === e.onDeck?.shipId);
       for (const o of neighbors) {
         const ot = o.transform!;
+        // a DOWNED body's limbs are their own little bodies (combat/ragdoll): the other walker shoves whichever part it
+        // steps into, and the joints drag the torso after it (MovementSystem.relaxRagdoll). Ashore only (a rag on a deck
+        // keeps the one-lump rule — deck-local part frames are not worth it yet).
+        if (!e.onDeck) {
+          if (isDowned(e)) this.pushParts(e, ot.x, ot.y, ot.r);
+          if (isDowned(o)) this.pushParts(o, t.x, t.y, t.r);
+        }
+        const re = isDowned(e) ? t.r * DOWNED_TORSO_R : t.r; // the trunk alone while down — the limbs were handled above
+        const ro = isDowned(o) ? ot.r * DOWNED_TORSO_R : ot.r;
         // measure in the OWNING frame: onDeck coords for a deck pair (this pass runs before ships-parenting,
         // so rider transforms are one movement step stale — good enough for the search window above, NOT for
         // the touch test), transform for a world pair. Same-frame guarantees the coords are comparable.
         const dx = e.onDeck ? e.onDeck.lx - o.onDeck!.lx : t.x - ot.x;
         const dy = e.onDeck ? e.onDeck.ly - o.onDeck!.ly : t.y - ot.y;
         const d = Math.hypot(dx, dy);
-        const overlap = t.r + ot.r - d;
+        const overlap = re + ro - d;
         if (overlap <= 0) continue;
         // separation direction (in the owning frame's axes); if exactly stacked, pick a deterministic one so
         // they still split
@@ -70,7 +91,7 @@ export class BodyCollisionSystem {
           nx = Math.cos(a);
           ny = Math.sin(a);
         }
-        const massO = o.mover!.mass;
+        const massO = this.yieldMass(o);
         const total = massE + massO;
         // each body moves by the OTHER's share of the overlap → the lighter body yields more
         if (e.onDeck) {
@@ -80,8 +101,41 @@ export class BodyCollisionSystem {
           this.collision.tryMove(t, nx * overlap * (massO / total), ny * overlap * (massO / total), t.r, e.mover!.mode);
           this.collision.tryMove(ot, -nx * overlap * (massE / total), -ny * overlap * (massE / total), ot.r, o.mover!.mode);
         }
+        // a DOWNED body also SLIDES a little along the push (it's shoved, not just displaced) — on the impulse channel,
+        // so walls still stop it. Only the downed side slides; the walker is unaffected.
+        if (isDowned(e)) this.slide(e, nx, ny);
+        if (isDowned(o)) this.slide(o, -nx, -ny);
       }
     }
+  }
+
+  /** Shove each limb PART of a downed body that the circle (px, py, pr) overlaps, out along the contact normal by the
+   *  overlap — the part moves, the walker doesn't (a limb has no mass to push back with). */
+  private pushParts(downed: Entity, px: number, py: number, pr: number): void {
+    const m = downed.mover!;
+    const t = downed.transform!;
+    const parts = m.ragdoll?.parts;
+    if (!parts) return;
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]!;
+      const wx = t.x + p.x;
+      const wy = t.y + p.y;
+      const dx = wx - px;
+      const dy = wy - py;
+      const d = Math.hypot(dx, dy);
+      const overlap = PART_R[i]! * t.r + pr - d;
+      if (overlap <= 0) continue;
+      const nx = d > 0.01 ? dx / d : 1;
+      const ny = d > 0.01 ? dy / d : 0;
+      pushPart(m, i, nx * overlap, ny * overlap);
+    }
+  }
+
+  private slide(e: Entity, nx: number, ny: number): void {
+    const m = e.mover!;
+    m.dvx = nx * DOWNED_SLIDE;
+    m.dvy = ny * DOWNED_SLIDE;
+    m.dodgeT = Math.max(m.dodgeT, DOWNED_SLIDE_T);
   }
 
   /** Apply a DECK-LOCAL push to a rider IN THE FRAME THAT OWNS ITS POSITION: resolve against the DECK grid

@@ -124,7 +124,7 @@ describe('the hitbox is DEAD outside the active phase', () => {
     name: 'Phased',
     cooldown: 1,
     damageStat: 'atk',
-    shape: { range: 0, arc: 0.3, swing: 'melee', swingTime: 1, phases: { windup: 0.4, active: 0.2, recover: 0.4 } },
+    shape: { arc: 0.3, swing: 'melee', swingTime: 1, phases: { windup: 0.4, active: 0.2, recover: 0.4 } },
   });
 
   it('a lingering target is hit exactly once, and only once the windup ends', () => {

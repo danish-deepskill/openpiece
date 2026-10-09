@@ -50,7 +50,7 @@ function rider(world: World, faction: FactionId, shipId: number, lx: number, ly:
     tags: new TagSet(),
     effects: { active: [], seq: 0 },
     faction: { id: faction },
-    loadout: { granted: new Set([BASE_KIT.primary]), innate: [BASE_KIT.primary], cd: new Map(), cdMax: new Map(), primary: BASE_KIT.primary, heavy: '', dash: '', slots: [] },
+    loadout: { granted: new Set([BASE_KIT.primary]), innate: [BASE_KIT.primary], cd: new Map(), cdMax: new Map(), utilities: [], primary: BASE_KIT.primary, heavy: '', dash: '', slots: [] },
   });
   e.onDeck = { shipId, lx, ly };
   return e;

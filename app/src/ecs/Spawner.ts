@@ -115,7 +115,7 @@ export class Spawner {
       combatant: defaultCombatant(maxStam, Math.round(attributes.get('maxPosture'))),
       attributes,
       tags: new TagSet(),
-      loadout: { granted, innate, cd: new Map(), cdMax: new Map(), primary: BASE_KIT.primary, heavy: BASE_KIT.heavy, dash: canDash ? BASE_KIT.dash : '', slots: [] },
+      loadout: { granted, innate, cd: new Map(), cdMax: new Map(), primary: BASE_KIT.primary, heavy: BASE_KIT.heavy, dash: canDash ? BASE_KIT.dash : '', slots: [], utilities: [] },
       effects: { active: [], seq: 0 }, // EVERY actor can carry effects (dodge i-frames…) — the Moat, not hero-only
       ai: { brain: actorBrain, bb: { state: 'wander', home: { x, y }, wanderT: this.rng.range(0, 2), boss: !!u.boss, profile, canSprint, betrayHpFrac: u.betrayHpFrac ?? profile.betrayHpFrac, lastSeenX: x, lastSeenY: y, lostT: 0 } },
       // look = the BODY's rig (draw) + skin, with the unit's OUTFIT (garb) layered on; garb omitted ⇒ the
@@ -135,6 +135,7 @@ export class Spawner {
     const weaponId = weapon ?? u.weapon; // explicit override, else the unit's defined weapon (e.g. Brute's cutlass)
     if (weaponId) equip(e, 'weapon', weaponId);
     if (u.fruit) equip(e, 'fruit', u.fruit);
+    if (u.haki) equip(e, 'haki', u.haki); // the fourth layer, the same path
     for (const id of u.accessories ?? []) wearAccessory(e, id);
     // TRAITS: innate talents — modifiers + tags apply here (source-tracked, so a retrait wipes them); the
     // ability GRANTS were already folded into loadout.innate above (refreshLoadout re-derives them from there).

@@ -1,6 +1,6 @@
 import { modifierProblem, type Modifier } from '../combat/Modifier';
 import { Registry, type ContentId, type Def } from '../core/Registry';
-import { ATTACK_MOVE_STAT, SWIM_BREATH_STAT, SWIM_SPEED_STAT, SWIM_STAM_STAT } from '../combat/stats';
+import { ATTACK_MOVE_STAT, MOVE_SPEED_STAT, SWIM_BREATH_STAT, SWIM_SPEED_STAT, SWIM_STAM_STAT } from '../combat/stats';
 
 /**
  * A TRAIT — a named, toggleable talent a unit HAS or lacks (RimWorld-style traits / GAS passive tags). Unlike
@@ -41,11 +41,31 @@ Traits.registerAll([
     desc: 'Can shuffle while attacking (half speed) — a trained fighter keeps their feet moving.',
     modifiers: [{ stat: ATTACK_MOVE_STAT, op: 'override', value: 0.5, source: 'trait:mobileAttack' }], // exactly half — the desc's number (first carrier: the Samurai)
   },
+  // PACE — the stance cycle (ability.pace): a trained fighter chooses how to spend the day — push (breath back fast, the
+  // reserve burns) or conserve (slow breath, the reserve guarded). A grant, no modifiers: the modes are the effects.
+  { id: 'trait.pace', name: 'Pace', desc: 'Can push for a second wind or settle into a measured breath (Z).', grants: ['ability.pace'] },
+  // IRON WILL — a bigger guard: +50% posture capacity, so breaking it takes a real string, not a lucky pair of
+  // heavies. mulPct on the DERIVED stat (willpower × POSTURE_PER_WILLPOWER seeds the base; syncDerivedResources
+  // carries the ceiling onto the combatant). First carrier: the Ronin.
+  {
+    id: 'trait.ironWill',
+    name: 'Iron Will',
+    desc: 'A guard half again as deep — it takes a real string to break.',
+    modifiers: [{ stat: 'maxPosture', op: 'mulPct', value: 0.5, source: 'trait:ironWill' }],
+  },
   {
     id: 'trait.mobileAttackFull',
     name: 'Flow',
     desc: 'Attacks at full stride — an expert never has to plant to swing.',
     modifiers: [{ stat: ATTACK_MOVE_STAT, op: 'override', value: 1, source: 'trait:mobileAttack' }],
+  },
+  // FLEET — a quick-footed fighter: +25% walk (and so sprint) speed. A TRAIT, not a tier stat: movement speed is the one
+  // number a gap in is felt every second, so it stays a per-unit choice (the duelists have it; a possessed one keeps it).
+  {
+    id: 'trait.fleet',
+    name: 'Fleet',
+    desc: 'Quick on the feet — walks and sprints 25% faster.',
+    modifiers: [{ stat: MOVE_SPEED_STAT, op: 'mulPct', value: 0.25, source: 'trait:fleet' }],
   },
   // SPRINTER — grants the sprint capability. Sprint is opt-IN per unit now (a trait you list), not an automatic
   // tier grant: a street thug plods, a trained fighter sprints — YOUR call per unit, not "everyone ≥ E-".

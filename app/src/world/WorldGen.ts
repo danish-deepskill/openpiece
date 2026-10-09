@@ -1,4 +1,4 @@
-import { ENEMY, HOME, TILE } from '../config/constants';
+import { ARENA, ENEMY, HOME, TILE, type IsleShape } from '../config/constants';
 import { Structures } from '../defs/structures';
 import { TERRAIN } from '../defs/terrains';
 import type { Rng } from '../core/Rng';
@@ -18,6 +18,8 @@ export interface StructureSpawn {
   /** Pre-stocked contents for a CONTAINER structure (a chest's starting stash) — stowed at spawn through the Items
    *  service, so worldgen never writes a hold by hand. */
   stash?: { item: ItemRef; n: number }[];
+  /** A WAYSTONE's destination (world px): where the warp verb puts the actor — the paired stone's arrival tile. */
+  warp?: { x: number; y: number };
 }
 
 export interface LevelLayout {
@@ -38,10 +40,19 @@ export interface LevelLayout {
 interface GenCtx {
   grid: TileGrid;
   occupied(tx: number, ty: number): boolean;
-  build(def: string, tx: number, ty: number, stash?: StructureSpawn['stash']): void;
+  build(def: string, tx: number, ty: number, stash?: StructureSpawn['stash'], warp?: StructureSpawn['warp']): void;
 }
 
 const px = (tx: number) => tx * TILE;
+
+/** Isles are stamped slightly WIDER than tall (the y axis squashed by this) so a round radius reads as a natural
+ *  landmass on a landscape screen, not a coin. One number for every isle, or their coasts would differ in character. */
+const ISLE_SQUASH = 1.05;
+/** Distance from a shape's center in ITS metric: Euclidean for a round outline, Chebyshev (the larger axis gap — a box)
+ *  for a square one. The ONE metric islands, their floors and their wall rings share, so a square isle gets a square ring. */
+const shapeDist = (dx: number, dy: number, shape: IsleShape = 'round'): number => (shape === 'square' ? Math.max(Math.abs(dx), Math.abs(dy)) : Math.hypot(dx, dy));
+const isleDist = (x: number, y: number, isle: { cx: number; cy: number; shape?: IsleShape }): number =>
+  shapeDist(x - isle.cx, (y - isle.cy) * (isle.shape === 'square' ? 1 : ISLE_SQUASH), isle.shape); // the squash is the ellipse's; a box is a box
 
 /** Enemy-isle fodder mix: F- / F / F+ variants (Brutes wield a cutlass). WHO spawns is level data, not scene code. */
 const FODDER = ['unit.thug', 'unit.bandit', 'unit.brute'];
@@ -56,7 +67,22 @@ type Pt = { tx: number; ty: number };
  *  - `gaps`      number of openings, evenly spaced (0 = sealed — DON'T: the reachability test will fail)
  *  - `gapWidth`  tiles of opening per gap (the funnel width the AI pours through)
  */
-const WALL_RING = { radius: 10, thickness: 1.2, gaps: 3, gapWidth: 2 } as const;
+interface WallRingCfg {
+  radius: number;
+  thickness: number;
+  gaps: number;
+  gapWidth: number;
+  /** Direction (rad) of gap 0; the rest space evenly from it. Default π = due west (the dock approach). */
+  gapAngle?: number;
+  /** The ring's outline (shapeDist): round (default) or a square box of half-side `radius`. */
+  shape?: IsleShape;
+}
+const WALL_RING: WallRingCfg = { radius: 10, thickness: 1.2, gaps: 3, gapWidth: 2 };
+/** The ARENA's ring — one opening, facing NORTH toward its dock, so the fight inside has exactly one way out. Takes the
+ *  isle's shape (a square colosseum on a square isle): half-side 6. thickness 0.5 = exactly ONE tile of wall — a square
+ *  ring's Chebyshev distances are whole numbers, so the band |d − 6| < 0.5 is the single loop d = 6 and stays closed (the
+ *  round ring needs 1.2 for its diagonals; here that made a three-tile wall and ate the floor). Clear floor: ±5.5 → 11×11. */
+const ARENA_RING: WallRingCfg = { radius: 6, thickness: 0.5, gaps: 1, gapWidth: 3, gapAngle: -Math.PI / 2, shape: ARENA.shape };
 
 /**
  * Enemy-isle interior division — radial SPOKE walls from the hub out to the perimeter ring, splitting the
@@ -86,20 +112,22 @@ const GROVES = { home: 3, enemy: 4, spread: 3.4, perGrove: 4, spacing: 3, clear:
 const inBounds = (grid: TileGrid, tx: number, ty: number): boolean =>
   tx >= 0 && ty >= 0 && tx < grid.w && ty < grid.h;
 
-/** Stone ring around (cx,cy) with evenly-spaced gaps; only builds on unclaimed Grass, so it never carves
- *  beach, dock, or buildings. Gap 0 faces due west (angle π) — the player's natural landing approach. */
-function stampWallRing(gen: GenCtx, cx: number, cy: number, cfg: typeof WALL_RING): void {
+/** Stone ring around (cx,cy) with evenly-spaced gaps; only builds on unclaimed `floor` terrain (grass by default,
+ *  the arena's sand), so it never carves beach, dock, or buildings. Gap 0 faces `cfg.gapAngle` (default due west,
+ *  angle π — the player's natural landing approach). */
+function stampWallRing(gen: GenCtx, cx: number, cy: number, cfg: WallRingCfg, floor: number = TERRAIN.grass): void {
   const gapHalf = cfg.gaps > 0 ? cfg.gapWidth / (2 * cfg.radius) : 0; // gap arc half-width (radians)
+  const gap0 = cfg.gapAngle ?? Math.PI;
   for (let ty = 0; ty < gen.grid.h; ty++) {
     for (let tx = 0; tx < gen.grid.w; tx++) {
-      if (gen.grid.tiles[ty][tx] !== TERRAIN.grass || gen.occupied(tx, ty)) continue;
-      const d = Math.hypot(tx - cx, ty - cy);
+      if (gen.grid.tiles[ty][tx] !== floor || gen.occupied(tx, ty)) continue;
+      const d = shapeDist(tx - cx, ty - cy, cfg.shape);
       if (Math.abs(d - cfg.radius) >= cfg.thickness) continue; // outside the wall band
       if (gapHalf > 0) {
         const a = Math.atan2(ty - cy, tx - cx);
         let inGap = false;
         for (let k = 0; k < cfg.gaps; k++) {
-          const gk = Math.PI + (k * 2 * Math.PI) / cfg.gaps; // gap 0 due west, rest evenly spaced
+          const gk = gap0 + (k * 2 * Math.PI) / cfg.gaps; // gap 0 at gapAngle, rest evenly spaced
           const da = Math.abs(Math.atan2(Math.sin(a - gk), Math.cos(a - gk))); // wrapped angular distance
           if (da < gapHalf) { inGap = true; break; }
         }
@@ -113,7 +141,7 @@ function stampWallRing(gen: GenCtx, cx: number, cy: number, cfg: typeof WALL_RIN
 /** Radial spoke walls dividing the ring's interior into `slices` wedges (the pizza). Each spoke runs from
  *  `inner` out to the ring radius along one angle, with a doorway gap partway along so wedges connect.
  *  Unclaimed-grass-only (never doubles the ring's cells or carves its gaps), so the perimeter stays as authored. */
-function stampWallSpokes(gen: GenCtx, cx: number, cy: number, ring: typeof WALL_RING, cfg: typeof WALL_SPOKES): void {
+function stampWallSpokes(gen: GenCtx, cx: number, cy: number, ring: WallRingCfg, cfg: typeof WALL_SPOKES): void {
   const angles: number[] = [];
   for (let k = 0; k < cfg.slices; k++) {
     // offset half a wedge off gap 0 (due west) so a spoke bisects the wall BETWEEN two entrances
@@ -192,11 +220,15 @@ export function generateLevel(rng: Rng): LevelLayout {
     const row: number[] = [];
     for (let x = 0; x < grid.w; x++) {
       let t: number = TERRAIN.water;
-      const dh = Math.hypot(x - HOME.cx, (y - HOME.cy) * 1.05);
-      const de = Math.hypot(x - ENEMY.cx, (y - ENEMY.cy) * 1.05);
+      const dh = isleDist(x, y, HOME);
+      const de = isleDist(x, y, ENEMY);
       if (dh < HOME.r + 2 || de < ENEMY.r + 2) t = TERRAIN.shallowWater; // coastal shallows: a wadable ring off the beach
       if (dh < HOME.r) t = dh < HOME.r - 2 ? TERRAIN.grass : TERRAIN.sand; // …overridden by the island itself (sand/grass)
       if (de < ENEMY.r) t = de < ENEMY.r - 2 ? TERRAIN.grass : TERRAIN.sand;
+      const da = isleDist(x, y, ARENA);
+      if (da < ARENA.r + 2) t = TERRAIN.shallowWater;
+      if (da < ARENA.r) t = TERRAIN.sand; // the DESERT isle: sand…
+      if (shapeDist(x - ARENA.cx, y - ARENA.cy, ARENA_RING.shape) < ARENA_RING.radius - ARENA_RING.thickness) t = TERRAIN.grass; // …except the arena FLOOR inside the wall: grass (sand slows the very fight the ring exists for). The ring's own metric, unsquashed.
       row.push(t);
     }
     grid.tiles.push(row);
@@ -226,14 +258,25 @@ export function generateLevel(rng: Rng): LevelLayout {
     grid.tiles[y][HOME.cx + 1] = TERRAIN.dock;
   }
 
+  // ARENA dock: a 2-wide north ribbon from inside the beach out past the shallows — the only landing on the
+  // desert isle, straight at the ring's one gap. Recorded so nothing else claims it.
+  for (let y = ARENA.cy - ARENA.r - 5; y <= ARENA.cy - ARENA.r + 1; y++) {
+    grid.tiles[y][ARENA.cx] = TERRAIN.dock;
+    grid.tiles[y][ARENA.cx + 1] = TERRAIN.dock;
+    dockTiles.push({ tx: ARENA.cx, ty: y });
+  }
+
   // structure records + a generation-time occupancy scratch (one claim per cell — see GenCtx)
   const structures: StructureSpawn[] = [];
   const occ = new Set<number>();
   const gen: GenCtx = {
     grid,
     occupied: (tx, ty) => occ.has(ty * grid.w + tx),
-    build: (def, tx, ty, stash) => {
-      structures.push(stash ? { def, tx, ty, stash } : { def, tx, ty });
+    build: (def, tx, ty, stash, warp) => {
+      const rec: StructureSpawn = { def, tx, ty };
+      if (stash) rec.stash = stash;
+      if (warp) rec.warp = warp;
+      structures.push(rec);
       // claim the FULL footprint, not just the anchor — a later pass probing any cell of a 3×2 windmill
       // must see it as taken (the anchor-only version under-claimed multi-tile defs)
       const { w, h } = Structures.get(def).size;
@@ -274,6 +317,22 @@ export function generateLevel(rng: Rng): LevelLayout {
     { item: { cat: 'material', id: 'material.plank' }, n: 10 },
     { item: { cat: 'material', id: 'material.powder' }, n: 8 },
   ]);
+  // WAYSTONES — a linked pair: one by the home spawn, one just inside the arena's ring. E beside either teleports you
+  // to the tile SOUTH of the other (so you never arrive inside the stone). A dev-speed convenience today; the seed of
+  // fast travel later. Each record carries the OTHER's arrival point — the def knows nothing of pairs.
+  const homeStone = { tx: HOME.cx - 5, ty: HOME.cy - 1 }; // open grass two tiles east of the spawn, clear of houses 0 and 2
+  const arenaStone = { tx: ARENA.cx + 2, ty: ARENA.cy - 2 };
+  const arrival = (p: { tx: number; ty: number }) => ({ x: (p.tx + 0.5) * TILE, y: (p.ty + 1.5) * TILE });
+  gen.build('structure.waystone', homeStone.tx, homeStone.ty, undefined, arrival(arenaStone));
+  gen.build('structure.waystone', arenaStone.tx, arenaStone.ty, undefined, arrival(homeStone));
+  // the DUEL GONG — just inside the ring's north gap, where you enter (and two tiles from the waystone's arrival): E rings
+  // it and its roster (structures.json: Zoro west, the Ronin east, four tiles off the center) spawns facing each other.
+  // The duel starts when someone is there to watch, and can be re-run once it's over (verb.summon).
+  gen.build('structure.duelGong', ARENA.cx, ARENA.cy - 3);
+  // the TRAINING POST — west of the gong: E sets three dummies along the ring's south row, E again clears them. Nothing
+  // stands in the ring at world-gen, so the duel the gong starts has the floor to itself (the dummies were getting cut
+  // into, and they'd shove the duelists around).
+  gen.build('structure.trainingPost', ARENA.cx - 4, ARENA.cy - 3);
   // the village windmill — ONE entity, SIX cells (3×2): the multi-tile structure the entity layer exists for.
   // NE of the village on open grass, clear of every house/spawn; blocks foot AND air (a roofed landmark you
   // route around, not over), blade sweep baked above actors. Placement knob: the anchor cell below.
@@ -304,6 +363,8 @@ export function generateLevel(rng: Rng): LevelLayout {
   // …then divide the interior into 3 wedges (the pizza): radial spokes from the hub to the ring, each with a
   // crossing doorway. Stamped AFTER the ring so a spoke meeting the ring just thickens the join, never a gap.
   stampWallSpokes(gen, ENEMY.cx, ENEMY.cy, WALL_RING, WALL_SPOKES);
+  // the ARENA ring on the desert isle: one gap, north, facing the dock — a duel inside has no sea to run to
+  stampWallRing(gen, ARENA.cx, ARENA.cy, ARENA_RING, TERRAIN.sand);
 
   // fodder scattered inside the ring; reject any roll that lands on a solid cell in EITHER layer (terrain or
   // a built structure), so no enemy spawns embedded in stone. Falls back to the island center after the budget.
@@ -340,6 +401,8 @@ export function generateLevel(rng: Rng): LevelLayout {
     if (solidPx(kx, sy)) throw new Error('WorldGen: no clear tile for the samurai west of the officer'); // a layout bug, not a spawn-in-a-wall
     enemies.push({ x: kx, y: sy, boss: false, unit: 'unit.samurai' });
   }
+  // the arena's DUELISTS (the Ronin, Zoro) and its DUMMIES are NOT placed here — the duel gong and the training post summon
+  // them (verb.summon), so the fight starts when you are there to watch it, on an empty floor.
   // the NE DUEL SPOT — normally LUFFY (a hostile D-tier rubber brawler: Gomu fruit + straw hat, the
   // ai.luffy rush/charge duel target), posted at the TOP-RIGHT of the HOME island (the old Brute's spot),
   // clear of the NW house cluster and the east dock. Placed deterministically, nudged toward the hub if the
@@ -361,6 +424,7 @@ export function generateLevel(rng: Rng): LevelLayout {
     ...doorCells,
     ...spawnTiles,
     { tx: HOME.cx - 7, ty: HOME.cy }, // player spawn
+    { tx: HOME.cx - 5, ty: HOME.cy }, // the home waystone's arrival tile
     { tx: HOME.cx + 18, ty: HOME.cy }, // boat spawn (out in open water — the walkable hull is big; keep it off the beach)
     { tx: ENEMY.cx, ty: ENEMY.cy }, // captain
   ];

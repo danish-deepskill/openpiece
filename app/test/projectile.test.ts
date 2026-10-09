@@ -54,7 +54,7 @@ function body(world: World, x: number, y: number, faction: FactionId, hp = 50): 
 function shot(world: World, owner: Entity, x: number, y: number, speed: number, life = 2, passChance = 0): Entity {
   return world.create({
     transform: { x, y, angle: 0, r: 2 },
-    projectile: { owner: owner.id, ability: 'ability.musketShot', vx: speed, vy: 0, life, hit: [], passChance },
+    projectile: { owner: owner.id, ability: 'ability.musketShot', vx: speed, vy: 0, life, hit: [], passChance, kind: 'ball', scale: 1 },
   });
 }
 

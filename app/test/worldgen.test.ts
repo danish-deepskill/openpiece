@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ENEMY, HOME, TILE } from '../src/config/constants';
+import { ARENA, ENEMY, HOME, TILE } from '../src/config/constants';
 import { Rng } from '../src/core/Rng';
 import { itemProblem } from '../src/defs/items';
 import { World } from '../src/ecs/World';
@@ -42,7 +42,7 @@ const tileOf = (px: number): number => Math.floor(px / TILE);
 describe('WorldGen — walls & groves never seal a required path', () => {
   // deterministic per seed; sweep a range so a bad grove roll on ANY seed would surface
   for (let seed = 0; seed < 40; seed++) {
-    it(`seed ${seed}: captain, fodder, and home loot stay reachable`, () => {
+    it(`seed ${seed}: captain, fodder, the ronin, and home loot stay reachable`, () => {
       const level = generateLevel(new Rng(seed));
       materialize(level); // throws on any illegal structure record — part of the per-seed sweep
       const g = level.grid;
@@ -52,13 +52,14 @@ describe('WorldGen — walls & groves never seal a required path', () => {
       // so each spawn must be walkable AND reachable from at least one of the two floods.
       const enemyReach = footReachable(g, ENEMY.cx - 10, ENEMY.cy);
       const homeReach = footReachable(g, HOME.cx - 7, HOME.cy);
+      const arenaReach = footReachable(g, ARENA.cx, ARENA.cy - ARENA.r + 1); // the desert isle, from its dock's landward end
       for (const e of level.enemies) {
         const tx = tileOf(e.x);
         const ty = tileOf(e.y);
         // no spawn embedded in a blocking cell of EITHER layer (terrain or a built structure)
         expect(TileGrid.walkable(g.tiles[ty][tx], 'foot')).toBe(true);
         expect(g.structures.blocks(tx, ty, FOOT_CTX)).toBe(false);
-        expect(enemyReach[ty][tx] || homeReach[ty][tx]).toBe(true); // reachable from its island (enemy assault OR home spawn)
+        expect(enemyReach[ty][tx] || homeReach[ty][tx] || arenaReach[ty][tx]).toBe(true); // reachable from its island (enemy assault, home spawn, or the arena dock)
       }
 
       // HOME isle: both stashed pickups must be walk-in-able from the player spawn

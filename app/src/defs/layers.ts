@@ -19,12 +19,21 @@ export interface LayerDef extends Def {
  *  a fraction of the art from the POMMEL end (0 = the very end; the pommel overhangs behind the hand). */
 export type WeaponVisual =
   | { kind: 'blade' | 'club'; length: number; width: number; color: number }
-  | { kind: 'sprite'; art: string; length: number; width: number; tipAt?: 'top' | 'bottom' | 'left' | 'right'; gripAt?: number };
+  | {
+      kind: 'sprite'; art: string; length: number; width: number; tipAt?: 'top' | 'bottom' | 'left' | 'right'; gripAt?: number;
+      /** The OFF-HAND blade's art for a PAIR (grip.hold 'each' — Wadō in the lead hand, Kitetsu in the off): same rig
+       *  (length/grip/tip), its own silhouette. Omitted ⇒ both hands draw `art`. Texture key: draw/coating.offArtKey. */
+      offArt?: string;
+    };
 
 /** Weapon weight/archetype tier — drives the phase ladder (combat/phases.WEIGHT_PHASES: heavier = longer
  *  windup) and posture damage. The four classes ARE the full weight ladder now (CombatWeight = WeaponClass);
  *  a weaponless attack (fist/kick/gore) has no class and falls back to 'light'. */
 export type WeaponClass = 'light' | 'medium' | 'heavy' | 'ranged';
+
+/** How a two-handed weapon sits in the hands: 'shared' = both on one handle (a sword, a musket), 'each' = a weapon in
+ *  each hand (a pair of blades). The hold is what decides whether cuts alternate hands and how many blades are drawn. */
+export type WeaponHold = 'shared' | 'each';
 
 export interface WeaponDef extends LayerDef {
   weaponClass: WeaponClass;
@@ -42,9 +51,12 @@ export interface WeaponDef extends LayerDef {
    *  aim). Both default 1 (the drilled baseline). Only read for a ranged weapon. */
   accuracy?: { spreadMul?: number; settleMul?: number };
   visual?: WeaponVisual; // drawn in-hand
-  /** How the weapon is HELD — per-weapon, so every weapon's hold can differ. `hands: 2` puts the off-hand on
-   *  the handle `spacing` px above the lead hand (a two-handed grip) instead of at its rest position. */
-  grip?: { hands: 1 | 2; spacing?: number };
+  /** How the weapon OCCUPIES the hands — per-weapon, so every weapon's hold can differ. `hands: 2` with the default
+   *  hold ('shared') puts the off-hand on the ONE handle `spacing` px above the lead hand (a two-handed grip); hold
+   *  'each' is a PAIR — a blade in EACH hand (nitōryū): both hands grip, both are drawn (WeaponSpriteSystem, the
+   *  off-hand from visual.offArt), a flurry's cuts ALTERNATE hands (combat/swing.activeSide) so each blade's cut is
+   *  its own hit, and the guard crosses the two. One def = one pair (one length, one stat row). */
+  grip?: { hands: 1 | 2; spacing?: number; hold?: WeaponHold };
   /** The weapon's default damaging volumes (combat/hitVolume) — e.g. a hammer that only hurts with its head:
    *  [{ kind: 'weaponSegment', from: 0.85 }]. An ability's own hitVolumes overrides this wholesale.
    *  Unset ⇒ the whole drawn weapon damages (a blade). */
@@ -67,20 +79,44 @@ export interface StyleDef extends LayerDef {
   /** The style's HEAVY unarmed attack (a committed kick/haymaker), like FruitDef.heavy. Unset ⇒ the base kick. */
   heavy?: ContentId;
   /** The C-slot SELF-BUFF this style grants (a kiai, a focus stance; the Haki layer's Armament lands here too):
-   *  routed into `loadout.utility` by refreshLoadout, pressed by the player's C and by the brain on engagement.
+   *  routed into `loadout.utilities` by refreshLoadout (C = the loudest layer's buff, X = the next), pressed by the
+   *  player and walked by the brain on engagement.
    *  A buff is an ability row whose `grantEffect` names an Effect (timed modifiers + tags) — two data rows. */
   utility?: ContentId;
 }
 export type PotentialDef = LayerDef;
+/** HAKI — the fourth layer (COMBAT.md "The four layers" #2). A haki row grants its technique into the C slot
+ *  (`utility` — outranking a fruit's or a style's: the louder power; theirs stay granted) plus modifiers/tags like
+ *  any layer. The ENGINE knows no haki beyond what its effects grant: the TAG a strike reads against a Logia and an
+ *  ability gates on, the `dominance` stat the ladder reads. Observation / Conqueror are rows here when their
+ *  effects exist. Not an item (there is no haki pickup): it's learned, so no ItemRef category. */
+export interface HakiDef extends LayerDef {
+  utility?: ContentId;
+}
 
 // one boot validator for all four layer families: a NaN modifier silently computes as 0 mid-game otherwise
 // (their ContentId refs — primary/heavy/slots/dash → Abilities — are checked by defs/validateContent.ts)
 const layerValid: Validator<LayerDef> = (d) => modifierProblem(d.modifiers);
+/** A weapon's `visual.length` IS its reach (combat/swing.weaponLenOf: hitbox, render and the AI's engage distance all
+ *  read it). A row without a visual would swing at FIST reach while its atk modifiers still applied — a silent
+ *  half-weapon — so a melee weapon must author one. Exported pure (the abilityProblem pattern) for tests. */
+export const weaponProblem: Validator<WeaponDef> = (d) => {
+  if (d.weaponClass !== 'ranged' && !d.visual) return 'a melee weapon must author `visual` (its length is its reach)';
+  if (d.grip?.hold === 'each' && d.grip.hands !== 2) return "grip.hold 'each' is a blade in EACH hand — it needs hands: 2";
+  if (d.visual?.kind === 'sprite' && d.visual.offArt && d.grip?.hold !== 'each') return "visual.offArt is only drawn for a pair (grip.hold 'each') — a shared hold has one blade";
+  return layerValid(d);
+};
 
-export const Weapons = new Registry<WeaponDef>('Weapons', layerValid);
+/** Does `weaponId` put a blade in EACH hand (a pair)? The ONE read of the hold for swing, draw and sprite code. */
+export function isPair(weaponId: ContentId | undefined): boolean {
+  return weaponId !== undefined && Weapons.get(weaponId).grip?.hold === 'each';
+}
+
+export const Weapons = new Registry<WeaponDef>('Weapons', weaponProblem);
 export const Fruits = new Registry<FruitDef>('Fruits', layerValid);
 export const Styles = new Registry<StyleDef>('Styles', layerValid);
 export const Potentials = new Registry<PotentialDef>('Potentials', layerValid);
+export const Hakis = new Registry<HakiDef>('Hakis', layerValid);
 
 Weapons.register({
   id: 'weapon.cutlass',
@@ -166,6 +202,42 @@ Weapons.register({
   tags: ['weapon.class.medium'],
 });
 
+// AKATŌ — the RONIN's blade: the katana's hold/visual rig by inheritance, his OWN chains (dash-cut → return → gale;
+// dash-thrust → whirlwind), Kamaitachi + the two techniques in the slots; the red elite art. Child fields WIN, arrays
+// are REPLACED — the slots list is restated whole; weaponClass/primary restated because the row type requires them.
+Weapons.register({
+  id: 'weapon.katanaElite',
+  parent: 'weapon.katana',
+  name: 'Akatō',
+  weaponClass: 'medium',
+  primary: 'ability.shukuchiGiri',
+  heavy: 'ability.shukuchiZuki',
+  slots: ['ability.kamaitachi', 'ability.kokutoIai'], // 1 the ulti · 2 the black iai (coated only); the three-step is his DASH (style.battojutsu)
+  visual: { kind: 'sprite', art: 'weapon/katana_elite_1.png', length: 38, width: 6, tipAt: 'bottom', gripAt: 0.27 }, // 2px longer than the katana — the wider blade
+  grip: { hands: 2, spacing: 8 },
+  modifiers: [{ stat: 'atk', op: 'flat', value: 10, source: 'weapon:weapon.katanaElite' }],
+  tags: ['weapon.class.medium'],
+});
+
+// NITŌRYŪ — ZORO's PAIR: Wadō Ichimonji in the lead hand, Sandai Kitetsu in the off (visual.offArt; art cleaned from
+// the generated sheets, both on one canvas so the rig draws them the same length). ONE def = one pair (grip.hold 'each':
+// both blades drawn, a flurry's cuts alternate hands, the guard crosses them). MEDIUM class like the katana — the Nigiri
+// chain rides the quick windups; length 36 a blade; +11 atk (two edges, one row — the katanaElite's +10 and a hair).
+// His kit rides it: the Nigiri chain, Sai Kuru → Taka Nami on the heavy, the three slots (1 Nigori Zake · 2 the 72 Pound
+// · 3 Rashōmon, coated only). gripAt 0.22: the hand sits on the handle just above the guard (measured on the art).
+Weapons.register({
+  id: 'weapon.nitoryu',
+  name: 'Wadō Ichimonji + Sandai Kitetsu',
+  weaponClass: 'medium',
+  primary: 'ability.toro',
+  heavy: 'ability.saiKuru',
+  slots: ['ability.nigoriZake', 'ability.nanajuniPound', 'ability.rashomon'],
+  visual: { kind: 'sprite', art: 'weapon/wado_ichimonji_1.png', offArt: 'weapon/sandai_kitetsu_1.png', length: 36, width: 5, tipAt: 'bottom', gripAt: 0.22 },
+  grip: { hands: 2, hold: 'each' },
+  modifiers: [{ stat: 'atk', op: 'flat', value: 11, source: 'weapon:weapon.nitoryu' }],
+  tags: ['weapon.class.medium'],
+});
+
 Fruits.register({
   id: 'fruit.gomu',
   name: 'Gomu Gomu no Mi',
@@ -195,6 +267,30 @@ Styles.register({
   modifiers: [],
   tags: ['style.kenjutsu'],
 });
+// BATTŌJUTSU — the Ronin's sword art: Kenjutsu's shape (the kiai) with SANDAN as its dash — the Q key (and the brain's
+// gap-closer, which reads the dash slot): three re-aimed flash-steps instead of one. parent inheritance; fields the row
+// type requires are restated. Shukuchi's deflect window is the Samurai's; the Ronin's steps PHASE instead.
+Styles.register({
+  id: 'style.battojutsu',
+  parent: 'style.kenjutsu',
+  name: 'Battōjutsu',
+  dash: 'ability.sandan',
+  utility: 'ability.kiaiElite', // the master's shout (effect.kiaiElite) — on X, beside the coating on C
+  modifiers: [],
+  tags: ['style.battojutsu'],
+});
+// NITŌRYŪ — ZORO's two-sword art: Kenjutsu's shape with USHI BARI as the dash (Q; the brain's gap-closer — a lunge that
+// is itself a hit, not a flash-step) and NI GORILLA as the utility (X, beside the coating on C). The pair itself is the
+// weapon (weapon.nitoryu); the style is the feet and the pump.
+Styles.register({
+  id: 'style.nitoryu',
+  parent: 'style.kenjutsu',
+  name: 'Nitōryū',
+  dash: 'ability.ushiBari',
+  utility: 'ability.niGorilla',
+  modifiers: [],
+  tags: ['style.nitoryu'],
+});
 // STRIKING styles — a bare-handed unit's basic attack comes from its martial art (not a per-unit field).
 // dash falls back to the base roll (these are striking, not movement, styles). This is the seam Black Leg /
 // Rokushiki plug into: a richer style would add heavy/slots/modifiers on top (or swap the roll for Soru/Geppo).
@@ -223,6 +319,17 @@ Styles.register({
   primary: 'ability.gore',
   modifiers: [],
   tags: ['style.gore'],
+});
+
+// ARMAMENT HAKI — the first haki row: the coating technique in the C slot (ability.armament → effect.armament: harder,
+// +1 letter on the dominance ladder, cuts every ball, the tag a haki technique gates on). No passive modifiers: haki is a MULTIPLIER
+// that needs a discipline to express through (DESIGN_BACKLOG #4's inverse guard) — the coating is the whole grant.
+Hakis.register({
+  id: 'haki.armament',
+  name: 'Armament Haki',
+  utility: 'ability.armament',
+  modifiers: [],
+  tags: ['haki.armament'],
 });
 
 Potentials.register({

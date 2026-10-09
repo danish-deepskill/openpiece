@@ -88,6 +88,13 @@ export function weaponKit(w: WeaponDef): ReadonlySet<ContentId> {
   return kit;
 }
 
+/** The combat WEIGHT of `d` swung by `e`: its kit weapon's class, 'light' bare (a kick thrown with a sword sheathed
+ *  is a light blow). THE one classifier — the phase ladder, the posture table, the interrupt roll, the guard
+ *  knockback and a brain's weight-read parry all ask this, so they can never disagree about what's coming. */
+export function swingWeight(e: Entity, d: AbilityDef): CombatWeight {
+  return kitWeapon(e, d)?.weaponClass ?? 'light';
+}
+
 /** The equipped weapon IFF `d` is that weapon's own kit — THE gate for every weapon-contributed default
  *  (phases, hitVolumes, blade width). A kick thrown while a sword is sheathed gets NOTHING from the sword. */
 export function kitWeapon(e: Entity, d: AbilityDef): WeaponDef | undefined {
@@ -105,7 +112,7 @@ export function kitWeapon(e: Entity, d: AbilityDef): WeaponDef | undefined {
  */
 export function resolvePhases(e: Entity, d: AbilityDef): AttackPhases {
   if (d.shape?.phases) return d.shape.phases;
-  return WEIGHT_PHASES[kitWeapon(e, d)?.weaponClass ?? 'light'];
+  return WEIGHT_PHASES[swingWeight(e, d)];
 }
 
 /** How long a swing LASTS for a wielder: the authored swingTime compressed by attack speed (never stretched — see

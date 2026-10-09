@@ -18,9 +18,16 @@ export const GAME_H = 720;
 // NOTE: terrain kinds are CONTENT now — defs in `defs/terrains.ts` (the TerrainDef registry). The grid stores
 // each def's ordinal; stamp cells with the TERRAIN constants exported there. The old `Tile` enum is gone.
 
+/** An island's outline: 'round' (the default — an ellipse, WorldGen.isleDist) or 'square' (a Chebyshev box: the
+ *  colosseum isle). Its wall ring takes the same shape, so the stamper and the terrain pass share one metric. */
+export type IsleShape = 'round' | 'square';
 /** Island layout, in tile coordinates. */
 export const HOME = { cx: 17, cy: 27, r: 13 };
 export const ENEMY = { cx: 68, cy: 27, r: 13 };
+/** The far-south DESERT ARENA — a SQUARE sand isle holding a square walled ring (WorldGen ARENA_RING) where a duel
+ *  cannot spill into the sea; the duel gong inside summons the pair. Reached by boat (its north dock). r 9 + 2
+ *  shallows = row 91; rows 92–95 stay open sea. */
+export const ARENA = { cx: 44, cy: 80, r: 9, shape: 'square' as IsleShape };
 
 /** Render depth bands. Actors slot in by their y between Boat and Fx. */
 export const Depth = {
@@ -78,6 +85,15 @@ export const DROWN_INTERVAL = 1; // seconds between drown ticks (1 hit/sec)
 export const STAM_REGEN_DELAY = 1.0;
 /** Stamina per second once regen kicks in (gated by STAM_REGEN_DELAY — the two halves of one mechanic). */
 export const STAM_REGEN = 24;
+/** VIGOR — the stamina bar's CEILING over the day (combat/stamina.stamCap). Stamina is BORROWED from it: spending is free,
+ *  every point that REFILLS costs the reserve (CombatantSystem) — the day is a budget of recoverable breath, and the
+ *  ceiling visibly sinks while you catch your breath between exchanges. It comes back over minutes. */
+export const VIGOR_FLOOR = 0.4; // the ceiling never drops below this fraction of maxStam — a fighter always has SOME bar
+export const VIGOR_WEAR = 0.00125; // vigor lost per stamina point REGENERATED (×maxStam-relative): refilling one full bar ≈ −0.125 (ceiling −7.5%) — halved from 0.0025: the day was wearing out too fast in play
+export const VIGOR_RECOVER = 1 / 180; // vigor regained per second while NOT fighting (regen not paused) — ~3 minutes to full
+/** WILL — the haki pool (combat/attributes: spiritual × WILL_PER_SPIRITUAL). The coating drains it; techniques cost it. */
+export const WILL_REGEN_DELAY = 2.0; // seconds after a spend before will trickles back
+export const WILL_REGEN = 3; // will per second once it does — slower than breath: a coating is a commitment
 /** Legacy baseline stamina pool — superseded by the endurance-grade model (combat/attributes STAM_BASE +
  *  endurance × STAM_PER_ENDURANCE; the F- floor is 110). Kept only for tests that build bare pools. */
 export const MAX_STAM = 100;
@@ -191,12 +207,16 @@ export const FX_COLOR = {
   spark: 0xffe08a, // a landed hit / the pistol beam
   blood: 0xc0303a,
   phase: 0x9fd0ff, // a strike phasing through Logia intangibility
+  rebound: 0xe0a060, // a blade bouncing off a dominant body/guard (combat/dominance) — bronze, duller than a parry
   parry: 0xf2f7ff, // the deflection flash — bright steel-white, unmistakable from a landed spark
 } as const;
 
 /** HUD view-model shapes shared by the WorldScene writer and HudScene reader (one type, both ends). */
 export interface MinimapDot { x: number; y: number; c: number; r: number }
 export interface AbilityBarEntry { key: string; id: string; cd: number; cdMax: number }
+/** Every key the ability bar can show, in display order — the ONE list the WorldScene builder and the HudScene slot pool
+ *  both size themselves by (the pool was a hardcoded 6 while the bar could emit 7, then 8: the last keys vanished). */
+export const ABILITY_BAR_KEYS = ['LMB', 'RMB', 'Q', '1', '2', '3', 'C', 'X', 'Z'] as const;
 
 /** Registry keys the WorldScene publishes and the HudScene reads. */
 export const RegKey = {

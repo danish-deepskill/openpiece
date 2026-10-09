@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CAMERA_FOLLOW_RATE, CAMERA_ZOOM, CAMERA_ZOOM_SMOOTH, RegKey, SIM_DT, WORLD_H, WORLD_W, type MinimapDot } from '../config/constants';
+import { ABILITY_BAR_KEYS, CAMERA_FOLLOW_RATE, CAMERA_ZOOM, CAMERA_ZOOM_SMOOTH, type MinimapDot, RegKey, SIM_DT, WORLD_H, WORLD_W } from '../config/constants';
 import { PIXEL_SNAP, RENDER_SCALE } from '../config/render';
 import { angleDiff, smoothFactor } from '../core/math';
 import { setBarRotation } from '../draw/actorDraws';
@@ -24,6 +24,7 @@ import { InspectSystem } from '../systems/InspectSystem';
 import { AimReticle } from '../systems/AimReticle';
 import { PossessButton } from '../systems/PossessButton';
 import { AccessorySystem } from '../systems/AccessorySystem';
+import { HazardSystem } from '../systems/HazardSystem';
 import { MeleeSystem } from '../systems/MeleeSystem';
 import { MovementSystem } from '../systems/MovementSystem';
 import { ProjectileSystem } from '../systems/ProjectileSystem';
@@ -69,6 +70,7 @@ export class WorldScene extends Phaser.Scene {
   private swimSys!: SwimSystem;
   private bodySys!: BodyCollisionSystem;
   private meleeSys!: MeleeSystem;
+  private hazardSys!: HazardSystem;
   private projectileSys!: ProjectileSystem;
   private combatantSys!: CombatantSystem;
   private renderSys!: RenderSystem;
@@ -137,7 +139,7 @@ export class WorldScene extends Phaser.Scene {
     // (minimap, colliders' first queries, door sweep) reads the composed world
     const stashed: Array<{ e: Entity; stash: NonNullable<StructureSpawn['stash']> }> = [];
     for (const s of level.structures) {
-      const placed = placeStructure(world, level.grid.structures, s.def, s.tx, s.ty);
+      const placed = placeStructure(world, level.grid.structures, s.def, s.tx, s.ty, s.warp);
       if (s.stash) stashed.push({ e: placed, stash: s.stash }); // stocked below, once the Items service exists
     }
     TerrainRenderer.bakeMinimap(this, level.grid); // composes BOTH layers — after placement, by contract
@@ -204,14 +206,15 @@ export class WorldScene extends Phaser.Scene {
     this.windSys = wind;
     this.hullSys = hulls;
     this.squadSys = squads;
-    this.meleeSys = new MeleeSystem(world, strikes, query);
+    this.meleeSys = new MeleeSystem(world, strikes, query, combatRng); // the clash's equals-roll rides the combat stream
+    this.hazardSys = new HazardSystem(world, strikes, query);
     this.projectileSys = new ProjectileSystem(world, strikes, collision, combatRng);
     this.combatantSys = new CombatantSystem(world);
     this.doorSys = new DoorSystem(world, query);
     this.doorRenderer = new DoorRenderer(this, world);
     this.debug = new DebugOverlay(this, world, level.grid, wind);
     this.dialogueSys = new DialogueSystem();
-    this.interactionSys = new InteractionSystem(world, this.dialogueSys, items);
+    this.interactionSys = new InteractionSystem(world, this.dialogueSys, items, spawner);
     this.inspectSys = new InspectSystem(this, world, query, this.viewPose);
     this.inputSys = new InputSystem(this, world, query, abilities, ships, this.director, this.interactionSys, this.dialogueSys, this.inspectSys, items);
     // the DOM inventory panel: reads a view-model published below, sends INTENTS into the one input seam
@@ -345,6 +348,7 @@ export class WorldScene extends Phaser.Scene {
       this.shipSys.update(dt); // integrate hulls + parent on-deck actors AFTER foot movement (deck position wins)
       this.hullSys.update(); // solid hull: push world walkers out of any ship (except the gangplank) + board handoff
       this.meleeSys.update(dt); // resolve active swings by contact against current positions
+      this.hazardSys.update(dt); // ground zones left by swings tick their standing victims (after melee: a zone left this tick starts its clock)
       this.projectileSys.update(dt); // travel + swept-contact resolve of shots in flight (after melee; a ball fired this tick starts moving next)
       this.abilitySys.update(dt); // ability cooldowns
       this.combatantSys.update(dt); // stamina regen + combo decay
@@ -375,15 +379,13 @@ export class WorldScene extends Phaser.Scene {
     if (e?.combatant) r.set(RegKey.Combo, e.combatant.combo);
     if (e?.loadout) {
       const lo = e.loadout;
-      const entries = ([
-        { key: 'LMB', id: lo.primary },
-        { key: 'RMB', id: lo.heavy },
-        { key: 'Q', id: lo.dash },
-        { key: '1', id: lo.slots[0] },
-        { key: '2', id: lo.slots[1] },
-        { key: '3', id: lo.slots[2] },
-        { key: 'C', id: lo.utility }, // the buff slot (a style's kiai, a fruit's transform, Armament later)
-      ] as Array<{ key: string; id?: string }>)
+      // what each key fires — in ABILITY_BAR_KEYS order (the HUD's slot pool is sized by that same list)
+      const bound: Record<(typeof ABILITY_BAR_KEYS)[number], string | undefined> = {
+        LMB: lo.primary, RMB: lo.heavy, Q: lo.dash, '1': lo.slots[0], '2': lo.slots[1], '3': lo.slots[2],
+        C: lo.utilities[0], X: lo.utilities[1], // the buff keys: every layer's self-buff in precedence order (Armament, then a style's kiai)
+        Z: lo.stance, // the stance key (the pace cycle)
+      };
+      const entries = ABILITY_BAR_KEYS.map((key) => ({ key, id: bound[key] }))
         .filter((x) => !!x.id && lo.granted.has(x.id))
         .map((x) => ({ key: x.key, id: x.id as string, cd: lo.cd.get(x.id as string) ?? 0, cdMax: lo.cdMax.get(x.id as string) ?? 0 }));
       r.set(RegKey.AbilityBar, entries);

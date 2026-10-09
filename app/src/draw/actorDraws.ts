@@ -1,12 +1,15 @@
+import { TAG_ARMAMENT } from '../combat/Effect';
 import type Phaser from 'phaser';
 import { Abilities } from '../combat/Ability';
 import { HAND_R_FRAC, activeSide, guardHand, restHand, swingGeomOf, swingPose } from '../combat/swing';
+import { stamCap } from '../combat/stamina';
 import { clamp } from '../core/math';
 import type { AccessorySlot } from '../defs/accessories';
-import { Weapons, type WeaponVisual } from '../defs/layers';
+import { isPair, Weapons, type WeaponVisual } from '../defs/layers';
 import { Materials } from '../defs/materials';
 import type { Entity } from '../ecs/components';
-import { rollProgress } from './rollAnim';
+import { handAuraOf, type HandAura } from './handAuras';
+import { proneHead, rollProgress, type Sprawl } from './rollAnim';
 
 /** The procedurally-drawn weapon kinds — 'sprite' visuals render via WeaponSpriteSystem instead. */
 type ProceduralWeaponVisual = Exclude<WeaponVisual, { kind: 'sprite' }>;
@@ -106,6 +109,17 @@ const IDLE_REST: Record<string, (angle: number, side: number, r: number) => [num
 };
 function idleRest(e: Entity, angle: number, side: number, r: number): [number, number] {
   return (IDLE_REST[e.render?.draw ?? ''] ?? restHand)(angle, side, r);
+}
+
+/** The pulsing halo a tagged body carries under a fist (draw/handAuras): a soft disc that breathes between 0.8× and 1×
+ *  of its scale, plus a thin rim — the heat on a pumped arm. Wall-clock pulse: cosmetic only (the swim stroke's precedent). */
+function drawHandAura(g: Phaser.GameObjects.Graphics, hx: number, hy: number, handR: number, a: HandAura): void {
+  const pulse = 0.9 + 0.1 * Math.sin((performance.now() / (a.period * 1000)) * Math.PI * 2);
+  const R = handR * a.scale * pulse;
+  g.fillStyle(a.color, 0.28);
+  g.fillCircle(hx, hy, R);
+  g.lineStyle(1.5, a.color, 0.7);
+  g.strokeCircle(hx, hy, R);
 }
 
 /** Darken an 0xRRGGBB color (×f per channel) — the garb fallback for a body def without an explicit `garb`. */
@@ -227,7 +241,16 @@ export function bodyDrawAngle(e: Entity): number {
   return m && shape ? swingPose(m, shape, swingGeomOf(e)).drawAngle : t.angle;
 }
 
-export function weaponAnchor(e: Entity): { x: number; y: number; angle: number } | undefined {
+/** The hands a weapon is DRAWN in: the lead hand, plus the off hand for a pair (grip.hold 'each'). The one list the
+ *  procedural draw and WeaponSpriteSystem both walk, so a pair can't be two blades in one and one in the other. */
+export function weaponHands(e: Entity): readonly HandSide[] {
+  return isPair(e.equipment?.weapon) ? BOTH_HANDS : LEAD_HAND;
+}
+export type HandSide = 1 | -1;
+const LEAD_HAND: readonly HandSide[] = Object.freeze([1]);
+const BOTH_HANDS: readonly HandSide[] = Object.freeze([1, -1]);
+
+export function weaponAnchor(e: Entity, side: HandSide = 1): { x: number; y: number; angle: number } | undefined {
   const t = e.transform;
   if (!t) return undefined;
   const m = e.melee;
@@ -236,18 +259,29 @@ export function weaponAnchor(e: Entity): { x: number; y: number; angle: number }
   // SWIMMING (surface stroke, not mid-attack): the weapon is STOWED — both hands breaststroke, so the sprite gun
   // must hide (else the musket floats at a firing grip while the hands swim). A swing still shows the weapon.
   if (!m && e.mover?.mode === 'swim' && !e.mover.submerged) return undefined;
-  const pose = m && shape ? swingPose(m, shape, swingGeomOf(e)) : undefined;
+  const geom = swingGeomOf(e);
+  const pose = m && shape ? swingPose(m, shape, geom) : undefined;
   const drawA = pose ? pose.drawAngle : t.angle;
-  if (pose && shape!.limb !== 'foot') return { x: t.x + pose.hx, y: t.y + pose.hy, angle: drawA }; // swinging: the acting hand (`!` safe: pose exists only when shape did)
-  // idle OR guard: the weapon grips the LEAD REST HAND — the SAME position drawActor draws that hand at, so the
+  if (pose && shape!.limb !== 'foot') {
+    // swinging: the ACTING hand carries the pose (`!` safe: pose exists only when shape did). ONE blade always rides
+    // the pose — whichever hand throws it (a mirrored step swings from the off side: the sword goes with it). Only a
+    // PAIR asks "which blade": the one that cuts takes the pose, the other stays UP at its guard through the cut — a
+    // swordsman doesn't drop the second sword to swing the first.
+    if (!geom.pair || activeSide(m!, shape!, geom) === side) return { x: t.x + pose.hx, y: t.y + pose.hy, angle: pose.bladeAngle ?? drawA };
+    if (pose.off) return { x: t.x + pose.off.hx, y: t.y + pose.off.hy, angle: pose.off.angle }; // a two-hand motion posed it
+    const [gx, gy] = guardHand(drawA, side, t.r);
+    return { x: t.x + gx, y: t.y + gy, angle: drawA };
+  }
+  // idle OR guard: the weapon grips the REST HAND — the SAME position drawActor draws that hand at, so the
   // grip never floats off the fist. On block/parry (same anim for both) we KEEP that grip and only nudge it a
   // little forward + tilt the blade nearly HORIZONTAL across the front (held sideways to catch a blow).
   // GUARD pose: the sword is held forward + tilted nearly HORIZONTAL across the front. The DRAWN HAND is moved to
-  // THIS grip too (see guardGrip in drawActor) so the fist actually holds the sword, not floats off it.
+  // THIS grip too (see guardGrip in drawActor) so the fist actually holds the sword, not floats off it. A pair's
+  // off blade mirrors the tilt from its own side — the two cross in front (the X of a two-sword block).
   const cb = e.combatant;
   if (cb && (cb.blocking || (cb.parryT ?? 0) > 0)) {
-    const [gx, gy] = guardGrip(drawA, t.r);
-    return { x: t.x + gx, y: t.y + gy, angle: drawA - GUARD_BLADE_TILT };
+    const [gx, gy] = guardGrip(drawA, t.r, side);
+    return { x: t.x + gx, y: t.y + gy, angle: drawA - side * GUARD_BLADE_TILT };
   }
   // a RANGED weapon has TWO holds: AIMING → shouldered + barrel LEVEL along the aim (the braced firing stance);
   // NOT aiming → a low PORT carry (barrel angled down-across the body — armed but not leveled). Both keep the
@@ -257,14 +291,14 @@ export function weaponAnchor(e: Entity): { x: number; y: number; angle: number }
     const [gx, gy] = aiming ? rangedGrip(drawA, t.r) : portGrip(drawA, t.r);
     return { x: t.x + gx, y: t.y + gy, angle: aiming ? drawA : drawA - PORT_CARRY_TILT }; // level when aiming, muzzle down-BACK (−tilt) at port
   }
-  const [hx, hy] = idleRest(e, drawA, 1, t.r); // idle: held at the lead rest hand (style-aware — the blocky fist too)
+  const [hx, hy] = idleRest(e, drawA, side, t.r); // idle: held at that hand's rest spot (style-aware — the blocky fist too)
   return { x: t.x + hx, y: t.y + hy, angle: drawA };
 }
 
 /** The GUARD grip point (×r offsets, LOCAL) — where the sword's handle AND the drawn lead hand both sit while
  *  blocking/parrying, so they coincide (the fist holds the sword). Shared by weaponAnchor + drawActor. */
-export function guardGrip(aim: number, r: number): [number, number] {
-  const [gx, gy] = guardHand(aim, 1, r); // the combat guard hand (up + forward)
+export function guardGrip(aim: number, r: number, side: HandSide = 1): [number, number] {
+  const [gx, gy] = guardHand(aim, side, r); // the combat guard hand (up + forward)
   const fwd = r * GUARD_HAND_FWD; // a bit further forward toward the aim
   return [gx + Math.cos(aim) * fwd, gy + Math.sin(aim) * fwd];
 }
@@ -372,6 +406,15 @@ const drawActorImpl = (g: Phaser.GameObjects.Graphics, e: Entity, blocky: boolea
     drawOverheadBars(g, e); // HP/stamina/posture readout still shows mid-roll
     return;
   }
+  // DOWNED (combat/ragdoll): the figure lies SPRAWLED along its fall — a dedicated pose like the roll's ball. Seen from
+  // above a lying body shows its full length: head at the far end rolled aside, the torso stretched, arms flung out,
+  // legs trailing. The limbs' splay comes from the launch's seed, so no two bodies lie alike. Facing means nothing here.
+  const sprawl = proneHead(e);
+  if (sprawl) {
+    drawPronePose(g, e, sprawl);
+    drawOverheadBars(g, e);
+    return;
+  }
 
   // SUBMERGED (diving underwater) — a dedicated FULL-body swim pose (breaststroke), distinct from the surface
   // look. Gated on the SUBMERGED state (real depth), not the early-flipping mode. Surface swimming keeps the
@@ -397,7 +440,9 @@ const drawActorImpl = (g: Phaser.GameObjects.Graphics, e: Entity, blocky: boolea
   const wv = wDef?.visual;
   const m = e.melee;
   const shape = m ? Abilities.get(m.ability).shape : undefined; // the swing TYPE's params (data) drive the pose
-  const pose = m && shape ? swingPose(m, shape, swingGeomOf(e)) : undefined;
+  const geom = swingGeomOf(e);
+  const pose = m && shape ? swingPose(m, shape, geom) : undefined;
+  const pair = geom.pair; // a blade in EACH hand: both hands grip, the idle one stays up at guard through a cut
   // FIRING a ranged weapon (the recoil 'shot' swing) ALWAYS uses the raised, braced firing pose — even a HIP
   // shot (not pre-aiming) snaps the gun UP to level + blades the body for the shot, then drops back. So there's
   // ONE firing animation (hip and aimed look identical; only the accuracy cone differs), never a ball coming
@@ -421,18 +466,21 @@ const drawActorImpl = (g: Phaser.GameObjects.Graphics, e: Entity, blocky: boolea
   // SURFACE SWIM: swimming (mode is now TRUTHFUL — set from the tile you're actually over, MovementSystem) and
   // NOT submerged (that's the full pose) and NOT mid-attack → the idle hands breaststroke instead of hanging.
   const surfaceSwim = e.mover?.mode === 'swim' && !e.mover.submerged && !pose;
-  const actSide = pose && !footLimb && shape ? activeSide(m!, shape) : 0; // which HAND throws (flurry alternates)
+  const actSide = pose && !footLimb && shape ? activeSide(m!, shape, geom) : 0; // which HAND throws (flurry alternates)
   // anatomy + garb (clothing color, the second channel chest armor will later cover) — used by the sleeves
   // in the hand loop below AND the torso/shoulder block after it
   const A = ANATOMY;
   const garb = flashing ? 0xffffff : rd.garbColor ?? darken(rd.baseColor);
+  const aura = handAuraOf(e); // a body-state halo under each fist (the pump) — from the TAG, drawn before the fist so the fist sits on it
 
   // held weapon FIRST — under every fist and under the body: the gripping hand(s) cover the hilt, the body
   // covers the inner span, and the blade reads where it extends past the silhouette. Procedural kinds draw
   // here; a 'sprite' visual is rendered by WeaponSpriteSystem from the SAME weaponAnchor (one grip, two substrates).
   if (wv && wv.kind !== 'sprite') {
-    const wa = weaponAnchor(e);
-    if (wa) drawWeapon(g, wa.x - t.x, wa.y - t.y, wa.angle, wv);
+    for (const side of weaponHands(e)) {
+      const wa = weaponAnchor(e, side);
+      if (wa) drawWeapon(g, wa.x - t.x, wa.y - t.y, wa.angle, wv);
+    }
   }
 
   // lead (weapon) hand first so a two-handed grip can place the off-hand on the handle above it
@@ -469,7 +517,7 @@ const drawActorImpl = (g: Phaser.GameObjects.Graphics, e: Entity, blocky: boolea
     const armedGuard = !!wDef && isGuarding; // holding a weapon up to guard
     const unarmedGuard = !wDef && isGuarding; // bare fists up to guard (a boxer's guard)
     const guarding = armedGuard || unarmedGuard;
-    const guardingHand = side === 1 && armedGuard; // the LEAD hand grips the raised sword
+    const guardingHand = (side === 1 || pair) && armedGuard; // the LEAD hand grips the raised sword (a pair: both)
     // a RANGED weapon has two holds: AIMING → shouldered (rangedGrip), else a low PORT carry (portGrip). The
     // LEAD hand sits at that grip so the barrel pins to the fist (weaponAnchor uses the SAME spot); the two-
     // handed off-hand branch below follows leadX/leadY. Only when NOT acting/guarding (a swing/guard wins).
@@ -483,7 +531,7 @@ const drawActorImpl = (g: Phaser.GameObjects.Graphics, e: Entity, blocky: boolea
     } else if (guardingHand) {
       // GUARDING with a weapon: the LEAD hand moves up to the guard grip so the fist actually HOLDS the raised
       // sword (weaponAnchor pins the handle to this SAME point) — otherwise the blade floats off the hand.
-      [hx, hy] = guardGrip(drawA, r);
+      [hx, hy] = guardGrip(drawA, r, side);
     } else if (surfaceSwim) {
       // SWIMMING (any weapon): both hands run the continuous BREASTSTROKE — the stroke wins over an idle gun/grip.
       [hx, hy] = swimHand(drawA, side, r);
@@ -495,7 +543,11 @@ const drawActorImpl = (g: Phaser.GameObjects.Graphics, e: Entity, blocky: boolea
     } else if (unarmedGuard) {
       // UNARMED guard: BOTH fists come up in front (a boxer's guard) — the raised combat guard hand per side.
       [hx, hy] = guardHand(drawA, side, r);
-    } else if (side === -1 && leadSet && !surfaceSwim && wDef?.grip?.hands === 2) {
+    } else if (pair && pose && !footLimb) {
+      // a PAIR mid-cut: the hand NOT cutting holds its blade UP at guard (weaponAnchor pins that blade here) —
+      // the second sword is never dropped to the hip while the first swings — unless the motion posed BOTH hands.
+      [hx, hy] = pose.off ? [pose.off.hx, pose.off.hy] : guardHand(drawA, side, r);
+    } else if (side === -1 && leadSet && !surfaceSwim && wDef?.grip?.hands === 2 && !pair) {
       // two-handed grip: the off-hand joins the HANDLE, `spacing` along the BARREL from the lead hand. The
       // barrel runs along the aim normally, but a PORT-carried musket is tilted (PORT_CARRY_TILT), so the
       // off-hand must follow that tilt or it floats off the angled gun.
@@ -526,6 +578,7 @@ const drawActorImpl = (g: Phaser.GameObjects.Graphics, e: Entity, blocky: boolea
       g.lineStyle(A.armW * r, garb, 1);
       g.lineBetween(shx, shy, hx, hy);
     }
+    if (aura) drawHandAura(g, hx, hy, handR, aura);
     g.fillStyle(flashing ? 0xffffff : rd.baseColor, 1);
     g.fillCircle(hx, hy, handR);
     g.lineStyle(2, OUTLINE, 1);
@@ -615,7 +668,7 @@ const drawActorImpl = (g: Phaser.GameObjects.Graphics, e: Entity, blocky: boolea
   g.strokeCircle(headX, headY, A.headR * r);
 
   // Armament Haki coating ring while active — sized to wrap the full silhouette (style-aware widest point)
-  if (e.tags?.has('haki.armament.active')) {
+  if (e.tags?.has(TAG_ARMAMENT)) {
     g.lineStyle(3, 0x0a0a12, 0.92);
     g.strokeCircle(0, 0, (blocky ? BLOCKY.torsoHalfW : A.shoulderOut + A.shoulderHalfW) * r + 2);
   }
@@ -716,6 +769,76 @@ function drawSwimPose(g: Phaser.GameObjects.Graphics, e: Entity): void {
   g.strokeCircle(hcx, hcy, A.headR * r);
 
   g.restore();
+}
+
+/** The SPRAWL — a downed body from above (combat/ragdoll): the STANDARD figure of its own body STYLE laid along
+ *  `axis`, the fall direction. BLOCKY (the Roblox-like default — one rounded-rect torso, concentric head, bare block
+ *  fists, no sleeves) stays blocky; the oval 'actor' style stays oval. The head and fists are the sim's JOINTED PARTS
+ *  (combat/ragdoll): each lies where it was shoved or settled, on a ball socket off the torso — so a walker kicking a
+ *  fist aside or stepping on the head shows exactly that. Nothing turns with the aim. */
+function drawPronePose(g: Phaser.GameObjects.Graphics, e: Entity, s: Sprawl): void {
+  const t = e.transform!;
+  const rd = e.render!;
+  const r = t.r;
+  const A = ANATOMY;
+  const blocky = rd.draw === 'actorBlocky'; // the SAME key that picks the standing draw (the draws registry) decides the lying one
+  const flashing = !!e.health && e.health.hitFlash > 0;
+  const garb = flashing ? 0xffffff : rd.garbColor ?? darken(rd.baseColor);
+  const skin = flashing ? 0xffffff : rd.baseColor;
+  const handR = r * HAND_R_FRAC;
+  const ax = Math.cos(s.axis);
+  const ay = Math.sin(s.axis);
+  const at = (fwd: number, out: number): [number, number] => [ax * fwd - ay * out, ay * fwd + ax * out]; // body frame → local px
+  g.fillStyle(0x000000, 0.22);
+  g.fillEllipse(0, 0, r * 2.6, r * 1.2);
+  // FISTS: the sim's jointed parts — wherever the rag's limbs lie right now (shoved, dragged, settled); the oval
+  // style keeps its sleeve from the shoulder slab to the fist, blocky draws none (bare block fists, as standing)
+  const fists = s.fists;
+  if (!blocky) {
+    for (const [i, side] of [[0, -1], [1, 1]] as const) {
+      const [shx, shy] = at(A.shoulderFwd * r, side * A.shoulderOut * r);
+      const [hx, hy] = fists[i]!;
+      g.lineStyle(A.armW * r + 4, OUTLINE, 1);
+      g.lineBetween(shx, shy, hx, hy);
+      g.lineStyle(A.armW * r, garb, 1);
+      g.lineBetween(shx, shy, hx, hy);
+    }
+  }
+  for (const [hx, hy] of fists) {
+    g.fillStyle(skin, 1);
+    g.fillCircle(hx, hy, handR);
+    g.lineStyle(2, OUTLINE, 1);
+    g.strokeCircle(hx, hy, handR);
+  }
+  // TORSO: the style's own anatomy, rotated onto the fall axis (the standing draw's exact shapes)
+  g.save();
+  g.rotateCanvas(s.axis);
+  if (blocky) {
+    const hl = BLOCKY.torsoHalfL * r;
+    const hw = BLOCKY.torsoHalfW * r;
+    const rad = Math.min(hl, hw) * 2 * BLOCKY.corner;
+    g.fillStyle(garb, 1);
+    g.fillRoundedRect(-hl, -hw, hl * 2, hw * 2, rad);
+    g.lineStyle(2, OUTLINE, 1);
+    g.strokeRoundedRect(-hl, -hw, hl * 2, hw * 2, rad);
+  } else {
+    g.fillStyle(garb, 1);
+    g.fillEllipse(A.torsoFwd * r, 0, A.torsoHalfL * r * 2, A.torsoHalfW * r * 2);
+    g.lineStyle(2, OUTLINE, 1);
+    g.strokeEllipse(A.torsoFwd * r, 0, A.torsoHalfL * r * 2, A.torsoHalfW * r * 2);
+    for (const sd of [-1, 1] as const) {
+      g.fillStyle(garb, 1);
+      g.fillEllipse(A.shoulderFwd * r, sd * A.shoulderOut * r, A.shoulderHalfL * r * 2, A.shoulderHalfW * r * 2);
+      g.lineStyle(2, OUTLINE, 1);
+      g.strokeEllipse(A.shoulderFwd * r, sd * A.shoulderOut * r, A.shoulderHalfL * r * 2, A.shoulderHalfW * r * 2);
+    }
+  }
+  g.restore();
+  // HEAD: past the torso's end, rolled to one side (rollAnim.proneHead — the hat lies at this same point)
+  g.fillStyle(skin, 1);
+  g.fillCircle(s.x, s.y, A.headR * r);
+  g.lineStyle(2, OUTLINE, 1);
+  g.strokeCircle(s.x, s.y, A.headR * r);
 }
 
 function drawRollPose(g: Phaser.GameObjects.Graphics, e: Entity, prog: number): void {
@@ -825,11 +948,19 @@ function drawOverheadBars(g: Phaser.GameObjects.Graphics, e: Entity): void {
     if (e.combatant) {
       const sh = 3;
       const sy = by + h + 1;
+      const cap = stamCap(e.combatant); // VIGOR: a grey bar from the left up to today's ceiling; stamina (blue) fills inside it (the plate does the same)
+      const cpct = clamp(cap / e.combatant.maxStam, 0, 1);
       const spct = clamp(e.combatant.stam / e.combatant.maxStam, 0, 1);
       g.fillStyle(0x000000, 0.5);
-      g.fillRect(bx - 1, sy - 1, w + 2, sh + 2);
+      g.fillRect(bx - 1, sy - 1, w + 2, sh + 2); // the full track
+      g.fillStyle(0x8e8e9a, 0.75);
+      g.fillRect(bx, sy, w * cpct, sh); // vigor
       g.fillStyle(0x5ea0d8, 1); // same blue as the HUD stamina bar
-      g.fillRect(bx, sy, w * spct, sh);
+      g.fillRect(bx, sy, w * spct, sh); // stamina
+      if (cpct < 1) {
+        g.fillStyle(0xffffff, 0.95);
+        g.fillRect(bx + w * cpct - 1, sy - 1, 1.5, sh + 2); // the divider at the ceiling
+      }
     }
   }
 

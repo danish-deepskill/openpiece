@@ -32,6 +32,10 @@ export interface AccessoryDef extends Def {
   follows?: 'aim' | 'body';
   /** Drawn over the body (hat) or under it (cape/back-item). Default 'over'. */
   layer?: 'over' | 'under';
+  /** Colors a PROCEDURAL draw reads (`base` = the material, `trim` = rim/crest/fittings) — so one draw fn serves a
+   *  family of looks (the Samurai's indigo sode, the Ronin's crimson one) without a draw key per color. A draw
+   *  falls back to its own defaults when unset; a sprite ignores it (its colors are in the art). */
+  palette?: { base: number; trim: number };
   modifiers?: Modifier[];
   tags?: string[];
 }
@@ -51,6 +55,20 @@ Accessories.registerAll([
   // call. follows:'body' — the plates ride the torso's LIVE orientation, which twists through a swing, so they
   // stay on the shoulders mid-cut instead of standing still while the shoulders turn under them.
   { id: 'accessory.sode', name: 'Sode', slot: 'chest', visual: { kind: 'procedural', draw: 'sode' }, follows: 'body' },
+  // the RONIN's KABUTO — a lacquered war helmet (draw/accessoryDraws.kabuto): the bowl, the flaring neck guard behind,
+  // the golden crescent crest forward. Turns with the aim like every helm (the crest shows the turn). Black lacquer +
+  // gold, to read against the Samurai's straw at a glance.
+  { id: 'accessory.kabuto', name: 'Kabuto', slot: 'head', visual: { kind: 'procedural', draw: 'kabuto' }, palette: { base: 0x1b1518, trim: 0xd4af37 } },
+  // the RONIN's SODE — the same shoulder-guard draw in his colors (crimson lacquer, gold rim): the palette knob, not a
+  // second draw. Matches the red blade and the crimson garb; the Samurai keeps indigo + brass.
+  { id: 'accessory.sodeRonin', name: 'Crimson Sode', slot: 'chest', visual: { kind: 'procedural', draw: 'sode' }, follows: 'body', palette: { base: 0x5a1418, trim: 0xd4af37 } },
+  // ZORO's look (docs/references/characters/zoro.png) — three palette-driven procedural pieces, one per slot:
+  // the GREEN SPIKES (hair slot: the top-down read — a jagged crown over the head, under any hat), the CRIMSON SASH
+  // (chest, body-follow: a band across the waist of the dark green coat, knotted at his left), THREE GOLD EARRINGS
+  // (face slot: three drops trailing off his left ear — the detail that says Zoro at a glance).
+  { id: 'accessory.hairZoro', name: 'Green Spikes', slot: 'hair', visual: { kind: 'procedural', draw: 'spikyHair' }, palette: { base: 0x8fd36a, trim: 0x4f8a3a } },
+  { id: 'accessory.sashZoro', name: 'Crimson Sash', slot: 'chest', visual: { kind: 'procedural', draw: 'sash' }, follows: 'body', palette: { base: 0xa0233a, trim: 0x5a1020 } },
+  { id: 'accessory.earringsZoro', name: 'Three Earrings', slot: 'face', visual: { kind: 'procedural', draw: 'earrings' }, palette: { base: 0xe0b23a, trim: 0x8a6a1a } },
   // the Brawler's helmet (the D- sword duelist) — the plain grey visor
   { id: 'accessory.soldierHelmet', name: 'Soldier Helmet', slot: 'head', visual: { kind: 'sprite', art: 'hats/soldier_helmet.png', scale: 1.6 } },
   // the Brute's helmet — the horned one, marks the F+ fodder variant at a glance

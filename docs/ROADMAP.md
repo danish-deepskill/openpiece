@@ -50,8 +50,21 @@ slice 2 (instances) + 4 (ownership) wait on their triggers; loot-a-body waits on
 **The first duel pair LANDED 2026-10-09:** the Samurai (C, pirates — neutral to you) vs the Marine Officer on the
 home island, the first fight the world stages on its own. Built as data on six GENERIC combat seams the Haki layer
 will reuse (ledger in `COMBAT.md` → Built): the C-slot buff, attack speed scaling swings, channels, mid-swing
-volleys, per-volume damage, projectile deflect + the block glance. Flagged for later: the sword rows' `range: 0`,
-flat defense vs multi-hit moves, a parried ball's return.
+volleys, per-volume damage, projectile deflect + the block glance. Flagged for later: flat defense vs multi-hit
+moves, a parried ball's return. (The sword rows' `range: 0` is gone: a melee reach now comes from the EQUIPPED
+weapon's drawn length — `combat/swing.abilityReach` — the same read the hitbox makes, never from the row.)
+**The dominance ladder + the Haki layer LANDED 2026-10-09** (`COMBAT.md` § Power tier + Built): tier gaps are walls
+(flinch / guard / interrupt / parry / rebound by band gap — never damage), Armament is the fourth equip layer and the
+first haki row (+1 letter while coated, turns half the balls, unlocks Kokutō; haki is A-+ by rule). The Ronin (A-) holds the far-south desert
+ARENA (a walled sand ring, one gap, a dock) — the first unit built on both, his edge QUALITY not stats: his own
+chains (dash-cut → return → gale; dash-thrust → whirlwind), Sandan — three re-aimed pass-through steps on Q, Flow + Iron Will, a
+brain that reads weight and ripostes; Kokutō RAGDOLLS (the knockdown class: flight → sprawl → get-up, pushable while down).
+Three training dummies share the ring; a WAYSTONE pair links the home spawn to the arena (E beside either). The arena
+is a SQUARE colosseum on a square isle; its DUEL GONG (`structure.duelGong`, `verb.summon`) summons ZORO (ADVANCED, A —
+`challengers`, at war with the ronin alone, mutually) and the Ronin face to face, so the duel starts when you are there to watch
+it and can be rung again once it's over. Zoro fights nitōryū on the first PAIR weapon (`grip.hold 'each'` — a blade in
+each hand, cuts alternating hands). The PoC
+capstone's Armament half is live; the Logia half waits on a Logia unit.
 
 ## Foundation-audit ledger (repo-wide, 2026-07 — baseline d7d5afb)
 

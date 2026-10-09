@@ -87,7 +87,7 @@ openpiece/
         ...                     #   structures, decks, accessories, visual, items (ItemRef spine + ItemStack; BASE_KIT in units.ts),
         ...                     #   materials (the first stackable commons; per-def stackLimit) — data only
       combat/                   # GAS-lite engine: Ability, Effect, StatBlock, Modifier, TagSet, PowerTier, stats (the named stat ids + multiplier seeds — one home),
-        ...                     #   swing (motion registry + shared geom), hitVolume (timed strike volumes),
+        ...                     #   swing (motion registry + shared geom), hitVolume (timed strike volumes), dominance (the tier-gap ladder: one rung lookup per hit), clash (steel meets steel: ladder → weight → the equals roll → bind), ragdoll (the knockdown CC: flight · sprawled · get-up), fxTheme (tag → the theme a body's attack visuals wear),
         ...                     #   phases (windup/active/recover clock), guard (block/parry/feint + posture),
         ...                     #   equip, stamina, targeting, apparel, attributes
       ai/
@@ -110,6 +110,7 @@ openpiece/
         AISystem.ts             # runs each ai.brain.think()
         MovementSystem.ts       # integrate movers via Collision (fixed SIM_DT steps)
         MeleeSystem.ts          # moving-hitbox contact resolution (shares swing geom with the render)
+        HazardSystem.ts         # ground zones a swing leaves (Samon's X): tick standing bodies through the strike path, expire
         ProjectileSystem.ts     # travelling shots (musket ball): swept path vs bodies + solid cells -> StrikeResolver
         AbilitySystem.ts        # the single attack path: costs, cooldowns, swings, shots, launches
         StrikeResolver.ts       # (service) a confirmed hit -> damage/combo/stun; Damage.ts applies it
@@ -130,6 +131,8 @@ openpiece/
       draw/                     # (presentation) procedural draw fns + DrawFn type + world renderers
         actorDraws.ts / accessoryDraws.ts / shipDraws.ts / terrainBakes.ts / structureDraws.ts / TerrainRenderer.ts / StructureRenderer.ts / SeaRenderer.ts / DoorRenderer.ts
         projectileProc.ts       # generated projectile textures (the lead ball + per-proc-color charged variants)
+        coating.ts              # baked Armament-black variant of every sprite weapon (Canvas can't tint) + its key
+        fxThemes.ts / handAuras.ts  # the palettes a body's STATE paints its attack visuals / fists with (tag → theme, tag → halo)
       ui/                       # (presentation) DOM overlays + HUD widgets
         overlay.ts / debugPanel.ts   # the start/help overlay + the ` debug-flag panel (DOM, EventBus-driven)
         UnitPlate.ts / plateView.ts  # the shared unit readout card + its pure view-model (tested headless)
@@ -234,7 +237,7 @@ spatial hash when entity counts climb — single chokepoint).
 ## 8. Frame loop (WorldScene.update → GameDirector → systems, fixed order)
 
 ```
-wind → doors → input → squads → AI → movement → swim → body-collision → ships → hull-collision → melee → projectiles → abilities → combatant → effects → director   (fixed SIM_DT steps)
+wind → doors → input → squads → AI → movement → swim → body-collision → ships → hull-collision → melee → hazards → projectiles → abilities → combatant → effects → director   (fixed SIM_DT steps)
 then presentation, once per render frame: structures/doors (dirty rebake) → sea → fx → render → weapon sprites → projectile sprites → accessories → nameplates → stun → inspect → reticle → possess button → debug; dialogue steps per render frame
 → (WorldScene publishes registry + the inventory view-model on change)
 ```

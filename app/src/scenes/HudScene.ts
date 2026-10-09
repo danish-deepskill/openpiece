@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Abilities } from '../combat/Ability';
-import { GAME_H, GAME_W, MAPH, MAPW, RegKey, WORLD_H, WORLD_W, type AbilityBarEntry, type MinimapDot } from '../config/constants';
+import { ABILITY_BAR_KEYS, GAME_H, GAME_W, MAPH, MAPW, RegKey, WORLD_H, WORLD_W, type AbilityBarEntry, type MinimapDot } from '../config/constants';
 import { BAKE_FILTER, RENDER_SCALE } from '../config/render';
 import { events } from '../core/EventBus';
 import { clamp } from '../core/math';
@@ -9,10 +9,13 @@ import { PLATE_CONTENT_H, UnitPlate } from '../ui/UnitPlate';
 import type { UnitPlateView } from '../ui/plateView';
 import { addText } from '../ui/text';
 
-/** Ability-slot box size (px) — sized so 6 fit the 290px plate width below it (LMB/RMB/Q + slots 1/2/3): a
- *  full fruit kit fills all six (primary, heavy, dash, 3 specials). (6×38 + 5×6 gap = 258 ≤ the inner width.) */
+/** Ability-slot box size (px). The player card is sized FROM the bar (every key in ABILITY_BAR_KEYS fits inside it,
+ *  with the inner pad) — the card used to be a fixed 290px that held six boxes, and the seventh/eighth fell off its
+ *  right edge. */
 const ABIL_W = 38;
 const ABIL_H = 38;
+const ABIL_GAP = 6;
+const BAR_W = ABILITY_BAR_KEYS.length * ABIL_W + (ABILITY_BAR_KEYS.length - 1) * ABIL_GAP;
 
 /** Canvas HUD overlay (parallel scene). Reads continuous state from the registry; one-offs via EventBus. */
 export class HudScene extends Phaser.Scene {
@@ -33,7 +36,7 @@ export class HudScene extends Phaser.Scene {
   /** Bottom-left player card: THE shared unit readout (UnitPlate) + a player-only ability-bar row below
    *  the content block — extras go OUTSIDE the readout so every unit's plate stays identical. */
   // tall enough to CONTAIN the plate (PLATE_CONTENT_H 150) + the ability bar row below it, with a bottom inset
-  private readonly panel = { x: 12, y: GAME_H - 212, w: 290, h: 200 };
+  private readonly panel = { x: 12, y: GAME_H - 212, w: Math.max(290, BAR_W + 24), h: 200 }; // wide enough for the whole bar (+ the 12px pad each side)
   private readonly barX = 24; // panel.x + inner pad
   private barY = 0; // ability-row top (set in create)
 
@@ -86,7 +89,7 @@ export class HudScene extends Phaser.Scene {
 
     // ability bar (player-only row, below the shared readout block): one box per equipped/granted ability
     this.barY = P.y + PLATE_CONTENT_H + 4;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < ABILITY_BAR_KEYS.length; i++) { // one slot per key the bar can emit — never fewer (a shorter pool silently drops the last keys)
       const bx = this.barX + i * (ABIL_W + 6) + ABIL_W / 2;
       const key = addText(this, bx, this.barY + 4, '', { fontFamily: 'Trebuchet MS', fontStyle: 'bold', fontSize: '11px', color: '#f0b429' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
       const name = addText(this, bx, this.barY + 21, '', { fontFamily: 'Trebuchet MS', fontSize: '10px', color: '#f3e7c9' }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
@@ -111,7 +114,7 @@ export class HudScene extends Phaser.Scene {
         slot.name.setVisible(false);
         continue;
       }
-      const bx = this.barX + i * (ABIL_W + 6);
+      const bx = this.barX + i * (ABIL_W + ABIL_GAP);
       const by = this.barY;
       const def = Abilities.has(entry.id) ? Abilities.get(entry.id) : undefined;
       const onCd = entry.cd > 0 && def && def.cooldown > 0;

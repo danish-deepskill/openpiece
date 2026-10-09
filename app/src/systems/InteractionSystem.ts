@@ -3,7 +3,10 @@ import { events } from '../core/EventBus';
 import { dist2 } from '../core/math';
 import { countedName, isEquippable, itemName } from '../defs/items';
 import { Manuals } from '../defs/manuals';
+import { Structures } from '../defs/structures';
+import { TILE } from '../config/constants';
 import type { Entity } from '../ecs/components';
+import type { Spawner } from '../ecs/Spawner';
 import type { World } from '../ecs/World';
 import type { DialogueSystem } from './DialogueSystem';
 import type { Items } from './Items';
@@ -14,6 +17,8 @@ export interface VerbCtx {
   dialogue: DialogueSystem;
   /** The single item-quantity mutation site — every stow/displace-to-bag goes through it (ITEMS.md §4). */
   items: Items;
+  /** The one unit-spawn path (the Moat: a summoned duelist is born on the same stack as the hero) — `verb.summon`. */
+  spawner: Spawner;
 }
 
 /**
@@ -86,6 +91,81 @@ export const Verbs: VerbDef[] = [
     run: takePickup,
   },
   {
+    // WARP — a waystone: step to its pair's arrival point. The destination is on the INSTANCE (structure.warp — worldgen
+    // links pairs), so the verb is one rule for every stone. Velocities and any carry are dropped (you arrive standing);
+    // the drawn pose and camera re-acquire the body on their own (ViewPose snaps a jump past VIEW_TELEPORT_PX).
+    id: 'verb.warp',
+    reach: 28,
+    label: () => 'Use Waystone',
+    can: (a, t) => !a.onDeck && !!t?.structure?.warp && !!a.transform,
+    run: (a, t) => {
+      const w = t!.structure!.warp!;
+      a.transform!.x = w.x;
+      a.transform!.y = w.y;
+      const m = a.mover;
+      if (m) {
+        m.vx = 0; m.vy = 0; m.dvx = 0; m.dvy = 0; m.dodgeT = 0;
+      }
+      if (a.ai?.bb) a.ai.bb.path = null; // a planned route to the old place is nonsense now
+      events.emit('notify', { msg: 'Warped.' });
+    },
+  },
+  {
+    // SUMMON — a summoner structure (the duel gong, the training post): the DEF names a roster (`summon`: unit + tile offset); using it
+    // spawns them through the one spawn path, each facing the others' centroid (two → face to face), and records their
+    // ids on the INSTANCE (`structure.summoned`) so a second ring is refused while any of them lives — no stacking a
+    // duel on a duel. Dead or despawned → ring again: the set-piece is re-runnable, and it starts when someone is
+    // there to watch it (the alternative, a unit asleep until approached, put the trigger on the unit and ran a world
+    // scan per sleeper per tick — this is one press, one spawn).
+    id: 'verb.summon',
+    reach: 28,
+    label: (_a, t) => {
+      const def = Structures.get(t!.structure!.def); // can() admitted a summoner
+      return def.reRing === 'clear' && t!.structure!.summoned?.length ? `Clear the ${def.name.toLowerCase()}` : def.summonLabel ?? `Use ${def.name}`;
+    },
+    can: (a, t) => !a.onDeck && !!t?.structure && Structures.get(t.structure.def).summon !== undefined && !!a.transform,
+    run: (_a, t, ctx) => {
+      const st = t!.structure!; // can() admitted a summoner
+      const def = Structures.get(st.def);
+      const living = (st.summoned ?? []).map((id) => ctx.world.byId(id)).filter((u): u is Entity => !!u?.health && !u.health.dead);
+      if (living.length > 0) {
+        const mode = def.reRing ?? 'refuse';
+        if (living.includes(_a)) {
+          events.emit('notify', { msg: 'You are in it.' }); // a possessed duelist can't clear or reset the roster it belongs to — that would destroy its own body
+          return;
+        }
+        if (mode === 'refuse') {
+          events.emit('notify', { msg: 'The duel is still on.' });
+          return;
+        }
+        for (const u of living) ctx.world.destroy(u); // 'clear' and 'reset' both remove the live roster…
+        st.summoned = [];
+        if (mode === 'clear') {
+          events.emit('notify', { msg: 'Cleared.' });
+          return;
+        }
+        // …and 'reset' falls through to summon a fresh one from the marks (the gong rung mid-duel restarts it)
+      }
+      const roster = Structures.get(st.def).summon!; // `!` safe: can() admitted only a def that carries one
+      const spots = roster.map((r) => ({ x: (st.tx + r.dx + 0.5) * TILE, y: (st.ty + r.dy + 0.5) * TILE }));
+      st.summoned = roster.map((r, i) => {
+        const e = ctx.spawner.spawnUnit(r.unit, spots[i]!.x, spots[i]!.y); // `!` safe: spots is roster's map
+        let sx = 0;
+        let sy = 0;
+        let n = 0;
+        for (let j = 0; j < spots.length; j++) {
+          if (j === i) continue;
+          sx += spots[j]!.x; // `!` safe: j indexes spots
+          sy += spots[j]!.y;
+          n++;
+        }
+        if (n > 0 && e.transform) e.transform.angle = Math.atan2(sy / n - spots[i]!.y, sx / n - spots[i]!.x); // face the others
+        return e.id;
+      });
+      events.emit('notify', { msg: def.reRing === 'clear' ? 'Set.' : 'The gong rings.' });
+    },
+  },
+  {
     id: 'verb.talk',
     reach: 24,
     label: (_a, t) => `Talk to ${t!.identity?.name ?? 'someone'}`,
@@ -128,9 +208,10 @@ export class InteractionSystem {
     private readonly world: World,
     dialogue: DialogueSystem,
     items: Items,
+    spawner: Spawner,
     private readonly verbs: VerbDef[] = [...Verbs],
   ) {
-    this.ctx = { world, dialogue, items };
+    this.ctx = { world, dialogue, items, spawner };
   }
 
   /** Register another verb (e.g. a content pack's 'talk' / 'open'). */

@@ -32,6 +32,9 @@ export const DEF_PER_DEFENSE = 1;
 /** maxPosture (guard capacity, combat/guard) per point of `willpower`. 0.5 = a guard breaks in ~half the
  *  blocked hits; the per-unit spread is preserved (each role's cap still scales from its own willpower). */
 export const POSTURE_PER_WILLPOWER = 0.5;
+/** WILL pool (the haki resource) per point of `spiritual`. NO base: an ordinary body has no will to coat with — a unit gets a
+ *  bar only when its def (or training, later) seeds spiritual. The Ronin: 12 → 120. */
+export const WILL_PER_SPIRITUAL = 10;
 
 /** One source for every attribute-derived modifier so a re-derive can wipe-and-replace them wholesale. */
 const DERIVED_SOURCE = 'derived:attributes';
@@ -42,8 +45,9 @@ const DERIVED_SOURCE = 'derived:attributes';
  * tier-index number, NOT the pool; see STAM_BASE). Stamina is fitness, not rank, so every unit starts at the
  * F- floor (110 pool) and a fitter unit is bumped per-def (the Marine → 4). `willpower` seeds the POSTURE pool
  * (combat/guard): a gentle linear climb, so higher ranks take a couple more blocked hits to break.
- * luck/spiritual still seed 0: their consumers (crit/drop rolls, the haki pool) don't exist yet, and
- * curving an unread stat is fake balancing — they gain tier curves when their systems land.
+ * luck still seeds 0 (its consumers — crit/drop rolls — don't exist yet; curving an unread stat is fake balancing).
+ * spiritual seeds 0 too, ON PURPOSE: it is the WILL pool (haki — combat/stamina.spendWill), and haki is not a tier
+ * perk — a unit's def seeds it (the Ronin: 12) the way a fighter trains it; a fodder row has none.
  */
 export function tierAttributes(t: PowerTier): Record<AttributeId, number> {
   const ts = tierStats(t);
@@ -64,6 +68,7 @@ export function deriveAttributeStats(sb: StatBlock): void {
     { stat: 'maxStam', op: 'flat', value: STAM_BASE + sb.get('endurance') * STAM_PER_ENDURANCE, source: DERIVED_SOURCE },
     { stat: 'def', op: 'flat', value: sb.get('defense') * DEF_PER_DEFENSE, source: DERIVED_SOURCE },
     { stat: 'maxPosture', op: 'flat', value: sb.get('willpower') * POSTURE_PER_WILLPOWER, source: DERIVED_SOURCE },
+    { stat: 'maxWill', op: 'flat', value: sb.get('spiritual') * WILL_PER_SPIRITUAL, source: DERIVED_SOURCE },
   ];
   sb.addAll(derived);
 }
@@ -91,5 +96,13 @@ export function syncDerivedResources(e: Entity): void {
     if (e.combatant.stam > e.combatant.maxStam) e.combatant.stam = e.combatant.maxStam;
     e.combatant.maxPosture = Math.round(sb.get('maxPosture'));
     if (e.combatant.posture > e.combatant.maxPosture) e.combatant.posture = e.combatant.maxPosture;
+    const maxWill = Math.round(sb.get('maxWill'));
+    if (maxWill > 0) {
+      e.combatant.maxWill = maxWill;
+      if (e.combatant.will === undefined || e.combatant.will > maxWill) e.combatant.will = maxWill; // a pool that just appeared starts full; a lowered ceiling clamps
+    } else {
+      e.combatant.maxWill = undefined; // no spiritual → no will bar at all (not an empty one)
+      e.combatant.will = undefined;
+    }
   }
 }

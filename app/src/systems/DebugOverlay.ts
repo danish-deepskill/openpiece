@@ -1,3 +1,5 @@
+import { stamCap } from '../combat/stamina';
+import { BANDS_PER_LETTER } from '../combat/PowerTier';
 import Phaser from 'phaser';
 import { visionOf } from '../ai/perception';
 import { GAME_W, TILE, WIND_REF } from '../config/constants';
@@ -5,11 +7,11 @@ import { RENDER_SCALE } from '../config/render';
 import { angleDiff } from '../core/math';
 import { Debug } from '../core/Debug';
 import { events } from '../core/EventBus';
-import { Abilities, abilityRange } from '../combat/Ability';
+import { Abilities } from '../combat/Ability';
 import { BLOCK_ARC, PARRY_ARC } from '../combat/guard';
-import { strikeFrameOf, strikeVolumes } from '../combat/hitVolume';
+import { segmentOf, strikeFrameOf, strikeVolumes } from '../combat/hitVolume';
 import { phaseAt } from '../combat/phases';
-import { swingGeomOf, swingPose } from '../combat/swing';
+import { abilityReach, swingGeomOf, swingPose } from '../combat/swing';
 import { deckOf, deckToWorld, type ShipPose } from '../defs/decks';
 import { ShipHulls } from '../defs/ships';
 import type { World } from '../ecs/World';
@@ -48,6 +50,7 @@ export class DebugOverlay {
    *  Handed over rather than read off the camera because Phaser's Camera TYPE lacks the `rotation` getter its
    *  JS has; the owner already does the same for nameplates (setTextRotation). */
   private viewRot = 0;
+  private readonly clashes: { x: number; y: number; text: string; until: number }[] = [];
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -58,6 +61,15 @@ export class DebugOverlay {
     this.gfx = scene.add.graphics().setDepth(DEPTH).setVisible(false);
     events.on('debug:aoe', ({ x, y, radius }) => {
       this.aoes.push({ x, y, radius, until: scene.time.now + 500 }); // linger 0.5s
+    });
+    // the CLASH READOUT (combat.rung): the ladder's verdict on each tiered hit, printed over the contact point so a
+    // designer can see WHY a blow bounced / didn't flinch / wasn't parried — formatted here, the sim sends data
+    events.on('combat:clash', ({ x, y, gap, rule, outcome }) => {
+      if (!Debug.on('combat.rung')) return;
+      const L = Math.floor(Math.abs(gap) / BANDS_PER_LETTER);
+      const dir = gap === 0 ? '=' : gap > 0 ? '↓' : '↑';
+      const flags = [rule.parryDeflects ? '' : 'noParry', rule.interrupts ? '' : 'noClip', rule.rebound === 'never' ? '' : `bounce:${rule.rebound}`].filter(Boolean).join(' ');
+      this.clashes.push({ x, y, text: `${dir}${L}L ${flags} · ${outcome}`.replace(/\s+·/, ' ·'), until: scene.time.now + 1400 });
     });
     this.hint = addText(scene, GAME_W / 2, 6, '● DEBUG   [ ` panel ]', { fontFamily: 'monospace', fontSize: '11px', color: '#00e0ff' })
       .setOrigin(0.5, 0)
@@ -216,7 +228,7 @@ export class DebugOverlay {
       g.lineStyle(1, 0xffaa00, 0.35);
       for (const e of this.world.with('loadout', 'transform')) {
         const ab = Abilities.get(e.loadout!.primary);
-        const range = abilityRange(ab, e.attributes?.get('reach') ?? 0);
+        const range = abilityReach(e, ab);
         if (range > 0) g.strokeCircle(e.transform!.x, e.transform!.y, range);
       }
     }
@@ -272,6 +284,11 @@ export class DebugOverlay {
     // Combat: LIVE strike volumes of every swing in flight — the actual hitboxes (weapon segments incl.
     // dead zones, slash arcs), colored by phase: dim while the volume's window is closed, red while it can
     // hit. This is the ground truth the reach circle only approximates.
+    if (Debug.on('combat.rung')) {
+      const now = this.scene.time.now;
+      for (let i = this.clashes.length - 1; i >= 0; i--) if (this.clashes[i]!.until <= now) this.clashes.splice(i, 1); // index-bounded
+      for (const c of this.clashes) this.label(c.x, c.y - 26, c.text, '#ffd24a');
+    } else if (this.clashes.length) this.clashes.length = 0; // nothing lingers from a layer that was switched off
     if (Debug.on('combat.hitbox')) {
       for (const e of this.world.with('melee', 'transform')) {
         const m = e.melee!;
@@ -292,14 +309,21 @@ export class DebugOverlay {
         const pose = swingPose(m, shape, swingGeomOf(e));
         const f = strikeFrameOf(e, m, d, pose); // the EXACT frame MeleeSystem tests — ground truth by construction
         for (const v of volumes) {
-          const live = p >= (v.active ? v.active[0] : w0) && p <= (v.active ? v.active[1] : aEnd);
+          const live = p >= (v.active ? v.active[0] : w0) && p <= (v.active ? v.active[1] : aEnd) && (v.kind !== 'trail' || m.landed === true); // a trail waits for the landing (MeleeSystem's gate)
           const color = live ? 0xff5a5a : 0x8899aa;
           const alpha = live ? 0.5 : 0.15;
-          if (v.kind === 'weaponSegment') {
-            const ax = f.handX + (f.tipX - f.handX) * (v.from ?? 0);
-            const ay = f.handY + (f.tipY - f.handY) * (v.from ?? 0);
-            const bx = f.handX + (f.tipX - f.handX) * (v.to ?? 1);
-            const by = f.handY + (f.tipY - f.handY) * (v.to ?? 1);
+          if (v.kind === 'trail') {
+            // the path from the step's origin to the body — the capsule MeleeSystem tests once he has landed
+            const halfW = v.width / 2;
+            g.lineStyle(halfW * 2, color, alpha);
+            g.lineBetween(f.fromX, f.fromY, f.x, f.y);
+            g.fillStyle(color, alpha);
+            g.fillCircle(f.fromX, f.fromY, halfW);
+            g.fillCircle(f.x, f.y, halfW);
+          } else if (v.kind === 'weaponSegment') {
+            const seg = segmentOf(v, f); // the lead blade, or the off blade for `hand: 'off'` — the exact span MeleeSystem tests
+            if (!seg) continue; // an off-blade volume with no off blade posed: nothing is tested, nothing is drawn
+            const [ax, ay, bx, by] = seg;
             const halfW = v.width !== undefined ? v.width / 2 : f.segmentHalfW;
             g.lineStyle(halfW * 2, color, alpha);
             g.lineBetween(ax, ay, bx, by);
@@ -405,7 +429,7 @@ export class DebugOverlay {
           // don't clutter. This is the readout for verifying the regroup/harry/plannedSpecial behavior by eye.
           const c = e.combatant;
           const parts: string[] = [];
-          if (c && c.maxStam > 0) parts.push(`stam ${Math.round((c.stam / c.maxStam) * 100)}%`);
+          if (c && c.maxStam > 0) parts.push(`stam ${Math.round((c.stam / stamCap(c)) * 100)}% (cap ${Math.round((stamCap(c) / c.maxStam) * 100)}%)`);
           if (bb.regrouping === true) parts.push('REGROUP');
           if (bb.plannedSpecial) parts.push(`plan:${bb.plannedSpecial.replace(/^ability\./, '')}`); // e.g. "plan:gomuRocket"
           if (parts.length) this.label(t.x, t.y - t.r - 44, parts.join('·'), '#ffd24a'); // amber = combat-intent line

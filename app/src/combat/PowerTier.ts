@@ -12,6 +12,12 @@ export type PowerTier = `${TierLetter}${TierBand}`;
 const LETTERS: readonly TierLetter[] = ['F', 'E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'X'];
 const BANDS: readonly TierBand[] = ['-', '', '+'];
 
+/** Bands per letter rank (3: `-`, base, `+`). The ladder's rungs, a coating's lift and a technique's parry shift are
+ *  all authored in LETTERS through `letters()` — so the band granularity can change in one place. */
+export const BANDS_PER_LETTER = BANDS.length;
+/** `n` letters expressed in bands — the unit every tier-gap rule is authored in (combat/dominance). */
+export const letters = (n: number): number => n * BANDS_PER_LETTER;
+
 /** All 30 bands in ascending power order: F-, F, F+, E-, … SSS+, X-, X, X+. */
 export const TIER_ORDER: readonly PowerTier[] = LETTERS.flatMap((l) => BANDS.map((b) => `${l}${b}` as PowerTier));
 
@@ -35,13 +41,33 @@ export interface TierStats {
  * `atk`/`atkSpeed` are read directly — there is deliberately no attack ATTRIBUTE (damage belongs to
  * weapon/style/tier, not stat allocation).
  */
+/**
+ * THE MAGNITUDE CURVE — the four numbers that say how much bigger each band is. FLATTENED 2026-10-09 (was hp ×1.29,
+ * atk ×1.26, +0.1 attack speed per band = ×2.15 hp and ×2 atk PER LETTER, an 8× DPS gap two letters up): the tier's
+ * QUALITY now lives on the dominance ladder (combat/dominance — poise, guard, interrupt, parry, rebound), so the
+ * magnitudes only need to say "stronger", not "untouchable". Per letter now: hp ×1.56, atk ×1.40, +0.12 attack speed;
+ * D- → B is a 2.8× DPS gap behind a two-letter wall, not 8.4× behind it. F- → X+ still spans ×75 hp / ×27 atk.
+ * Tune HERE; every unit, test and the attribute seeds follow.
+ */
+export const TIER_CURVE = {
+  hpBase: 60, // F- hp
+  hpPerBand: 1.16, // ×1.56 per letter
+  atkBase: 8, // F- atk
+  atkPerBand: 1.12, // ×1.40 per letter
+  defPerBand: 0.5, // flat damage reduction per band past `defFrom` — flattened WITH atk (a hit floors at 1 damage, so def at the old 1.3 slope would eat every small multi-hit cut: Kamaitachi's 6-damage cuts against a C-'s 9)
+  defFrom: 2, // bands of free fodder before defense starts (0 through the F bands)
+  atkSpeedBase: 0.8, // F- attack speed (swings AND cooldowns are divided by it)
+  atkSpeedPerBand: 0.04, // +0.12 per letter — the hidden DPS multiplier, kept gentle on purpose
+} as const;
+
 export function tierStats(t: PowerTier): TierStats {
   const i = tierIndex(t);
+  const c = TIER_CURVE;
   return {
-    hp: Math.round(46 * Math.pow(1.29, i)),
-    atk: Math.round(5 * Math.pow(1.26, i)),
-    def: Math.round(Math.max(0, i - 2) * 1.3), // stays 0 through the F bands; matters from E- up
-    atkSpeed: +(0.45 + 0.1 * i).toFixed(2), // deliberate base pace; only high tiers climb past 1.0 (fast)
+    hp: Math.round(c.hpBase * Math.pow(c.hpPerBand, i)),
+    atk: Math.round(c.atkBase * Math.pow(c.atkPerBand, i)),
+    def: Math.round(Math.max(0, i - c.defFrom) * c.defPerBand),
+    atkSpeed: +(c.atkSpeedBase + c.atkSpeedPerBand * i).toFixed(2),
   };
 }
 

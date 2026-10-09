@@ -1,3 +1,4 @@
+import { FX_THEME_PALETTE } from '../draw/fxThemes';
 import Phaser from 'phaser';
 import { Depth, FX_COLOR } from '../config/constants';
 import { RENDER_SCALE } from '../config/render';
@@ -7,6 +8,7 @@ import { Pool } from '../core/Pool';
 import { addText } from '../ui/text';
 import type { World } from '../ecs/World';
 import type { ViewPose } from './ViewPose';
+
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: number; r: number }
 interface Corpse { x: number; y: number; r: number; color: number; life: number; max: number }
@@ -43,7 +45,7 @@ export class FxSystem {
     this.gfx = scene.add.graphics().setDepth(Depth.Fx);
     this.gfxGround = scene.add.graphics().setDepth(Depth.GroundFx); // ground-plane FX (splash rings) — UNDER units
     // the sim EMITS fx events; this presentation system is their one subscriber (DESIGN_PATTERNS §7)
-    events.on('fx:burst', ({ x, y, color, n, speed }) => this.burst(x, y, color, n, speed));
+    events.on('fx:burst', ({ x, y, color, n, speed, theme }) => this.burst(x, y, theme ? FX_THEME_PALETTE[theme].edge : color, n, speed)); // a themed body's spark wears the theme's edge
     events.on('fx:dmgText', ({ x, y, value, color }) => this.dmgText(x, y, value, color));
     events.on('fx:swing', (o) => this.swing(o));
     events.on('fx:corpse', ({ x, y, r, color }) => this.corpse(x, y, r, color));
@@ -122,7 +124,7 @@ export class FxSystem {
         // is; one still WAITING on its cue never shows — a broken channel leaves no ghost waves behind.
         const e = this.world.byId(s.follow);
         const sw = e?.melee;
-        if (e && sw && (s.ability === undefined || sw.ability === s.ability)) {
+        if (e && sw && !sw.lock && (s.ability === undefined || sw.ability === s.ability)) { // a LOCKED swing has stopped cutting: its crescent fades like a cancelled one (else it hangs frozen in the air for the hold)
           s.x = this.view.x(e);
           s.y = this.view.y(e);
           // derive cue + life from the SWING's clock (m.t), not a second accumulator: a paused/dead-screen sim
@@ -188,9 +190,33 @@ export class FxSystem {
       layer.strokeCircle(rg.x, rg.y, cur);
     }
     for (const s of this.swings) if ((s.delay ?? 0) <= 0) this.drawSwing(s);
+    this.drawHazards();
     for (const p of this.particles) {
       g.fillStyle(p.color, clamp(p.life / p.max, 0, 1));
       g.fillCircle(p.x, p.y, p.r);
+    }
+  }
+
+  /** GROUND HAZARDS (ecs/components.Hazard) drawn FROM the world — the strokes HazardSystem tests, at their width, fading
+   *  with the zone's life: the scored X you see is exactly the zone that cuts. Themed like the owner's cut was. */
+  private drawHazards(): void {
+    const g = this.gfx;
+    for (const e of this.world.with('hazard', 'transform')) {
+      const h = e.hazard;
+      const t = e.transform;
+      const k = h.life / h.maxLife;
+      const x = this.view.x(e);
+      const y = this.view.y(e);
+      const body = h.theme !== undefined ? FX_THEME_PALETTE[h.theme].body : 0xf2f2f2;
+      const edge = h.theme !== undefined ? FX_THEME_PALETTE[h.theme].edge : 0xffffff;
+      for (const st of h.strokes) {
+        const dx = Math.cos(st.angle) * st.len / 2;
+        const dy = Math.sin(st.angle) * st.len / 2;
+        g.lineStyle(h.width, body, 0.8 * k);
+        g.lineBetween(x - dx, y - dy, x + dx, y + dy);
+        g.lineStyle(2, edge, 0.9 * k * k);
+        g.lineBetween(x - dx, y - dy, x + dx, y + dy);
+      }
     }
   }
 
@@ -204,6 +230,25 @@ export class FxSystem {
       g.lineBetween(s.x, s.y, ex, ey);
       g.fillStyle(s.enemy ? 0xdc5050 : FX_COLOR.spark, k);
       g.fillCircle(ex, ey, 12);
+    } else if (s.type === 'trail') {
+      // the dash-through cut: the whole line flashes at once (the cut lands everywhere on the path in the same instant),
+      // a wide body stroke that thins and fades, a bright core that dies first — themed for a coated body (haki black with
+      // the violet rim), pale steel otherwise
+      const ex = s.x + Math.cos(s.angle) * s.len;
+      const ey = s.y + Math.sin(s.angle) * s.len;
+      const w = s.thin ? 10 : 18;
+      if (s.theme !== undefined) {
+        const pal = FX_THEME_PALETTE[s.theme];
+        g.lineStyle(w * (0.5 + 0.5 * k), pal.body, 0.9 * k);
+        g.lineBetween(s.x, s.y, ex, ey);
+        g.lineStyle(3, pal.edge, 0.95 * k * k);
+        g.lineBetween(s.x, s.y, ex, ey);
+      } else {
+        g.lineStyle(w * (0.5 + 0.5 * k), s.enemy ? 0xe65a46 : 0xffffff, 0.75 * k);
+        g.lineBetween(s.x, s.y, ex, ey);
+        g.lineStyle(2, 0xffffff, k * k);
+        g.lineBetween(s.x, s.y, ex, ey);
+      }
     } else if (s.type === 'thrust') {
       // straight forward stab — the line SHOOTS OUT then retracts (matches the weapon lunge), not full at once
       const ext = Math.sin((1 - k) * Math.PI); // 0 → 1 → 0
@@ -217,20 +262,57 @@ export class FxSystem {
       // blade's current angle and whose tail trails a fixed span behind — a motion trail, not a filling fan.
       const half = s.arc ?? 0.45;
       const cuts = Math.max(1, s.cuts ?? 1);
-      // a FLURRY whips the crescent back and forth `cuts` times over its life (cuts 1 = the plain one-way sweep);
-      // each cut sweeps the full arc, alternating direction, matching the flurry motion the blade itself runs
-      const whole = Math.min(cuts - 1e-6, (1 - k) * cuts); // 0 at strike start → cuts at end
+      // a FLURRY whips the crescent back and forth `cuts` times over its SWEEP time (cuts 1 = the plain one-way sweep);
+      // each cut sweeps the full arc, alternating direction, matching the flurry motion the blade itself runs. Past the
+      // sweep the crescent HOLDS at the arc's end and only fades (the tail) — it never crawls on at the tail's pace.
+      const prog = Math.min(1, (s.max - s.life) / Math.max(0.0001, s.sweep ?? s.max));
+      const whole = Math.min(cuts - 1e-6, prog * cuts); // 0 at strike start → cuts at the sweep's end
       const c = Math.floor(whole);
       const u = whole - c; // progress within this cut
-      const dir = c % 2 === 0 ? 1 : -1;
+      const dir = (c % 2 === 0 ? 1 : -1) * (s.mirror ? -1 : 1);
       const start = s.angle + dir * half; // edge this cut sweeps from
       const lead = start - 2 * dir * half * u; // blade's current (leading) edge
-      const trailLen = Math.min(2 * half, 0.6);
+      const trailLen = Math.min(2 * half, s.heavy ? 1.1 : 0.6); // a heavy blow drags a longer wake
       const tail = dir > 0 ? Math.min(start, lead + trailLen) : Math.max(start, lead - trailLen); // fixed-length tail behind the lead
-      g.lineStyle(6, s.enemy ? 0xe65a46 : 0xffffff, (s.enemy ? 0.8 : 0.7) * (0.4 + 0.6 * k));
-      g.beginPath();
-      g.arc(s.x, s.y, s.len, Math.min(lead, tail), Math.max(lead, tail), false);
-      g.strokePath();
+      const a0 = Math.min(lead, tail);
+      const a1 = Math.max(lead, tail);
+      if (s.heavy) {
+        // the GREAT CUT: a wide glow, a thick body, a bright rim — three strokes, the glow and body holding their alpha
+        // (0.5 + 0.5k) so the sweep stays visible through its whole life instead of thinning to nothing mid-arc
+        const pal = s.theme !== undefined ? FX_THEME_PALETTE[s.theme] : undefined;
+        const body = pal ? pal.body : s.enemy ? 0xe65a46 : 0xffffff;
+        const rim = pal ? pal.edge : 0xffffff;
+        const hold = 0.5 + 0.5 * k;
+        g.lineStyle(26, body, 0.22 * hold); // the glow
+        g.beginPath();
+        g.arc(s.x, s.y, s.len, a0, a1, false);
+        g.strokePath();
+        g.lineStyle(14, body, 0.85 * hold); // the body
+        g.beginPath();
+        g.arc(s.x, s.y, s.len, a0, a1, false);
+        g.strokePath();
+        g.lineStyle(3, rim, 0.95 * hold); // the rim
+        g.beginPath();
+        g.arc(s.x, s.y, s.len + 7, a0, a1, false);
+        g.strokePath();
+      } else if (s.theme !== undefined) {
+        // a THEMED body's cut (haki: near-black): a thick body stroke (it reads as a cut in the light, not a line of
+        // light) with the theme's edge riding its outer rim, holding opacity longer than steel so the wave lingers
+        const pal = FX_THEME_PALETTE[s.theme];
+        g.lineStyle(12, pal.body, 0.88 * (0.3 + 0.7 * k));
+        g.beginPath();
+        g.arc(s.x, s.y, s.len, a0, a1, false);
+        g.strokePath();
+        g.lineStyle(3, pal.edge, 0.95 * (0.2 + 0.8 * k));
+        g.beginPath();
+        g.arc(s.x, s.y, s.len + 6, a0, a1, false);
+        g.strokePath();
+      } else {
+        g.lineStyle(6, s.enemy ? 0xe65a46 : 0xffffff, (s.enemy ? 0.8 : 0.7) * (0.4 + 0.6 * k));
+        g.beginPath();
+        g.arc(s.x, s.y, s.len, a0, a1, false);
+        g.strokePath();
+      }
     }
   }
 }

@@ -3,6 +3,7 @@ import { isRanged, toggleAttackMode } from '../combat/equip';
 import { BLOCK_MOVE_MULT, endGuard, tryGuard } from '../combat/guard';
 import { AIM_MOVE_MULT, CAMERA_ZOOM, CAMERA_ZOOM_MAX, CAMERA_ZOOM_MIN, CAMERA_ZOOM_STEP } from '../config/constants';
 import { trySprint } from '../combat/stamina';
+import { BASE_KIT } from '../defs/units';
 import { attackMoveSpeed } from '../combat/attackMove';
 import { FRIENDLY_FIRE_TAG } from '../combat/targeting';
 import { events } from '../core/EventBus';
@@ -21,7 +22,7 @@ import type { ShipSystem } from './ShipSystem';
 interface Keys {
   W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key;
   J: Phaser.Input.Keyboard.Key; K: Phaser.Input.Keyboard.Key; L: Phaser.Input.Keyboard.Key; U: Phaser.Input.Keyboard.Key; I: Phaser.Input.Keyboard.Key; R: Phaser.Input.Keyboard.Key;
-  Q: Phaser.Input.Keyboard.Key; F: Phaser.Input.Keyboard.Key; E: Phaser.Input.Keyboard.Key; G: Phaser.Input.Keyboard.Key;
+  Q: Phaser.Input.Keyboard.Key; F: Phaser.Input.Keyboard.Key; E: Phaser.Input.Keyboard.Key; G: Phaser.Input.Keyboard.Key; X: Phaser.Input.Keyboard.Key; Z: Phaser.Input.Keyboard.Key;
   C: Phaser.Input.Keyboard.Key; B: Phaser.Input.Keyboard.Key; T: Phaser.Input.Keyboard.Key; SHIFT: Phaser.Input.Keyboard.Key;
   ALT: Phaser.Input.Keyboard.Key; Y: Phaser.Input.Keyboard.Key; N: Phaser.Input.Keyboard.Key; SPACE: Phaser.Input.Keyboard.Key;
   ONE: Phaser.Input.Keyboard.Key; TWO: Phaser.Input.Keyboard.Key; THREE: Phaser.Input.Keyboard.Key; // ability slots — number row, in left-hand reach of WASD
@@ -38,12 +39,16 @@ const AUTO_AIM_RANGE = 700;
 /** RMB TAP threshold (s): releasing RMB within this = a TAP (the musket bash); holding past it engages AIM.
  *  Short enough that a hold-to-aim feels instant, long enough that a deliberate click always reads as the bash. */
 const RMB_TAP_MAX = 0.18;
+/** SHIFT is TAP-vs-HOLD like RMB: a quick tap (released under this) is the DODGE ROLL — the base roll every fighter keeps even
+ *  when a style owns Q (Zoro's Q is a lunge, the Ronin's a flash-step) — thrown toward the held movement keys, or straight
+ *  BACK when none are held (the backstep). A hold is the sprint as ever (a tap's few frames of sprint drain are nothing). */
+const DODGE_TAP_MAX = 0.18;
 
 /**
  * Drives whichever entity holds the `control` tag. Movement sets `mover` intent; combat keys activate the
  * entity's loadout abilities through the AbilitySystem (so the four-layer build decides what each key does).
  */
-type TapKey = 'E' | 'T' | 'Q' | 'C' | 'R' | 'G' | 'F' | 'ALT' | 'Y' | 'N' | 'SPACE';
+type TapKey = 'E' | 'T' | 'Q' | 'C' | 'X' | 'Z' | 'R' | 'G' | 'F' | 'ALT' | 'Y' | 'N' | 'SPACE';
 
 export class InputSystem {
   private readonly keys: Keys;
@@ -55,6 +60,7 @@ export class InputSystem {
   private shiftLock = false;
   private mouseDX = 0; // mouselook delta accumulated from pointermove events, consumed once per update()
   private rmbHeldT = 0; // how long RMB has been held (s) — a quick tap (< RMB_TAP_MAX) is the bash, a hold aims
+  private shiftHeldT = 0; // how long SHIFT has been held (s) — a quick tap (< DODGE_TAP_MAX) is the dodge roll, a hold sprints
   private rmbPrev = false; // RMB down last sim step — to detect the release edge (fire the bash on a quick tap)
   private helmFwdPrev = 0; // W/S axis last sim step at the wheel — sail-state steps are EDGES, backing is the hold
   private helmTurnPrev = 0; // A/D axis last sim step at the wheel — a FRESH grab (edge) unties the lash, a hold doesn't
@@ -84,7 +90,7 @@ export class InputSystem {
     private readonly items: Items,
   ) {
     this.keys = scene.input.keyboard!.addKeys(
-      'W,A,S,D,J,K,L,U,I,Q,F,E,G,C,B,R,T,SHIFT,ALT,Y,N,SPACE,ONE,TWO,THREE,UP,DOWN,LEFT,RIGHT',
+      'W,A,S,D,J,K,L,U,I,Q,F,E,G,C,X,Z,B,R,T,SHIFT,ALT,Y,N,SPACE,ONE,TWO,THREE,UP,DOWN,LEFT,RIGHT',
     ) as unknown as Keys;
     scene.input.mouse?.disableContextMenu();
     // MOUSELOOK: accumulate the raw pointer-lock delta from the actual pointermove EVENT — it fires only on
@@ -120,7 +126,7 @@ export class InputSystem {
    *  accumulated from the pointermove EVENT in the ctor, not polled here — a poll of the stale movementX kept
    *  spinning the view after a mouse lift.) */
   sample(): void {
-    for (const k of ['E', 'T', 'Q', 'C', 'R', 'G', 'F', 'ALT', 'Y', 'N', 'SPACE'] as const) {
+    for (const k of ['E', 'T', 'Q', 'C', 'X', 'Z', 'R', 'G', 'F', 'ALT', 'Y', 'N', 'SPACE'] as const) {
       if (Phaser.Input.Keyboard.JustDown(this.keys[k])) this.tapped.add(k);
     }
   }
@@ -276,6 +282,19 @@ export class InputSystem {
     const ix = (this.down('D') || this.down('RIGHT') ? 1 : 0) - (this.down('A') || this.down('LEFT') ? 1 : 0);
     const iy = (this.down('S') || this.down('DOWN') ? 1 : 0) - (this.down('W') || this.down('UP') ? 1 : 0);
     const moving = ix !== 0 || iy !== 0;
+    // SHIFT tap → the DODGE ROLL (the base roll, BASE_KIT.dash): toward the held keys, or straight back from the facing. The
+    // roll's impulse follows the mover's velocity, so the direction is seeded before the press (the AI's sidestep does the same).
+    if (this.down('SHIFT')) this.shiftHeldT += dt;
+    else if (this.shiftHeldT > 0) {
+      const tapped = this.shiftHeldT < DODGE_TAP_MAX;
+      this.shiftHeldT = 0;
+      if (tapped && m.dodgeT <= 0 && e.loadout.granted.has(BASE_KIT.dash) && this.abilities.ready(e, BASE_KIT.dash)) {
+        const [dx, dy] = moving ? norm(ix, iy) : [-Math.cos(t.angle), -Math.sin(t.angle)];
+        m.vx = dx * m.speed;
+        m.vy = dy * m.speed;
+        this.abilities.activate(e, BASE_KIT.dash);
+      }
+    }
     let speed = m.speed;
     if (c?.blocking) speed *= BLOCK_MOVE_MULT; // bracing is not a walk — and it forfeits the sprint
     else if (c?.aiming) speed *= AIM_MOVE_MULT; // ADS-walk: you can advance while aiming, at half pace (and no sprint)
@@ -341,7 +360,9 @@ export class InputSystem {
     if (this.down('ONE') && e.loadout.slots[0]) this.abilities.activate(e, e.loadout.slots[0]); // special 1 (key 1)
     if (this.down('TWO') && e.loadout.slots[1]) this.abilities.activate(e, e.loadout.slots[1]); // special 2 (key 2)
     if (this.down('THREE') && e.loadout.slots[2]) this.abilities.activate(e, e.loadout.slots[2]); // special 3 (key 3)
-    if (this.tap('C') && e.loadout.utility) this.abilities.activate(e, e.loadout.utility); // buff slot (Haki layer grants it later)
+    if (this.tap('C') && e.loadout.utilities[0]) this.abilities.activate(e, e.loadout.utilities[0]); // buff key 1 (the loudest layer's: Armament over a style's shout)
+    if (this.tap('X') && e.loadout.utilities[1]) this.abilities.activate(e, e.loadout.utilities[1]); // buff key 2 (the next layer's: a coated swordsman's Kiai)
+    if (this.tap('Z') && e.loadout.stance) this.abilities.activate(e, e.loadout.stance); // the stance key: cycle the pace
     if (this.tap('R')) toggleAttackMode(e); // swap stance: fist (Punch/Kick) ↔ fruit
   }
 

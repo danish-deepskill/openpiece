@@ -1,3 +1,5 @@
+import type { FxTheme } from '../combat/fxTheme';
+import { FX_THEME_PALETTE, FX_THEMES } from './fxThemes';
 import Phaser from 'phaser';
 import { Abilities } from '../combat/Ability';
 import { Effects } from '../combat/Effect';
@@ -17,9 +19,10 @@ import { Effects } from '../combat/Effect';
  *  scales it down to the ability's `shotSize`. */
 const TEX = 64;
 
-/** Texture key for a proc projectile: kind + (charged theme color) IS the key — derived, no registry. */
-export const shotProcKey = (kind: string, color?: number): string =>
-  color === undefined ? `shotproc:${kind}` : `shotproc:${kind}:${color.toString(16)}`;
+/** Texture key for a proc projectile: kind + (charged color | FX theme) IS the key — derived, no registry. A themed
+ *  shot (a coated body's crescent — combat/fxTheme) is its own baked variant; the theme outranks a charge color. */
+export const shotProcKey = (kind: string, color?: number, theme?: FxTheme): string =>
+  theme !== undefined ? `shotproc:${kind}:${theme}` : color === undefined ? `shotproc:${kind}` : `shotproc:${kind}:${color.toString(16)}`;
 
 /** Bake every proc-projectile texture into the scene's texture manager: the plain ball + a charged variant per
  *  distinct proc color in the ability defs. Idempotent (skips baked keys — a scene restart won't re-register).
@@ -34,22 +37,43 @@ export function bakeProjectileTextures(scene: Phaser.Scene): void {
   }
   for (const c of colors) ball(scene, c);
   slash(scene); // the flying wind crescent (shotProc 'slash')
+  for (const th of FX_THEMES) {
+    slash(scene, th); // the same crescent in the theme's substance (a coated body's gale)
+    themedBall(scene, th); // a coated round
+  }
+}
+
+/** A themed round: the theme's body with its edge as the rim — the lead ball of a coated shooter. */
+function themedBall(scene: Phaser.Scene, theme: FxTheme): void {
+  const key = shotProcKey('ball', undefined, theme);
+  if (scene.textures.exists(key)) return;
+  const pal = FX_THEME_PALETTE[theme];
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const c = TEX / 2;
+  const r = TEX * 0.28;
+  g.fillStyle(pal.body, 1);
+  g.fillCircle(c, c, r);
+  g.lineStyle(3, pal.edge, 0.95);
+  g.strokeCircle(c, c, r);
+  g.generateTexture(key, TEX, TEX);
+  g.destroy();
 }
 
 /** A WIND SLASH: a crescent flying along +x (the renderer rotates it to the heading) — a thick pale blade-arc
  *  with its bulge leading and a thin inner echo, so it reads as a cut in the air, not a ball. */
-function slash(scene: Phaser.Scene): void {
-  const key = shotProcKey('slash');
+function slash(scene: Phaser.Scene, theme?: FxTheme): void {
+  const key = shotProcKey('slash', undefined, theme);
   if (scene.textures.exists(key)) return;
+  const pal = theme ? FX_THEME_PALETTE[theme] : undefined; // themed: the body stroke in the substance, the echo in its edge
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
   const c = TEX / 2;
   const r = TEX * 0.42;
   const cx = c - TEX * 0.14; // the arc's center sits BEHIND the canvas center so its bulge leads at +x
-  g.lineStyle(9, 0xeef6ff, 0.95);
+  g.lineStyle(pal ? 11 : 9, pal?.body ?? 0xeef6ff, 0.95);
   g.beginPath();
   g.arc(cx, c, r, -1.15, 1.15, false);
   g.strokePath();
-  g.lineStyle(3, 0x9fd8ff, 0.9); // the inner echo
+  g.lineStyle(3, pal?.edge ?? 0x9fd8ff, 0.9); // the inner echo
   g.beginPath();
   g.arc(cx, c, r * 0.72, -0.95, 0.95, false);
   g.strokePath();

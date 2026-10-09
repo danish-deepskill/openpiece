@@ -1,3 +1,5 @@
+import type { FxTheme } from '../combat/fxTheme';
+import type { PowerTier } from '../combat/PowerTier';
 import type { Brain } from '../ai/Brain';
 import type { AttackPhases } from '../combat/phases';
 import type { AccessorySlot } from '../defs/accessories';
@@ -53,6 +55,23 @@ export interface Mover {
    *  SINKING (surface swim ran out of stamina) or a deliberate DIVE toggle. While submerged, BREATH drains
    *  (not stamina) and empty breath drowns you. Cleared on surfacing (stamina recovers / reaching land). */
   submerged?: boolean;
+  /** RAGDOLLED (combat/ragdoll): flung, then down. `t` counts up from the launch; FLIGHT while t < air (tumbling, phasing),
+   *  DOWNED while t < air + down (sprawled, pushable, un-launchable), then the get-up clears it. `angle` = the fall
+   *  direction the sprawl lies along; `seed` = the limbs' splay (presentation reads it; the sim set it once). */
+  ragdoll?: {
+    t: number;
+    air: number;
+    down: number;
+    angle: number;
+    seed: number;
+    /** DOWNED only: the limb parts as offsets from the body center (px) — [head, left fist, right fist]. Each is its own
+     *  little body: a walker pushes the part it overlaps; joints (combat/ragdoll.relaxRagdoll) keep each at its socket's
+     *  length and DRAG the torso when a part is shoved — per-part, still connected. Laid out at landing from the seed. */
+    parts?: { x: number; y: number }[];
+  };
+  /** A DASH STRING in flight (AbilityDef.dashes): the ability whose impulse repeats and how many steps remain. The
+   *  next step fires when the current impulse ends (AbilitySystem); cleared when the string finishes or is broken. */
+  dashChain?: { ability: ContentId; left: number; wait: number }; // wait = the pause left before the next step (AbilityDef.dashGap)
   /** Hover-bob phase (s) — accumulates while hovering to drive the repeated jump bob + a stamina kick + a cloud
    *  puff once per cycle. Presentation reads it for the bob; the sim uses the cycle edge for the kick cost. */
   hoverT?: number;
@@ -165,6 +184,11 @@ export interface Blackboard {
   // per-tick roll snowballs to always-fires at sim rate). ONE ability-agnostic clock (like guardCd for guards),
   // so ANY number of roll-based ability picks scale without per-ability state. Ticks down each frame.
   decideCd?: number;
+  // COMBO INTENT (profile.comboIntent): did my LAST swing land anything? Read off the live swing's per-volume hit lists each
+  // tick (true the moment any lands; reset when a new swing starts — `lastSwingT` detects the restart), kept after the swing
+  // ends so the chain-window decision ("finish, or let it lapse?") can read it.
+  lastSwingLanded?: boolean;
+  lastSwingT?: number;
   // STUCK DETECTION (anti "sprint into the wall forever"): `stuckT` accumulates while a unit TRIES to move but its
   // position barely changes (pinned on a wall/corner) → the kite beat loop abandons the reposition and re-plants
   // instead of running in place; `pinX/pinY` is last frame's position, the progress reference.
@@ -223,7 +247,7 @@ export interface Render {
 /** Sim-side identity facts — a server needs the NAME and TIER (dialogue, logs, HUD), pixels don't. */
 export interface Identity {
   name: string; // unit name (e.g. 'Brute', 'You')
-  tier?: string; // power tier band (e.g. 'F+', 'E-')
+  tier?: PowerTier; // power tier band (e.g. 'F+', 'E-')
 }
 
 /**
@@ -247,11 +271,22 @@ export interface MeleeSwing {
   /** Per-VOLUME ids already struck (index-aligned with the swing's resolved strike volumes): one volume hits
    *  a target once within its window; two overlapping volumes may BOTH land (per-volume hits, deliberate). */
   hitByVolume: number[][];
-  launched?: boolean; // grab-launch (Gomu Rocket): the body-impulse has fired (latches to fire once)
+  launches?: number; // launch cues fired so far (AbilityDef.launchAt — the Rocket's one, Sandan's three); each fires once
+  launchX?: number; // where the FIRST cue fired from — WORLD px: a 'trail' volume's origin, the path from here to the body.
+  launchY?: number; //   FRAME GAP (stated, not hidden): a trail cut aboard a sailing deck is measured from where the ship WAS —
+  //                     a dash-through at sea needs the deck-local form (perceivedFrame's pattern) before it ships there
   landed?: boolean; // grab-launch: the landing AoE has fired (latches to fire once, when the leap stops)
+  landedAt?: number; // the swing clock (t) at landing — a motion that animates the moment AFTER the step (the X of a
+  //                    dash-through iai) counts from here, not from a progress fraction the attack speed moves
   leaptBack?: boolean; // on-hit recoil LEAP (Shock Kick) has fired for this swing (latches — one hop per kick)
   shotFired?: boolean; // a 'shot' swing has spawned its projectile(s) at the active cue (latches — one volley per shot)
   volleysFired?: number; // how many of the ability's `volleys` cues have fired (a channel that looses shots mid-swing)
+  hazardLeft?: boolean; // the swing's ground hazard (AbilityDef.hazard) has been left at the cut's end (latches — one zone per swing)
+  /** THE BLADE LOCK (combat/clash): steel met steel — this swing is HELD, its clock paused (so the pose stays pinned where the
+   *  blades crossed) for `t` more seconds, then the verdict lands: a `loser` takes the recoil (staggered, swing lost, shoved
+   *  off the contact x/y, posture paid); a winner's clock simply resumes. `emits`: this side pops the trickle sparks (one of
+   *  the pair). Lives on the swing, not the body: a lock IS a state of a cut. */
+  lock?: { t: number; hold: number; x: number; y: number; loser: boolean; bind: boolean; emits: boolean; spark: number }; // `hold` = the full length (the pose's tremble decays over its last third); `bind` = a tie (a loser stumbles) vs an overpower (a loser is FLUNG). x/y = the contact point in WORLD px — on a sailing deck the point drifts off the blades (the same frame gap as launchX/Y; a deck duel's lock wants deck-local coords)
 }
 
 /** A ship hull instance (composite entity: hull stats from ShipHullDef + parts/cannons later). */
@@ -324,6 +359,18 @@ export interface OnDeck {
 export interface Combatant {
   stam: number;
   maxStam: number;
+  /** VIGOR (0..1, absent ⇒ 1): the stamina bar's CEILING over the day — the fill can't rise past maxStam × vigor-scaled
+   *  (combat/stamina.stamCap). Worn by every spend, regained over minutes out of combat (constants VIGOR_*). */
+  vigor?: number;
+  /** VIGOR DEBT (vigor units): what the breath spent so far will cost the day WHEN it comes back. Booked at each spend at
+   *  the pace held THEN (a push books ×1.5, a measured breath ×0.3), paid off proportionally as the bar refills — so
+   *  switching pace after exerting changes nothing already owed (the pace-flip exploit). Absent ⇒ 0. */
+  vigorDebt?: number;
+  /** WILL — the haki pool (combat/attributes: spiritual × WILL_PER_SPIRITUAL). Absent = this body has none; a coating
+   *  can't be lit. Drained per second by a held coating, spent by techniques (AbilityDef.costWill). */
+  will?: number;
+  maxWill?: number;
+  willRegenT?: number; // seconds until will trickles back after a spend (WILL_REGEN_DELAY)
   combo: number;
   comboT: number;
   /** Guard strain, 0 → `maxPosture` (INVERSE pool: full = broken). Blocked hits add to it by the attacker's
@@ -435,7 +482,12 @@ export interface Loadout {
   heavy: ContentId; // right-click — heavy attack (base kit: a kick)
   dash: ContentId; // Shift
   slots: ContentId[]; // number keys 1/2/3 (InputSystem) — extra granted moves (a fruit's specials, a weapon's signature)
-  utility?: ContentId; // C — a buff/self ability (e.g. Armament, once the Haki layer grants it)
+  /** The BUFF keys (C, X, …): every equipped layer's self-buff, in precedence order (haki, fruit, style — the louder
+   *  power first). Nothing is shadowed: a coated swordsman has Armament on C AND his style's Kiai on X. refreshLoadout
+   *  rebuilds it; the brain's buff beat walks it in order. */
+  utilities: ContentId[];
+  /** The STANCE key (Z): the one granted `cycle` ability (the pace) — innate via a trait, not a layer. */
+  stance?: ContentId;
   /** Live combo-chain state: pressing `root`'s slot again while `until` > 0 fires `next` instead of
    *  restarting. Set/expired by AbilitySystem; plain ids + a timer, so it serializes like everything else. */
   chain?: { root: ContentId; next: ContentId; until: number };
@@ -459,6 +511,8 @@ export interface Equipment {
   weapon?: ContentId;
   fruit?: ContentId;
   style?: ContentId;
+  /** The HAKI layer (defs/layers Hakis) — learned, not picked up; equips through the same equip() path. */
+  haki?: ContentId;
   potentials: ContentId[];
 }
 
@@ -479,6 +533,35 @@ export interface Structure {
   ty: number;
   /** Door state — toggled by DoorSystem on `door` defs; an open door stops blocking (collision + vision). */
   open?: boolean;
+  /** A WAYSTONE's destination (world px) — where `verb.warp` puts the actor. Per INSTANCE (worldgen links a pair
+   *  to each other's arrival tile), never on the def: the same stone row serves every pair. */
+  warp?: { x: number; y: number };
+  /** A SUMMONER's live roster — the ids `verb.summon` spawned last time (ids at rest; a dead or despawned one no longer
+   *  counts), so the gong refuses to ring while the duel it started is still on. Per INSTANCE, like `warp`. */
+  summoned?: number[];
+}
+
+/** A GROUND HAZARD — a zone a technique leaves behind that keeps hurting (Samon's scored X; later a fire patch, an
+ *  electric puddle): its own entity at the spot, a set of STROKES (world-angled line segments through its transform, `width`
+ *  wide), a lifetime, a tick clock, and a per-body hit cap (`hits`, id → count — a plain record, serializable). HazardSystem
+ *  ticks it through the ONE strike path as the owner's hit; FxSystem draws the strokes from this component, so the mark you
+ *  see is the zone that hurts. Theme stamped at spawn like a projectile's (the owner's state then). */
+export interface Hazard {
+  // FRAME: the zone's transform is WORLD px — a zone scored on a sailing deck stays in the sea as the ship moves (the same gap
+  // as a trail's origin; a deck zone would ride the deck as onDeck bodies do). Stated here so the first deck duel finds it.
+  ability: ContentId; // the row whose damage/posture/stun the ticks carry (and whose `hazard` spec shaped this)
+  owner: number; // who left it (id at rest — harm predicate, damage stat, grudges all read the owner)
+  strokes: { angle: number; len: number }[]; // world angles, each centered on the transform
+  width: number; // px — the strokes' full width (the drawn line IS the tested capsule)
+  life: number; // seconds left
+  maxLife: number;
+  tickEvery: number;
+  nextTick: number;
+  maxHits: number; // per body
+  damageMul: number; // of the owner's base damage for the ability, per tick
+  stun: number; // hitstun per tick (s) — light: a zone pins by repetition, not by one lock
+  hits: Record<string, number>;
+  theme?: FxTheme;
 }
 
 /** A TRAVELLING shot — a musket ball, a thrown knife, later a cannonball or a Fruit projectile. Its own
@@ -489,6 +572,17 @@ export interface Structure {
  *  `owner` is the shooter (id at rest — resolved at impact; a dead/gone shooter still lands the shot in flight). */
 export interface Projectile {
   owner: number; // shooter entity id — resolved at contact for damage attribution + the harm predicate
+  /** The shooter's FX theme when it fired (combat/fxTheme) — a coated body looses a black crescent. Presentation reads it. */
+  theme?: FxTheme;
+  /** What flies: a BALL (a musket round) or a flying SLASH (a crescent of cut air). The class rule when two shots meet at
+   *  the same rung: a slash cuts a ball; equals cancel (ProjectileSystem.duels). Derived at fire from the shape's look. */
+  kind: 'ball' | 'slash';
+  /** The shooter's EFFECTIVE tier at fire (combat/dominance — coating included), stamped like `theme`: a slash loosed black
+   *  stays a coated slash if the coating drops mid-flight. Undefined for a tier-less shooter (treated as equal to anything). */
+  rung?: number;
+  /** The shooter's SHOT SCALE at fire (stats.SHOT_SCALE_STAT — a pump's larger slashes): the hit radius (transform.r) was
+   *  multiplied at spawn and the renderer multiplies the drawn size by this, so the two never disagree. 1 = as authored. */
+  scale: number;
   ability: ContentId; // the firing ability — its damage/knockback/stun/shape read at impact (never cached)
   vx: number; // px/s — a straight, FIXED path (leading is the shooter's skill, NOT homing); no per-tick steering
   vy: number;
@@ -521,6 +615,7 @@ export interface Components {
   avatar: Avatar;
   combatant: Combatant;
   control: Control;
+  hazard: Hazard;
   grudge: Grudge;
   npc: Npc;
   loot: Loot;

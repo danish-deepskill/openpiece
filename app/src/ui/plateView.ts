@@ -1,3 +1,5 @@
+import { stamCap } from '../combat/stamina';
+import { Effects } from '../combat/Effect';
 import { ATTRIBUTE_IDS, type AttributeId } from '../combat/attributes';
 import { tierColor } from '../combat/PowerTier';
 import { FactionDefs } from '../defs/factions';
@@ -25,6 +27,13 @@ export interface UnitPlateView {
   maxHp: number;
   stam: number | null;
   maxStam: number | null;
+  /** VIGOR's ceiling on the stamina bar (combat/stamina.stamCap): the bar greys out above it. Null for non-combatants. */
+  stamCap: number | null;
+  /** The held PACE ('push' | 'conserve' — the pace tag's suffix), or null for normal / no stance. */
+  pace: string | null;
+  /** WILL — the haki pool; null for a body without one (no bar, not an empty one). */
+  will: number | null;
+  maxWill: number | null;
   /** Guard strain (combat/guard) — an INVERSE pool: the bar FILLS toward the break. Null for non-combatants. */
   posture: number | null;
   maxPosture: number | null;
@@ -67,6 +76,10 @@ export function unitPlateView(e: Entity): UnitPlateView | null {
     maxHp: e.health.maxHp,
     stam: e.combatant?.stam ?? null,
     maxStam: e.combatant?.maxStam ?? null,
+    stamCap: e.combatant ? stamCap(e.combatant) : null,
+    pace: paceOf(e),
+    will: e.combatant?.maxWill !== undefined ? (e.combatant.will ?? 0) : null,
+    maxWill: e.combatant?.maxWill ?? null,
     posture: e.combatant?.posture ?? null,
     maxPosture: e.combatant?.maxPosture ?? null,
     // breath: only surface it when it's NOT full (actively spent underwater) — the bar is contextual
@@ -81,4 +94,13 @@ export function unitPlateView(e: Entity): UnitPlateView | null {
     inventory: holdLabels(e),
     bagSlots: e.hold?.slots ?? 0,
   };
+}
+
+/** The pace a body holds, read off its active effects' tags (`pace.<mode>`) — generic: a new pace row names itself. */
+function paceOf(e: Entity): string | null {
+  for (const a of e.effects?.active ?? []) {
+    const tag = Effects.get(a.id).grantTags?.find((t) => t.startsWith('pace.'));
+    if (tag) return tag.slice('pace.'.length);
+  }
+  return null;
 }

@@ -30,7 +30,7 @@ function rig() {
   const hero = sp.spawnHero(0, 0); // bag: BAG_SLOTS (10) stack-slots
   const items = new Items(world, sp, new SpatialQuery(world));
   // dialogue is stubbed — takePickup never touches it (safe: {} as T with this note)
-  const verbs = new InteractionSystem(world, {} as DialogueSystem, items);
+  const verbs = new InteractionSystem(world, {} as DialogueSystem, items, sp);
   /** The real E-press path: drop a pile on the hero and interact. */
   const take = (ref: ItemRef, n = 1): void => {
     sp.spawnPickup(ref, hero.transform!.x, hero.transform!.y, n);
